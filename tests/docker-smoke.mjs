@@ -29,7 +29,7 @@ try {
   assert.equal(docker(["exec",prefix,"node","-e","process.stdout.write(String(process.getuid()))"]),"10001");
   assert.equal((await request("/api/workspace?action=workspace",null,null)).status,401);
   async function enroll(token) {
-    const accepted=await request("/api/auth",{action:"auth_accept",token,password:"container test password"},null);
+    const accepted=await request("/api/auth",{action:"auth_accept",token,username:"container_admin",password:"container test password"},null);
     assert.equal((await okay(accepted)).step,"setup");
     const partial={cookie:accepted.headers.getSetCookie().filter(x=>!x.includes("Max-Age=0")).map(x=>x.split(";")[0]).join("; "),user:{csrf:""}};
     assert.equal((await request("/api/workspace?action=workspace",null,partial)).status,401);

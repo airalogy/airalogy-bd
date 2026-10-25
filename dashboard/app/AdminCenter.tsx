@@ -6,6 +6,7 @@ import AiUsage from "./AiUsage";
 import BackupSettings from "./BackupSettings";
 import TeamManagement from "./TeamManagement";
 import RemoteAccess from "./RemoteAccess";
+import { BrandIdentity } from "./Branding";
 import type { TeamUser } from "./lib/team-client";
 import type { Project } from "./lib/types";
 
@@ -18,7 +19,7 @@ export default function AdminCenter({ user, projects, timezone, unavailable, ini
   return <>
     {user ? <AccountBar user={user} management /> : <div className="team-bar"><span>本机使用者 · 管理权限</span><Link className="admin-button" href="/">返回工作台</Link></div>}
     <main className="page-shell admin-center">
-      <header><div className="eyebrow">仅管理员可访问</div><h1>管理中心</h1><p>管理成员访问权限、AI 服务、使用预算与备份。</p></header>
+      <header><BrandIdentity /><div className="eyebrow">仅管理员可访问</div><h1>管理中心</h1><p>管理成员访问权限、AI 服务、使用预算与备份。</p></header>
       {!user && <p className="admin-notice">当前为本机单人模式，由本机使用者管理设置。团队模式启用后，仅管理员账号可以进入本页面。</p>}
       {unavailable && <p className="admin-alert" role="alert">工作区资料暂时不可用，事项列表未能加载，请先检查工作区。</p>}
       <nav className="admin-center-nav" aria-label="管理中心功能">{Object.entries(sections).map(([key, label]) => <Link key={key} href={`/admin?section=${key}`} aria-current={section === key ? "page" : undefined}>{label}</Link>)}</nav>

@@ -3,7 +3,7 @@ import { aiMockTransport, exerciseAi } from "./ai-http.mjs";
 import { exerciseRemote } from "./remote-http.mjs";
 import {spawn,spawnSync} from "node:child_process";
 import {createHmac,randomBytes} from "node:crypto";
-import {cpSync,existsSync,mkdtempSync,readFileSync,rmSync,symlinkSync} from "node:fs";
+import {cpSync,existsSync,mkdtempSync,readFileSync,rmSync,symlinkSync,writeFileSync} from "node:fs";
 import net from "node:net";
 import {DatabaseSync} from "node:sqlite";
 import {tmpdir} from "node:os";
@@ -39,21 +39,27 @@ test("server HTTP enforces invitations, scope, roles, CSRF, concurrent saves, do
   const base=`http://127.0.0.1:${port}`;
   const publicOrigin="https://bd.test.invalid", publicHost="bd.test.invalid";
   const modelTransport=aiMockTransport(directory);
-  const server=spawn(process.execPath,[path.join(root,"bin/bd.mjs"),"start","--port",String(port)],{cwd:directory,env:{...process.env,NODE_OPTIONS:`--require ${modelTransport.preload}`,BD_MODE:"server",BD_PUBLIC_URL:publicOrigin,BETTER_AUTH_SECRET:randomBytes(32).toString("hex")},stdio:["ignore","pipe","pipe"]});
+  const logo=path.join(directory,"company-logo.png");
+  const logoBytes=Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/R5sAAAAASUVORK5CYII=","base64");
+  writeFileSync(logo,logoBytes);
+  const server=spawn(process.execPath,[path.join(root,"bin/bd.mjs"),"start","--port",String(port)],{cwd:directory,env:{...process.env,NODE_OPTIONS:`--require ${modelTransport.preload}`,BD_MODE:"server",BD_PUBLIC_URL:publicOrigin,BETTER_AUTH_SECRET:randomBytes(32).toString("hex"),BD_BRAND_NAME:"示例团队 BD",BD_BRAND_LOGO_FILE:logo},stdio:["ignore","pipe","pipe"]});
   let output="";server.stdout.on("data",chunk=>output+=chunk);server.stderr.on("data",chunk=>output+=chunk);
-  const request=async(route,body,member,headers={})=>fetch(base+route,{method:body?"POST":"GET",headers:{Host:publicHost,...(body?{"Content-Type":"application/json",Origin:publicOrigin}:{}),...(member?{Cookie:member.cookie,"X-BD-CSRF":member.user.csrf}:{}),...headers},...(body?{body:JSON.stringify(body)}:{})});
+  const request=async(route,body,member,headers={})=>fetch(base+route,{method:body?"POST":"GET",headers:{Host:publicHost,"X-Real-IP":member?.ip||"192.0.2.1",...(body?{"Content-Type":"application/json",Origin:publicOrigin}:{}),...(member?{Cookie:member.cookie,"X-BD-CSRF":member.user.csrf}:{}),...headers},...(body?{body:JSON.stringify(body)}:{})});
   const okay=async response=>{assert.equal(response.status,200,await response.clone().text());const body=await response.json();assert.equal(body.ok,true,JSON.stringify(body));return body.result;};
   const cookieJar=(response,existing="")=>{
     const jar=new Map(existing.split(";").filter(Boolean).map(value=>{const [key,...rest]=value.trim().split("=");return [key,rest.join("=")];}));
     for(const value of response.headers.getSetCookie()) {const [key,...rest]=value.split(";")[0].split("=");if(/Max-Age=0(?:;|$)/i.test(value))jar.delete(key);else jar.set(key,rest.join("="));}
     return [...jar].map(([key,value])=>`${key}=${value}`).join("; ");
   };
+  let clientNumber=10;
   const join=async(token)=>{
+    const ip=`192.0.2.${clientNumber++}`;
     const info=await okay(await request("/api/auth",{action:"auth_invite_info",token}));
     assert.equal(info.secret,undefined);
-    const accepted=await request("/api/auth",{action:"auth_accept",token,password:"member secure password",role:"admin",mfaVerified:true});
+    const chosen=info.username||info.email.split("@")[0].replace(/[^a-z0-9._]/gi,"_");
+    const accepted=await request("/api/auth",{action:"auth_accept",token,username:chosen,password:"member secure password",role:"admin",mfaVerified:true},null,{"X-Real-IP":ip});
     assert.equal((await okay(accepted)).step,"setup");
-    const partial={cookie:cookieJar(accepted),user:{csrf:""}};
+    const partial={cookie:cookieJar(accepted),user:{csrf:""},ip};
     assert.equal((await request("/api/workspace?action=workspace",null,partial)).status,401);
     assert.equal((await request("/api/files?action=list",null,partial)).status,401);
     const setup=await okay(await request("/api/auth",{action:"auth_setup",password:"member secure password"},partial));
@@ -61,18 +67,27 @@ test("server HTTP enforces invitations, scope, roles, CSRF, concurrent saves, do
     const session=await okay(response);const cookie=response.headers.get("set-cookie");
     assert.match(cookie,/HttpOnly/);assert.match(cookie,/; Secure/);assert.match(cookie,/__Secure-bd.session_token=/);assert.match(cookie,/SameSite=Lax/i);assert.equal(session.session_token,undefined);
     assert.equal((await request("/api/workspace?action=workspace",null,partial)).status,401);
-    return {...session,cookie:cookieJar(response,partial.cookie),secret:setup.secret,email:info.email};
+    assert.equal(session.user.username,chosen.toLowerCase());
+    return {...session,cookie:cookieJar(response,partial.cookie),secret:setup.secret,email:info.email,ip};
   };
   const passwordStep=async(member)=>{
-    const response=await request("/api/auth",{action:"auth_login",email:member.email,password:"member secure password"});
+    const response=await request("/api/auth",{action:"auth_login",email:member.email,password:"member secure password"},null,{"X-Real-IP":member.ip});
     assert.equal((await okay(response)).step,"verify");
-    const partial={cookie:cookieJar(response),user:{csrf:""}};
+    const partial={cookie:cookieJar(response),user:{csrf:""},ip:member.ip};
     assert.equal((await request("/api/workspace?action=workspace",null,partial)).status,401);
     return partial;
   };
   try {
     for(let count=0;count<160&&!output.includes("Ready");count++)await delay(100);
     assert.ok(output.includes("Ready"),output);
+    const branded=await (await request("/login")).text();
+    assert.match(branded,/示例团队 BD/);assert.match(branded,/用户名或邮箱/);assert.match(branded,/\/api\/branding\/logo/);assert.ok(!branded.includes(directory));
+    const custom=await request("/api/branding/logo?file=ignored");assert.equal(custom.status,200);assert.equal(custom.headers.get("content-type"),"image/png");assert.equal(custom.headers.get("x-content-type-options"),"nosniff");assert.deepEqual(Buffer.from(await custom.arrayBuffer()),logoBytes);
+    const standard=await request("/airalogy-logo.svg");assert.equal(standard.status,200);assert.equal(await standard.text(),readFileSync(path.join(root,"dashboard/public/airalogy-logo.svg"),"utf8"));
+    writeFileSync(logo,"<svg><script>malicious()</script></svg>");assert.equal((await request("/api/branding/logo")).status,404);
+    writeFileSync(logo,Buffer.alloc(1024*1024+1));assert.equal((await request("/api/branding/logo")).status,404);
+    rmSync(logo);symlinkSync(path.join(content,"people.yaml"),logo);const unsafeLogo=await request("/api/branding/logo");assert.equal(unsafeLogo.status,404);assert.equal(await unsafeLogo.text(),"");
+    rmSync(logo);writeFileSync(logo,logoBytes);
     const anonymous=await request("/");assert.equal(new URL(anonymous.url).pathname,"/login");assert.doesNotMatch(await anonymous.text(),/澄川创新|星帆创投|青禾集团/);
     const anonymousAdmin=await request("/admin?section=ai");assert.equal(new URL(anonymousAdmin.url).pathname,"/login");assert.doesNotMatch(await anonymousAdmin.text(),/API 密钥|AI 设置|成员与权限/);
     assert.equal((await request("/api/workspace?action=workspace")).status,401);
@@ -80,9 +95,26 @@ test("server HTTP enforces invitations, scope, roles, CSRF, concurrent saves, do
     assert.equal((await request("/api/auth",{action:"team_invite",actor:{role:"admin"}})).status,401);
     assert.equal((await request("/api/auth",{action:"auth_invite_info",token:invitation.token},null,{Origin:"https://evil.invalid"})).status,403);
     assert.equal((await request("/api/auth",{action:"auth_invite_info",token:invitation.token},null,{Host:"wrong.invalid"})).status,403);
-    for(const route of ["/api/identity/sign-up/email","/api/identity/admin/create-user","/api/identity/two-factor/disable","/api/auth/sign-up/email"]) assert.equal((await request(route,{email:"intruder@example.invalid",password:"member secure password"})).status,404);
+    for(const route of ["/api/identity/sign-up/email","/api/identity/sign-in/username","/api/identity/is-username-available","/api/identity/admin/create-user","/api/identity/two-factor/disable","/api/auth/sign-up/email"]) assert.equal((await request(route,{email:"intruder@example.invalid",password:"member secure password"})).status,404);
     assert.equal((await request("/api/auth",{action:"auth_accept",token:invitation.token,password:"short"})).status,400);
+    assert.equal((await request("/api/auth",{action:"auth_accept",token:invitation.token,username:"不合规用户名",password:"member secure password"})).status,400);
     const admin=await join(invitation.token);
+    assert.match(await (await request("/account",null,admin)).text(),/我的账号/);
+    const aliasLogin=await request("/api/auth",{action:"auth_login",identifier:" ADMIN ",password:"member secure password"},null,{"X-Real-IP":"192.0.2.200"});
+    assert.equal((await okay(aliasLogin)).step,"verify");
+    const aliasPending={cookie:cookieJar(aliasLogin),user:{csrf:""},ip:"192.0.2.200"};
+    assert.equal((await request("/api/workspace?action=workspace",null,aliasPending)).status,401);
+    assert.equal((await request("/api/auth",{action:"auth_username",username:"spoof"},aliasPending)).status,401);
+    const aliasSession=await okay(await request("/api/auth",{action:"auth_verify",code:otp(admin.secret)},aliasPending));
+    assert.equal(aliasSession.user.id,admin.user.id);
+    assert.equal((await request("/api/auth",{action:"auth_username",username:"changed_admin"},admin)).status,400);
+    assert.equal((await request("/api/auth",{action:"auth_username",username:"admin"},admin,{"X-BD-CSRF":"wrong"})).status,403);
+    const duplicateName=await okay(await request("/api/auth",{action:"team_invite",name:"重名测试",email:"duplicate_name@example.invalid",role:"viewer",project_ids:[]},admin));
+    assert.equal((await request("/api/auth",{action:"auth_accept",token:duplicateName.token,username:"AdMiN",password:"member secure password"})).status,409);
+    const pendingMembers=await okay(await request("/api/auth",{action:"team_list"},admin));
+    assert.equal(pendingMembers.users.find(x=>x.email==="duplicate_name@example.invalid").status,"invited");
+    assert.doesNotMatch(JSON.stringify(pendingMembers),new RegExp(duplicateName.token));
+
     const tampered={...admin,cookie:admin.cookie.replace(/session_token=./,"session_token=X")};
     assert.equal((await request("/api/workspace?action=workspace",null,tampered)).status,401);
     assert.equal((await request("/api/auth",{action:"team_update",...admin.user,active:false},admin)).status,409);
@@ -90,6 +122,20 @@ test("server HTTP enforces invitations, scope, roles, CSRF, concurrent saves, do
     const invite=async(role,email)=>okay(await request("/api/auth",{action:"team_invite",email,name:role,role,all_projects:false,project_ids:[project]},admin));
     const viewer=await join((await invite("viewer","viewer@example.invalid")).token);
     const editor=await join((await invite("editor","editor@example.invalid")).token);
+    // Existing accounts can keep their password, MFA and grants while adding a username.
+    const legacy=await join((await invite("viewer","legacy@example.invalid")).token);
+    const legacyDB=new DatabaseSync(path.join(directory,".bd-auth/accounts.sqlite3"));
+    legacyDB.exec("BEGIN IMMEDIATE");
+    legacyDB.prepare("UPDATE users SET username=NULL WHERE id=?").run(legacy.user.id);
+    legacyDB.prepare("UPDATE ba_user SET username=NULL WHERE memberId=?").run(legacy.user.id);
+    legacyDB.exec("COMMIT");legacyDB.close();
+    await passwordStep(legacy);
+    await okay(await request("/api/auth",{action:"auth_username",username:"Legacy.Member",id:admin.user.id,role:"admin"},legacy));
+    const legacyCurrent=await okay(await request("/api/auth",null,legacy));
+    assert.equal(legacyCurrent.username,"legacy.member");assert.equal(legacyCurrent.id,legacy.user.id);
+    assert.equal(legacyCurrent.role,"viewer");assert.deepEqual(legacyCurrent.project_ids,[project]);
+    assert.equal((await request("/api/auth",{action:"auth_login",identifier:"LEGACY.MEMBER",password:"member secure password"})).status,200);
+
     for(const section of ["members","ai","usage","remote","backup"]){
       const adminPage=await request(`/admin?section=${section}`,null,admin);assert.equal(adminPage.status,200);assert.match(await adminPage.text(),/管理中心/);
       for(const member of [viewer,editor]){
@@ -151,6 +197,7 @@ test("server HTTP enforces invitations, scope, roles, CSRF, concurrent saves, do
     assert.equal((await request(download,null,viewer)).status,401);
     assert.equal((await request("/api/auth",{action:"auth_verify",code:otp(viewer.secret)},pendingViewer)).status,401);
     assert.equal((await request("/api/auth",{action:"auth_login",email:viewer.email,password:"member secure password"})).status,401);
+    assert.equal((await request("/api/auth",{action:"auth_login",identifier:viewer.user.username,password:"member secure password"})).status,401);
     const pendingPermissions=await passwordStep(editor);
     const freshEditor=(await okay(await request("/api/auth",{action:"team_list"},admin))).users.find(x=>x.id===editor.user.id);
     await okay(await request("/api/auth",{action:"team_update",...freshEditor,active:true},admin));
@@ -161,7 +208,7 @@ test("server HTTP enforces invitations, scope, roles, CSRF, concurrent saves, do
     assert.equal((await request("/api/auth",{action:"auth_verify",code:otp(editor.secret)},pendingEditor)).status,401);
     assert.equal((await request("/api/workspace?action=workspace",null,editor)).status,401);
     const recovered=await join(replacement.token);
-    assert.equal(recovered.user.id,editor.user.id);assert.equal(recovered.user.role,"editor");
+    assert.equal(recovered.user.username,editor.user.username);assert.equal(recovered.user.id,editor.user.id);assert.equal(recovered.user.role,"editor");
     assert.deepEqual(recovered.user.project_ids,[project]);
     const loginChallenge=await passwordStep(recovered);
     const signed=await request("/api/auth",{action:"auth_verify",code:otp(recovered.secret)},loginChallenge);
@@ -169,7 +216,7 @@ test("server HTTP enforces invitations, scope, roles, CSRF, concurrent saves, do
     await okay(await request("/api/auth",{action:"auth_logout"},loggedIn));
     assert.equal((await request("/api/workspace?action=workspace",null,loggedIn)).status,401);
     const duplicate=await invite("viewer","duplicate@example.invalid");
-    const concurrentAccepts=await Promise.all([request("/api/auth",{action:"auth_accept",token:duplicate.token,password:"member secure password"}),request("/api/auth",{action:"auth_accept",token:duplicate.token,password:"member secure password"})]);
+    const concurrentAccepts=await Promise.all([request("/api/auth",{action:"auth_accept",token:duplicate.token,username:"duplicate",password:"member secure password"}),request("/api/auth",{action:"auth_accept",token:duplicate.token,username:"duplicate",password:"member secure password"})]);
     assert.deepEqual(concurrentAccepts.map(x=>x.status).sort(),[200,401]);
     const unfinished=await invite("viewer","unfinished@example.invalid");
     const sourceDB=new DatabaseSync(path.join(directory,".bd-auth/accounts.sqlite3"));
@@ -183,7 +230,7 @@ test("server HTTP enforces invitations, scope, roles, CSRF, concurrent saves, do
     const restoredDB=new DatabaseSync(path.join(restored,".bd-auth/accounts.sqlite3"));
     for(const table of ["ba_session","ba_verification","ba_rate_limit","invitations","remote_tokens","remote_drafts","remote_grants","remote_settings","remote_attempts"]) assert.equal(restoredDB.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n,0);
     const restoredMember=restoredDB.prepare("SELECT * FROM users WHERE id=?").get(recovered.user.id);
-    assert.equal(restoredMember.role,"editor");assert.equal(restoredMember.project_ids,JSON.stringify([project]));
+    assert.equal(restoredMember.username,"editor");assert.equal(restoredMember.role,"editor");assert.equal(restoredMember.project_ids,JSON.stringify([project]));
     assert.ok(restoredDB.prepare("SELECT password FROM ba_account LIMIT 1").get().password);
     restoredDB.close();
     const snapshotBytes=readFileSync(path.join(restored,".bd-auth/accounts.sqlite3"));
@@ -191,6 +238,10 @@ test("server HTTP enforces invitations, scope, roles, CSRF, concurrent saves, do
     assert.ok(unfinished.token);
     const audit=await okay(await request("/api/auth",{action:"team_audit"},admin));
     assert.ok(audit.entries.some(e=>e.action==="save"&&e.actor_id===editor.user.id&&e.outcome==="success"));
+    for(let attempt=0;attempt<21;attempt++){
+      const limited=await request("/api/auth",{action:"auth_login",identifier:"unknown_member",password:"incorrect password"},null,{"X-Real-IP":"198.51.100.200"});
+      assert.equal(limited.status,attempt<20?401:429);await limited.arrayBuffer();
+    }
     await okay(await request("/api/auth",{action:"auth_logout"},recovered));
     assert.equal((await request("/api/workspace?action=workspace",null,recovered)).status,401);
     const raw=new DatabaseSync(path.join(directory,".bd-auth/accounts.sqlite3"));

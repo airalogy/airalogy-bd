@@ -4,7 +4,7 @@
 
 Airalogy BD 是一套支持本地使用与团队服务器部署的 BD 管理工作台，用于管理合作项目、投资人对接、资源关系、人员与关键事件。
 
-首次发行基线为 **1.0.0**，版本统一使用 `x.y.z`。版本内容见 [更新记录](CHANGELOG.md)，后续版本规则见 [版本管理说明](docs/versioning.md)。以下说明如何从源码安装和运行；版本号不代表安装包、镜像或线上服务已经发布。
+首次发行基线为 **1.0.0**，版本统一使用 `x.y.z`。版本内容见 [更新记录](CHANGELOG.md)，后续版本规则见 [版本管理说明](docs/versioning.md)。本地正式使用安装固定版本，源码安装用于开发；版本号不代表安装包、镜像或线上服务已经发布。
 
 可选的 [Codex 远程接入](docs/remote-access.md) 默认关闭：管理员授权后，成员可通过 MCP 查询和提交草稿，由本人在 BD 网页确认后保存。与内置 AI 的开关、模型配置和计费相互独立。
 
@@ -13,6 +13,8 @@ Airalogy BD 是一套支持本地使用与团队服务器部署的 BD 管理工�
 ## 多人协作与服务器部署
 
 支持邀请制账号、密码与动态验证码登录、管理员/编辑/只读角色、事项授权、录入账号追踪、服务器容器部署和私有 OSS 自动备份。本地模式无需登录。部署方式、权限范围、备份恢复和版本更新步骤见 [团队部署说明](docs/server-deployment.md)。
+
+管理员可直接创建成员并复制一次性邀请链接，由本人设置用户名、密码和动态验证码；支持用户名或邮箱登录。默认使用 Airalogy Logo，自行部署可配置站点名称及自有 Logo，详见[账号邀请与站点品牌](docs/accounts-and-branding.md)。
 
 ## 可选 AI 助手
 
@@ -23,22 +25,24 @@ Airalogy BD 是一套支持本地使用与团队服务器部署的 BD 管理工�
 - Node.js 22.13 或更高版本
 - pnpm 11
 - uv
+- Git
 
 ## 安装与初始化
 
-获取产品源码并安装依赖：
+在独立的业务工作区安装指定版本。以下以 `1.1.0` 为例，需要该版本已发布到 npm：
 
 ```sh
-git clone https://github.com/airalogy/airalogy-bd.git
-cd airalogy-bd
+mkdir company-bd
+cd company-bd
+pnpm dlx @airalogy/airalogy-bd@1.1.0 init --id company-id --name 公司名称
 pnpm install
 ```
 
-初始化空工作区时，在另外的工作区目录执行 CLI，将 `/path/to/airalogy-bd` 替换为源码目录：
+初始化会固定当前程序版本，不依赖临时下载目录。也可以先用 pnpm 安装，再初始化：
 
 ```sh
-node /path/to/airalogy-bd/bin/bd.mjs init --id company-id --name 公司名称
-pnpm install
+pnpm add -D -E @airalogy/airalogy-bd@1.1.0
+pnpm exec bd init --id company-id --name 公司名称
 ```
 
 初始化生成空内容结构、依赖配置及 macOS 双击启动文件 `启动 Airalogy BD.command`，保留已有文件。现有工作区也可执行 `bd init` 补充启动文件。安装依赖后双击启动文件即可启动服务并自动打开浏览器；再次双击会打开同一工作区已有的启动实例。服务准备完成后才打开页面，失败时终端保留原因和处理提示。启动窗口需要保持打开，关闭窗口会停止服务。此启动方式使用开发服务，无需先构建；也可通过命令行启动。
@@ -51,7 +55,7 @@ pnpm install
 {
   "private": true,
   "devDependencies": {
-    "@airalogy/airalogy-bd": "link:../airalogy-bd"
+    "@airalogy/airalogy-bd": "1.1.0"
   },
   "scripts": {
     "dev": "bd dev",
@@ -67,6 +71,8 @@ pnpm install
 
 命令默认读取当前目录下的 `content/`；如需更换位置，使用 `--content <dir>`。
 运行时会在业务工作区根目录生成 `.airalogy-bd/` 构建缓存，请将其加入 `.gitignore`。
+
+升级前停止正在运行的工作台并保存完整备份，然后使用 `pnpm add -D -E @airalogy/airalogy-bd@<指定版本>` 更新依赖。重新启动双击启动器即可；使用生产构建时需先重新执行 `pnpm build`。将工作区的 `package.json` 和 `pnpm-lock.yaml` 一起留存，避免安装时意外改变版本。安装与升级不自动同步本地和服务器上的业务资料。
 
 使用 pnpm 11 时，业务工作区应配置以下构建依赖许可：
 
@@ -98,12 +104,16 @@ allowBuilds:
 ## 开发
 
 ```text
+git clone https://github.com/airalogy/airalogy-bd.git
+cd airalogy-bd
 pnpm install
 pnpm test
 pnpm dev
 ```
 
 `fixtures/demo/content/` 只包含虚构数据，用于平台回归测试。
+
+需要在独立工作区调试源码时，可执行 `node /path/to/airalogy-bd/bin/bd.mjs init --source`，再安装工作区依赖。`--source` 仅为新依赖使用本地链接；初始化不会覆盖已有依赖版本或自定义命令。npm 安装包的验证和发布见[发布说明](docs/npm-publishing.md)。
 
 ### 目录与文件命名
 

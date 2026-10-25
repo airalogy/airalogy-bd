@@ -178,7 +178,7 @@ function printHelp() {
   console.log(`Airalogy BD
 
 用法：
-  bd init [--id <工作区ID>] [--name <公司名称>]
+  bd init [--id <工作区ID>] [--name <公司名称>] [--source]
   bd launch
   bd validate [--content <dir>]
   bd data [--content <dir>]
@@ -214,7 +214,7 @@ switch (command) {
   case "init": {
     const option = key => { const index = remaining.indexOf(key); if (index < 0) return undefined; if (!remaining[index + 1] || remaining[index + 1].startsWith("--")) fail(`${key} 需要提供值`); return remaining[index + 1]; };
     if (contentDirectory !== path.join(process.cwd(), "content")) fail("bd init 请在工作区根目录执行，使用默认 content/。");
-    try { initializeWorkspace(process.cwd(), packageRoot, {id: option("--id"), name: option("--name")}); }
+    try { initializeWorkspace(process.cwd(), packageRoot, {id: option("--id"), name: option("--name"), source: remaining.includes("--source")}); }
     catch (error) { fail(error.message); }
     console.log("工作区已初始化，现有文件已保留。运行 pnpm install 后，可双击 启动 Airalogy BD.command。");
     break;

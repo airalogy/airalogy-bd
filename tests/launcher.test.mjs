@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import {mkdtempSync, readFileSync, rmSync, statSync, writeFileSync} from "node:fs";
+import {mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync} from "node:fs";
 import {spawnSync} from "node:child_process";
 import {tmpdir} from "node:os";
 import path from "node:path";
@@ -13,6 +13,10 @@ test("initialization preserves existing content and creates a relocatable execut
   const directory = mkdtempSync(path.join(tmpdir(), "bd init 空格 $-"));
   try {
     initializeWorkspace(directory, root, {id: "test-company", name: "虚构公司"});
+    const product = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
+    const installed = JSON.parse(readFileSync(path.join(directory, "package.json"), "utf8"));
+    assert.equal(installed.devDependencies[product.name], product.version);
+    assert.equal(installed.private, true);
     const config = JSON.parse(readFileSync(path.join(directory, "content/workspace.yaml"), "utf8"));
     assert.equal(config.name, "虚构公司");
     writeFileSync(path.join(directory, "content/people.yaml"), "people: [existing]\n");
@@ -26,6 +30,30 @@ test("initialization preserves existing content and creates a relocatable execut
     const failure = spawnSync("bash", [launcher], {cwd: tmpdir(), input: "\n", encoding: "utf8"});
     assert.equal(failure.status, 1);
     assert.ok(failure.stdout.includes("pnpm install"));
+  } finally { rmSync(directory, {recursive: true, force: true}); }
+});
+
+test("initialization supports install-first workspaces and explicit source development without replacing existing commands", () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "bd-installed-init-"));
+  try {
+    writeFileSync(path.join(directory, "package.json"), JSON.stringify({name: "my-existing-workspace", private: true, scripts: {start: "custom-start"}, devDependencies: {"@airalogy/airalogy-bd": "1.0.1", "other-tool": "2.0.0"}}));
+    initializeWorkspace(directory, root);
+    const manifest = JSON.parse(readFileSync(path.join(directory, "package.json"), "utf8"));
+    assert.equal(manifest.name, "my-existing-workspace");
+    assert.equal(manifest.devDependencies["@airalogy/airalogy-bd"], "1.0.1");
+    assert.equal(manifest.devDependencies["other-tool"], "2.0.0");
+    assert.equal(manifest.scripts.start, "custom-start");
+    assert.equal(manifest.scripts.launch, "bd launch");
+    rmSync(path.join(directory, "package.json"));
+    initializeWorkspace(directory, root, {source: true});
+    assert.equal(JSON.parse(readFileSync(path.join(directory, "package.json"), "utf8")).devDependencies["@airalogy/airalogy-bd"], "link:" + path.relative(directory, root));
+    rmSync(path.join(directory, "package.json"));
+    const outside = path.join(directory, "external-manifest.json");
+    writeFileSync(outside, "{}");
+    symlinkSync(outside, path.join(directory, "package.json"));
+    assert.throws(() => initializeWorkspace(directory, root), /符号链接/);
+    assert.equal(readFileSync(outside, "utf8"), "{}");
+    assert.throws(() => initializeWorkspace(root, root), /独立的业务目录/);
   } finally { rmSync(directory, {recursive: true, force: true}); }
 });
 

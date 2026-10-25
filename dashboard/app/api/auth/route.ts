@@ -2,6 +2,7 @@ import { invokeWorkspace } from "../../lib/workspace-server";
 import { authorizedRequest, boundedBody, denied, privateHeaders, requestSession, serverMode, serviceResponse, trustedRequest } from "../../lib/server-auth";
 import { getAuthProvider } from "../../lib/auth-provider";
 import { APIError } from "better-auth/api";
+import { normalizeUsername } from "../../lib/username-policy";
 
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
@@ -21,10 +22,15 @@ async function authentication(input:Record<string,unknown>,request:Request) {
   const provider=await getAuthProvider();
   let route="",body:Record<string,unknown>={};
   if(input.action==="auth_accept") {
-    const created=await provider.accept(input.token,input.password);
+    const created=await provider.accept(input.token,input.password,input.username);
     route="/sign-in/email";body={email:created.email,password:input.password,rememberMe:true};
   } else if(input.action==="auth_login") {
-    route="/sign-in/email";body={email:String(input.email||"").trim().toLowerCase(),password:input.password,rememberMe:true};
+    const identifier=String(input.identifier ?? input.email ?? "").trim().toLowerCase();
+    const email=identifier.includes("@");
+    route=email?"/sign-in/email":"/sign-in/username";
+    body={...(email?{email:identifier}:{username:normalizeUsername(identifier)}),password:input.password,rememberMe:true};
+  } else if(input.action==="auth_username") {
+    return Response.json({ok:true,result:await provider.setUsername(request,input.username)},{headers:privateHeaders});
   } else if(input.action==="auth_verify") {
     route="/two-factor/verify-totp";body={code:input.code,trustDevice:false};
   } else if(input.action==="auth_setup") {
@@ -63,7 +69,7 @@ export async function POST(request:Request) {
   if(!serverMode() || !trustedRequest(request,true) || !request.headers.get("content-type")?.startsWith("application/json")) return denied();
   try {
     const input=JSON.parse(new TextDecoder().decode(await boundedBody(request,16000)));
-    if(!input || ![...publicActions,"auth_logout","team_list","team_invite","team_update","team_reset","team_audit"].includes(input.action)) return denied();
+    if(!input || ![...publicActions,"auth_logout","auth_username","team_list","team_invite","team_update","team_reset","team_audit"].includes(input.action)) return denied();
     if(!publicActions.includes(input.action)) {
       const access=await authorizedRequest(request,true);
       if(access instanceof Response) return access;
@@ -72,6 +78,7 @@ export async function POST(request:Request) {
     return await authentication(input,request);
   } catch(error) {
     const status=error instanceof RangeError?413:error instanceof APIError?(typeof error.statusCode==="number"?error.statusCode:400):400;
-    return Response.json({ok:false,code:status===401?"unauthenticated":"invalid",error:status===401?"邀请或登录已失效，请重试或联系管理员。":"账号操作未完成，请检查输入后重试。"},{status,headers:privateHeaders});
+    const message=error instanceof APIError && [400,409].includes(status) ? error.body?.message : undefined;
+    return Response.json({ok:false,code:status===401?"unauthenticated":status===409?"conflict":"invalid",error:status===401?"邀请或登录已失效，请重试或联系管理员。":message||"账号操作未完成，请检查输入后重试。"},{status,headers:privateHeaders});
   }
 }

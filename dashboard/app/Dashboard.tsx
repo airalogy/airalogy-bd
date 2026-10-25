@@ -1,4 +1,5 @@
 "use client";
+import { BrandLogo } from "./Branding";
 import Link from "next/link";
 import AiAssistant from "./AiAssistant";
 import HistoricalFiles from "./HistoricalFiles";
@@ -1340,7 +1341,7 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
     <main className="page-shell">
       <header className="topbar">
         <a className="brand" href="#top" aria-label="返回看板顶部">
-          <span className="brand-mark">{data.workspace.brand_mark}</span>
+          <BrandLogo />
           <span>
             <strong>{data.workspace.short_name}</strong>
             <small>{data.workspace.workspace_title}</small>

@@ -20,7 +20,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-from team_auth import Accounts, AuthError, backup_accounts
+from team_auth import Accounts, AuthError, backup_accounts, validate_account_backup
 from team_policy import Policy
 from remote_access import RemoteAccess
 from workspace_service import Workspace
@@ -32,6 +32,43 @@ OSS = {'BD_OSS_REGION':'cn-hangzhou','BD_OSS_BUCKET':'test-private-bucket','BD_O
 
 
 class AccountTests(unittest.TestCase):
+    def test_interrupted_username_binding_is_reconciled_before_backup(self):
+        with tempfile.TemporaryDirectory() as temp:
+            content=Path(temp)/'content';content.mkdir()
+            accounts=Accounts(content)
+            accounts.invite({'email':'member@example.invalid','name':'成员','role':'admin'},None,set(),bootstrap=True)
+            user=accounts.db.execute('SELECT * FROM users').fetchone()
+            with accounts.db:
+                accounts.db.execute('CREATE TABLE ba_user(memberId TEXT,credentialRevision TEXT,username TEXT)')
+                accounts.db.execute('INSERT INTO ba_user VALUES(?,?,?)',(user['id'],user['credential_revision'],'member_name'))
+            accounts.close()
+            backup=Path(temp)/'accounts.sqlite3'
+            self.assertTrue(backup_accounts(content,backup))
+            with sqlite3.connect(backup) as db:
+                self.assertEqual(db.execute('SELECT username FROM users').fetchone()[0],'member_name')
+
+    def test_email_accounts_and_backups_gain_username_without_changing_identity(self):
+        with tempfile.TemporaryDirectory() as temp:
+            content=Path(temp)/'content';content.mkdir()
+            accounts=Accounts(content)
+            invitation=accounts.invite({'email':'existing@example.invalid','name':'已有成员','role':'admin'},None,set(),bootstrap=True)
+            before=dict(accounts.db.execute('SELECT * FROM users').fetchone())
+            with accounts.db:
+                accounts.db.execute('DROP INDEX users_username_unique')
+                accounts.db.execute('ALTER TABLE users DROP COLUMN username')
+            file=accounts.path;accounts.close()
+            old_backup=Path(temp)/'old-accounts.sqlite3';shutil.copyfile(file,old_backup)
+            validate_account_backup(old_backup)
+            migrated=Accounts(content)
+            after=dict(migrated.db.execute('SELECT * FROM users').fetchone())
+            self.assertEqual(before,after)
+            self.assertEqual(migrated.invite_info(invitation['token'])['email'],'existing@example.invalid')
+            row=migrated.db.execute('SELECT * FROM users').fetchone()
+            self.assertEqual(migrated.member_info(row)['status'],'invited')
+            with patch('team_auth.time.time',return_value=time.time()+49*3600):
+                self.assertEqual(migrated.member_info(row)['status'],'expired')
+            migrated.close()
+
     def test_remote_state_is_removed_from_account_backups(self):
         with tempfile.TemporaryDirectory() as temp:
             content = Path(temp) / 'content'

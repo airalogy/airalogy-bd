@@ -1,8 +1,11 @@
 {
   "name": "@airalogy/airalogy-bd",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Business development workspace for local use and team collaboration.",
-  "private": true,
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "type": "module",
   "bin": {
     "bd": "./bin/bd.mjs"
@@ -13,6 +16,7 @@
     "dashboard/app/**/*.tsx",
     "dashboard/app/**/*.css",
     "dashboard/app/**/*.json",
+    "dashboard/public/airalogy-logo.svg",
     "dashboard/eslint.config.mjs",
     "dashboard/next-env.d.ts",
     "dashboard/next.config.ts",
@@ -45,7 +49,8 @@
     "build": "node bin/bd.mjs build --content fixtures/demo/content",
     "lint": "node bin/bd.mjs lint",
     "test": "pnpm version:check && pnpm publication:check && pnpm validate && pnpm lint && pnpm build && node --test tests/*.test.mjs",
-    "publication:check": "node scripts/check-publication.mjs"
+    "publication:check": "node scripts/check-publication.mjs",
+    "test:package": "node tests/package-smoke.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.23",

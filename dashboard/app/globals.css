@@ -3051,3 +3051,12 @@ select,
 .team-bar{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:10px max(20px,calc((100vw - 1440px)/2));border-bottom:1px solid #e2e8f0;background:white}.team-bar>div{display:flex;gap:8px}
 .team-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin:24px 0}.team-management .panel{padding:24px}.team-member{display:grid;gap:8px;padding:16px 0;border-bottom:1px solid #e2e8f0}.team-member>div{display:flex;gap:8px;flex-wrap:wrap}.team-form fieldset{border:0;padding:0}.team-form label.team-check{display:flex;align-items:center;font-weight:400}.team-form input[type=checkbox]{width:18px;height:18px}.team-audit{overflow-wrap:anywhere;font-size:13px}
 @media(max-width:760px){.team-grid{grid-template-columns:1fr}.team-bar{flex-wrap:wrap}.auth-card{padding:22px}}
+
+.site-brand-identity { display: inline-flex; align-items: center; gap: 12px; font-weight: 700; }
+.site-brand-logo { display: block; width: auto; height: 36px; max-width: 144px; object-fit: contain; flex-shrink: 0; }
+.auth-card h1 .site-brand-logo { height: 44px; max-width: 176px; }
+.auth-card label .admin-help { display: block; font-weight: 400; }
+.account-settings { max-width: 800px; }
+.invitation-result { padding: 16px; margin: 16px 0; border: 1px solid var(--line); border-radius: 12px; }
+.invitation-result label { display: grid; gap: 8px; margin-bottom: 12px; }
+.invitation-result input { width: 100%; padding: 10px; }

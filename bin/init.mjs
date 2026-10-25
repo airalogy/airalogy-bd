@@ -1,8 +1,23 @@
-import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-export function initializeWorkspace(directory, packageRoot, {id = "local-company", name = "本地公司"} = {}) {
+export function initializeWorkspace(directory, packageRoot, {id = "local-company", name = "本地公司", source = false} = {}) {
   if (!/^[a-z0-9][a-z0-9-]*$/.test(id)) throw new Error("工作区 ID 须使用小写字母、数字和连字符。");
+  const product = JSON.parse(readFileSync(path.join(packageRoot, "package.json"), "utf8"));
+  if (!/^\d+\.\d+\.\d+$/.test(product.version)) throw new Error("程序版本无效，无法初始化工作区依赖。");
+  const manifestPath = path.join(directory, "package.json");
+  if (lstatSync(manifestPath, {throwIfNoEntry: false})?.isSymbolicLink()) throw new Error("工作区 package.json 不能使用符号链接。");
+  const existing = existsSync(manifestPath) ? JSON.parse(readFileSync(manifestPath, "utf8")) : {};
+  if (!existing || typeof existing !== "object" || Array.isArray(existing)) throw new Error("工作区 package.json 格式无效。");
+  if (existing.name === product.name) throw new Error("请在独立的业务目录初始化工作区，不要在程序包目录执行。");
+  const dependency = source ? "link:" + path.relative(directory, packageRoot) : product.version;
+  const manifest = {
+    name: id + "-bd", packageManager: product.packageManager, engines: product.engines,
+    ...existing, private: true,
+    scripts: {dev: "bd dev", validate: "bd validate", data: "bd data", build: "bd build", start: "bd start", checkpoint: "bd checkpoint", launch: "bd launch", ...existing.scripts},
+    ...(!existing.dependencies?.[product.name] && !existing.devDependencies?.[product.name]
+      ? {devDependencies: {...existing.devDependencies, [product.name]: dependency}} : {}),
+  };
   const write = (relative, text) => {
     const target = path.join(directory, relative);
     if (existsSync(target)) return;
@@ -14,7 +29,7 @@ export function initializeWorkspace(directory, packageRoot, {id = "local-company
   write("content/people.yaml", "people: []\n");
   write("content/company/events.yaml", `company: ${id}\nevents: []\n`);
   write("content/files.yaml", "schema_version: 1\nfiles: []\n");
-  write("package.json", JSON.stringify({name: id + "-bd", private: true, packageManager: "pnpm@11.20.0", engines: {node: ">=22.13.0"}, devDependencies: {"@airalogy/airalogy-bd": "link:" + path.relative(directory, packageRoot)}, scripts: {dev: "bd dev", validate: "bd validate", data: "bd data", build: "bd build --webpack", start: "bd start", checkpoint: "bd checkpoint", launch: "bd launch"}}, null, 2) + "\n");
+  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
   write("pnpm-workspace.yaml", "packages:\n  - .\nengineStrict: true\nallowBuilds:\n  sharp: true\n  unrs-resolver: true\n");
   write(".gitignore", "node_modules/\n.pnpm-store/\n.uv-cache/\n.airalogy-bd/\n.bd-history/\n.bd-auth/\n.bd-ai/\n.env\n.env.*\n!.env.example\ncontent/generated/\ncontent/counterparties/*/attachments/\n.DS_Store\n");
   const launcher = "启动 Airalogy BD.command";

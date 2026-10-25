@@ -4,11 +4,12 @@ import { chmodSync, lstatSync } from "node:fs";
 import path from "node:path";
 import { createHash, randomBytes } from "node:crypto";
 import { betterAuth } from "better-auth";
-import { admin, twoFactor } from "better-auth/plugins";
+import { admin, twoFactor, username } from "better-auth/plugins";
 import { APIError } from "better-auth/api";
 import { getMigrations } from "better-auth/db/migration";
+import { normalizeUsername, validUsername, usernameHelp } from "./username-policy";
 
-type Member = {id:string;email:string;name:string;active:number;revision:string;credential_revision:string};
+type Member = {id:string;email:string;name:string;username:string|null;active:number;revision:string;credential_revision:string};
 type Invitation = Member & {digest:string;expires:number};
 const rejected = () => new APIError("UNAUTHORIZED", {message:"账号信息已失效，请重新登录或联系管理员。"});
 const digest = (token:string) => createHash("sha256").update(token).digest("hex");
@@ -44,9 +45,10 @@ async function initialize() {
       ipAddress:{ipAddressHeaders:["x-real-ip"]}},
     rateLimit:{enabled:true,storage:"database",modelName:"ba_rate_limit",window:60,max:100,customRules:{
       "/sign-in/email":{window:900,max:20},
+      "/sign-in/username":{window:900,max:20},
       "/two-factor/*":{window:60,max:10},
     }},
-    plugins:[admin(),twoFactor({issuer:"Airalogy BD",twoFactorTable:"ba_two_factor"})],
+    plugins:[admin(),twoFactor({issuer:"Airalogy BD",twoFactorTable:"ba_two_factor"}),username({displayUsername:false,immutableUsername:true,usernameValidator:validUsername})],
     databaseHooks:{session:{create:{before:async(session,ctx)=>{
       const identity=db.prepare("SELECT memberId,credentialRevision FROM ba_user WHERE id=?").get(session.userId) as {memberId:string;credentialRevision:string}|undefined;
       const current=identity && member(identity.memberId);
@@ -68,22 +70,30 @@ async function initialize() {
   // Serialize activation, including retries, within the single application instance.
   // A consumed invite can never be used to replace a newly created identity.
   let activation:Promise<unknown>=Promise.resolve();
-  function accept(token:unknown,password:unknown) {
+  function chosenUsername(value:unknown,current:Member) {
+    const name=normalizeUsername(value);
+    if(!validUsername(name)) throw new APIError("BAD_REQUEST",{message:usernameHelp});
+    if(current.username && name!==current.username) throw new APIError("BAD_REQUEST",{message:"用户名已设置，请继续使用原用户名。"});
+    if(db.prepare("SELECT 1 FROM users WHERE username=? COLLATE NOCASE AND id!=?").get(name,current.id)) throw new APIError("CONFLICT",{message:"该用户名已被使用，请换一个。"});
+    return name;
+  }
+  function accept(token:unknown,password:unknown,value:unknown) {
     const next=activation.catch(()=>{}).then(async()=>{
       if(typeof password!=="string" || password.length<12 || password.length>256) throw new APIError("BAD_REQUEST",{message:"密码须为 12–256 个字符。"});
       const invited=invitation(token);
+      const chosen=chosenUsername(value ?? invited.username,invited);
       const context=await auth.$context;
       const previous=await context.internalAdapter.findUserByEmail(invited.email);
       if(previous) await context.internalAdapter.deleteUser(previous.user.id);
       // This server-only call is never mounted as a public admin endpoint.
       const result=await auth.api.createUser({body:{email:invited.email,name:invited.name,password,
-        data:{memberId:invited.id,credentialRevision:invited.credential_revision}}});
+        data:{memberId:invited.id,credentialRevision:invited.credential_revision,username:chosen}}});
       db.exec("BEGIN IMMEDIATE");
       try {
         const fresh=invitation(token);
         if(fresh.credential_revision!==invited.credential_revision) throw rejected();
         db.prepare("DELETE FROM invitations WHERE digest=?").run(fresh.digest);
-        db.prepare("UPDATE users SET active=1 WHERE id=?").run(invited.id);
+        db.prepare("UPDATE users SET active=1,username=? WHERE id=?").run(chosen,invited.id);
         db.exec("COMMIT");
       } catch(error) {db.exec("ROLLBACK");await context.internalAdapter.deleteUser(result.user.id);throw error;}
       return {email:invited.email};
@@ -93,6 +103,22 @@ async function initialize() {
   }
   async function providerSession(cookie:string) {
     return auth.api.getSession({headers:new Headers({cookie}),query:{disableCookieCache:true}});
+  }
+  function setUsername(request:Request,value:unknown) {
+    const next=activation.catch(()=>{}).then(async()=>{
+      const session=await providerSession(request.headers.get("cookie")||"");
+      const current=session && member(session.user.memberId);
+      if(!session?.user.twoFactorEnabled || !session.session.mfaVerified || !current?.active || current.revision!==session.session.permissionRevision || current.credential_revision!==session.user.credentialRevision) throw rejected();
+      const chosen=chosenUsername(value,current);
+      if(current.username===chosen) return {username:chosen};
+      const response=await handle("/update-user",{username:chosen},request);
+      if(!response.ok) throw new APIError("CONFLICT",{message:"用户名未能设置，请检查格式或换一个后重试。"});
+      db.prepare("UPDATE users SET username=? WHERE id=?").run(chosen,current.id);
+      audit(current.id,"account.username");
+      return {username:chosen};
+    });
+    activation=next;
+    return next;
   }
   async function handle(route:string,body:Record<string,unknown>,request:Request) {
     // Do not forward attacker-selected identity, permission or internal-invitation headers.
@@ -104,7 +130,7 @@ async function initialize() {
     const current=member(id);
     if(current) db.prepare("INSERT INTO audit(at,actor_id,actor_name,action,target,outcome) VALUES(?,?,?,?,?,?)").run(Math.floor(Date.now()/1000),id,current.name,action,id,"success");
   }
-  return {auth,db,member,accept,providerSession,handle,audit};
+  return {auth,db,member,accept,setUsername,providerSession,handle,audit};
 }
 // Next may bundle SSR and route handlers separately; share the connection/migration promise.
 const state=globalThis as typeof globalThis & {bdAuthProvider?:ReturnType<typeof initialize>};

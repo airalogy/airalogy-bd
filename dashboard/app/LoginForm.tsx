@@ -1,14 +1,19 @@
 "use client";
 import {useEffect,useRef,useState} from "react";
 import {teamRequest} from "./lib/team-client";
+import {useRouter} from "next/navigation";
+import {BrandIdentity} from "./Branding";
+import {usernamePattern,usernameHelp} from "./lib/username-policy";
 
 type Setup={secret:string;otp_uri:string};
 export default function LoginForm({join=false}:{join?:boolean}) {
+  const router=useRouter();
   const token=useRef("");
   const [email,setEmail]=useState("");
+  const [username,setUsername]=useState("");
   const [password,setPassword]=useState("");
   const [code,setCode]=useState("");
-  const [invitation,setInvitation]=useState<{email:string;name:string}|null>(null);
+  const [invitation,setInvitation]=useState<{email:string;name:string;username?:string|null}|null>(null);
   const [setup,setSetup]=useState<Setup|null>(null);
   const [step,setStep]=useState<"password"|"setup"|"verify">("password");
   const [error,setError]=useState("");
@@ -19,15 +24,15 @@ export default function LoginForm({join=false}:{join?:boolean}) {
     // Keep invitations out of URLs, access logs and referrers after opening the page.
     window.history.replaceState(null,"",window.location.pathname);
     let active=true;
-    teamRequest<{email:string;name:string}>("auth_invite_info",{token:token.current}).then(data=>{if(active){setInvitation(data);setEmail(data.email);}}).catch(err=>{if(active)setError(err.message);});
+    teamRequest<{email:string;name:string;username?:string|null}>("auth_invite_info",{token:token.current}).then(data=>{if(active){setInvitation(data);setEmail(data.email);setUsername(data.username||"");}}).catch(err=>{if(active)setError(err.message);});
     return()=>{active=false;};
   },[join]);
   async function submit(event:React.FormEvent) {
     event.preventDefault();setBusy(true);setError("");
     try {
-      if(step==="verify") {await teamRequest("auth_verify",{code});window.location.assign("/");return;}
+      if(step==="verify") {await teamRequest("auth_verify",{code});router.replace("/");router.refresh();return;}
       if(step==="password") {
-        const response=await teamRequest<{step:"setup"|"verify"}>(join?"auth_accept":"auth_login",{email,password,token:token.current});
+        const response=await teamRequest<{step:"setup"|"verify"}>(join?"auth_accept":"auth_login",{identifier:email,username,password,token:token.current});
         setStep(response.step);
         if(response.step==="verify"){setPassword("");return;}
       }
@@ -36,11 +41,12 @@ export default function LoginForm({join=false}:{join?:boolean}) {
     } catch(err){setError((err as Error).message);}
     finally{setBusy(false);}
   }
-  return <main className="auth-page"><section className="auth-card"><h1>Airalogy BD</h1><p>{join?"设置你的团队账号":"登录商务拓展工作台"}</p>
+  return <main className="auth-page"><section className="auth-card"><h1><BrandIdentity /></h1><p>{join?"设置你的团队账号":"登录商务拓展工作台"}</p>
     {join && !invitation && !error && <p role="status">正在检查邀请…</p>}
     {error && <p className="admin-alert" role="alert">{error}</p>}
     {(!join || invitation) && <form onSubmit={submit}>
-      {step==="password"&&<label>邮箱<input required type="email" autoComplete="username" value={email} onChange={e=>setEmail(e.target.value)} readOnly={join}/></label>}
+      {step==="password"&&<>{join&&<p>受邀成员：{invitation?.name}</p>}<label>{join?"绑定邮箱":"用户名或邮箱"}<input required type={join?"email":"text"} autoComplete={join?"email":"username"} autoCapitalize="none" spellCheck={false} value={email} onChange={e=>setEmail(e.target.value)} readOnly={join}/></label>
+        {join&&<label>用户名<input required autoComplete="username" autoCapitalize="none" spellCheck={false} pattern={usernamePattern} minLength={3} maxLength={30} value={username} onChange={e=>setUsername(e.target.value)} readOnly={!!invitation?.username}/><span className="admin-help">{invitation?.username?"账号恢复保留原用户名、事项权限和历史记录。":usernameHelp}</span></label>}</>}
       {step!=="verify"&&<label>{join?"设置密码（至少 12 个字符）":"密码"}<input required type="password" minLength={12} maxLength={256} autoComplete={join?"new-password":"current-password"} value={password} onChange={e=>setPassword(e.target.value)}/></label>}
       {setup && <div className="auth-setup"><h2>绑定身份验证器</h2><p>在你的身份验证器中添加账号，选择“输入设置密钥”，填入以下密钥。请勿分享此密钥。</p><code>{setup.secret}</code><p><a href={setup.otp_uri}>在支持的身份验证器中打开</a></p></div>}
       {step==="verify"&&<label>六位动态验证码<input required inputMode="numeric" pattern="[0-9]{6}" maxLength={6} autoComplete="one-time-code" value={code} onChange={e=>setCode(e.target.value)}/></label>}

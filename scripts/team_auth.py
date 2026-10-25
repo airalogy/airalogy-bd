@@ -27,7 +27,7 @@ def fingerprint(value):
 
 
 def public_user(row):
-    return {key: row[key] for key in ("id", "email", "name", "role", "active", "revision")} | {
+    return {key: row[key] for key in ("id", "email", "name", "username", "role", "active", "revision")} | {
         "all_projects": bool(row["all_projects"]), "project_ids": json.loads(row["project_ids"]),
     }
 
@@ -59,6 +59,19 @@ class Accounts:
                 actor_id TEXT NOT NULL, actor_name TEXT NOT NULL, action TEXT NOT NULL,
                 target TEXT NOT NULL, outcome TEXT NOT NULL);
         """)
+
+        # Additive migration keeps existing IDs, grants and email logins unchanged.
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            if 'username' not in {row[1] for row in self.db.execute('PRAGMA table_info(users)')}:
+                self.db.execute('ALTER TABLE users ADD COLUMN username TEXT')
+            self.db.execute('CREATE UNIQUE INDEX IF NOT EXISTS users_username_unique ON users(username COLLATE NOCASE)')
+            # Complete an interrupted provider update before reading or backing up membership.
+            if 'username' in {row[1] for row in self.db.execute('PRAGMA table_info(ba_user)')}:
+                for row in self.db.execute('SELECT u.id,b.username FROM users u JOIN ba_user b ON b.memberId=u.id AND b.credentialRevision=u.credential_revision WHERE u.username IS NULL AND b.username IS NOT NULL').fetchall():
+                    if not re.fullmatch(r'[a-z0-9][a-z0-9._]{2,29}', row['username']):
+                        raise AuthError('账号用户名格式无效。', 'invalid')
+                    self.db.execute('UPDATE users SET username=? WHERE id=?', (row['username'],row['id']))
 
     def close(self):
         self.db.close()
@@ -149,14 +162,20 @@ class Accounts:
     def invitation(self, token):
         if not isinstance(token, str) or not re.fullmatch(r"[A-Za-z0-9_-]{40,100}", token):
             raise AuthError("邀请链接无效或已过期。", "unauthenticated")
-        row = self.db.execute("SELECT i.*,u.email,u.name FROM invitations i JOIN users u ON i.user_id=u.id WHERE i.digest=? AND i.expires>?", (fingerprint(token), int(time.time()))).fetchone()
+        row = self.db.execute("SELECT i.*,u.email,u.name,u.username FROM invitations i JOIN users u ON i.user_id=u.id WHERE i.digest=? AND i.expires>?", (fingerprint(token), int(time.time()))).fetchone()
         if not row:
             raise AuthError("邀请链接无效或已过期。", "unauthenticated")
         return row
 
     def invite_info(self, token):
         row = self.invitation(token)
-        return {"email": row["email"], "name": row["name"], "expires": row["expires"]}
+        return {"email": row["email"], "name": row["name"], "username": row["username"], "expires": row["expires"]}
+
+    def member_info(self, row):
+        invitation = self.db.execute('SELECT expires FROM invitations WHERE user_id=?', (row['id'],)).fetchone()
+        status = ('active' if self.enrolled(row['id']) else 'setup') if row['active'] else (
+            ('invited' if invitation['expires'] > time.time() else 'expired') if invitation else 'disabled')
+        return public_user(row) | {'status': status, 'invitation_expires': invitation['expires'] if invitation else None}
 
     def update(self, payload, actor, known):
         self.require_admin(actor)
@@ -200,7 +219,7 @@ class Accounts:
         if action == "auth_session": return actor
         self.require_admin(actor)
         if action == "team_list":
-            return {"users": [public_user(row) for row in self.db.execute("SELECT * FROM users ORDER BY name")]}
+            return {"users": [self.member_info(row) for row in self.db.execute("SELECT * FROM users ORDER BY name")]}
         if action == "team_invite": return self.invite(request, actor, known)
         if action == "team_update": return self.update(request, actor, known)
         if action == "team_reset": return self.reset(request.get("id"), actor)
@@ -235,8 +254,12 @@ def validate_account_backup(path):
             raise AuthError('账号备份包含不支持的数据库对象。', 'invalid')
         columns = {row[1] for row in db.execute('PRAGMA table_info(users)')}
         current = {'id','email','name','role','all_projects','project_ids','active','credential_revision','revision'}
-        if columns != current:
+        if columns not in (current, current | {'username'}):
             raise AuthError('账号备份格式不受支持。', 'invalid')
+        if 'username' in columns:
+            names = [row[0] for row in db.execute('SELECT username FROM users WHERE username IS NOT NULL')]
+            if any(not isinstance(name, str) or not re.fullmatch(r'[a-z0-9][a-z0-9._]{2,29}', name) for name in names) or len(names) != len(set(names)):
+                raise AuthError('账号用户名格式无效或重复。', 'invalid')
         with db:
             clear_transient_access(db)
         db.execute("VACUUM")

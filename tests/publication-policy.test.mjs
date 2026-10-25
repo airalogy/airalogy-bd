@@ -42,7 +42,7 @@ test("publication gate checks renamed and untracked files without failing on a d
 
 test("actual npm package includes source but excludes private files inside source directories", () => {
   const directory = mkdtempSync(path.join(tmpdir(), "bd-package-policy-"));
-  const keep = ["LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md", "docs/dependency-licenses.json", "bin/bd.mjs", "dashboard/app/page.tsx", "dashboard/app/api/ai/route.ts", "dashboard/app/lib/build-info.json", "scripts/workspace_service.py", "scripts/workspace_service.py.lock", "docs/versioning.md"];
+  const keep = ["dashboard/public/airalogy-logo.svg","LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md", "docs/dependency-licenses.json", "bin/bd.mjs", "dashboard/app/page.tsx", "dashboard/app/api/ai/route.ts", "dashboard/app/lib/build-info.json", "scripts/workspace_service.py", "scripts/workspace_service.py.lock", "docs/versioning.md"];
   const privateFiles = ["bin/.env.local", "dashboard/app/.bd-ai/settings.db", "dashboard/app/.bd-ai/settings.json", "dashboard/app/.airalogy-bd/state.json", "scripts/fixture.key", "scripts/__pycache__/probe.pyc", "docs/attachments/probe.docx", "content/people.yaml"];
   try {
     const source = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
