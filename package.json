@@ -1,0 +1,77 @@
+{
+  "name": "@airalogy/airalogy-bd",
+  "version": "1.0.0",
+  "description": "Business development workspace for local use and team collaboration.",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "bd": "./bin/bd.mjs"
+  },
+  "files": [
+    "bin/*.mjs",
+    "dashboard/app/**/*.ts",
+    "dashboard/app/**/*.tsx",
+    "dashboard/app/**/*.css",
+    "dashboard/app/**/*.json",
+    "dashboard/eslint.config.mjs",
+    "dashboard/next-env.d.ts",
+    "dashboard/next.config.ts",
+    "dashboard/postcss.config.mjs",
+    "dashboard/tsconfig.json",
+    "scripts/*.mjs",
+    "scripts/*.py",
+    "scripts/*.py.lock",
+    "templates/*.md",
+    "templates/*.yaml",
+    "docs/*.md",
+    "CHANGELOG.md",
+    "README.md",
+    "LICENSE",
+    "NOTICE",
+    "THIRD_PARTY_NOTICES.md",
+    "docs/dependency-licenses.json",
+    "!**/.airalogy-bd/**",
+    "!**/.bd-*/**"
+  ],
+  "packageManager": "pnpm@11.20.0",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "version:check": "node scripts/check-version.mjs",
+    "validate": "node bin/bd.mjs validate --content fixtures/demo/content",
+    "data": "node bin/bd.mjs data --content fixtures/demo/content",
+    "dev": "node bin/bd.mjs dev --content fixtures/demo/content",
+    "build": "node bin/bd.mjs build --content fixtures/demo/content",
+    "lint": "node bin/bd.mjs lint",
+    "test": "pnpm version:check && pnpm publication:check && pnpm validate && pnpm lint && pnpm build && node --test tests/*.test.mjs",
+    "publication:check": "node scripts/check-publication.mjs"
+  },
+  "dependencies": {
+    "@radix-ui/react-dialog": "^1.1.23",
+    "@radix-ui/react-toggle-group": "^1.1.19",
+    "@tailwindcss/postcss": "4.2.1",
+    "@types/node": "22.19.19",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "better-auth": "1.7.12",
+    "docx": "^9.7.1",
+    "eslint": "9.39.4",
+    "eslint-config-next": "16.4.2",
+    "next": "16.4.2",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "react-markdown": "^10.1.0",
+    "react-to-print": "^3.3.0",
+    "rehype-raw": "^7.0.0",
+    "rehype-sanitize": "^6.0.0",
+    "remark-gfm": "^4.0.1",
+    "tailwindcss": "4.2.1",
+    "typescript": "5.9.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/airalogy/airalogy-bd.git"
+  },
+  "license": "Apache-2.0"
+}

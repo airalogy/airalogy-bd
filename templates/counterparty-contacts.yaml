@@ -1,0 +1,3 @@
+counterparty: counterparty-
+# 引用 people.yaml 中的姓名；各事项的实际参与人员由系统汇总，不必重复填写。
+people: []

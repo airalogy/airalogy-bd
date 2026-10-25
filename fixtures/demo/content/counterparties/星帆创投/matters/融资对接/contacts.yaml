@@ -1,0 +1,22 @@
+project: project-demo-investment
+contacts:
+  - person_id: 陈青
+    side: counterparty
+    project_roles:
+      - investor_contact
+    notes: 虚构机构第一位联系人，共享已有人员档案。
+  - person_id: 宋禾
+    side: counterparty
+    project_roles:
+      - investment_evaluation
+    notes: 虚构机构第二位联系人，联系方式尚未记录。
+  - person_id: 顾远
+    side: advisor
+    project_roles:
+      - introducer
+    notes: 虚构引荐人，不代表投资机构作出承诺。
+  - person_id: 林岚
+    side: internal
+    project_roles:
+      - project_owner
+    notes: 我方对接负责人。

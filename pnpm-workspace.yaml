@@ -1,0 +1,11 @@
+packages:
+  - .
+
+engineStrict: true
+allowBuilds:
+  sharp: true
+  unrs-resolver: true
+
+# Patched parser used by the lint toolchain (GHSA-q2hr-2g5m-vwhr).
+overrides:
+  'brace-expansion@>=5.0.0 <5.0.12': 5.0.12

@@ -1,0 +1,7 @@
+project: project-
+contacts:
+  - person_id: 姓名
+    side: counterparty
+    project_roles:
+      - business_contact
+    notes:

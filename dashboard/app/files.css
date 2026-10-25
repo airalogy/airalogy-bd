@@ -1,0 +1,53 @@
+.files-dialog { inset:5dvh auto auto 50%; transform:translateX(-50%); width:min(1120px,96vw); max-width:1120px; height:min(90dvh,920px); display:flex; flex-direction:column; overflow:hidden; }
+.files-dialog .admin-dialog-head h2 { margin:0; font-size:23px; }
+.files-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 22px; border-bottom:1px solid var(--line); }
+.files-layout { display:grid; grid-template-columns:250px minmax(0,1fr); flex:1; min-height:0; }
+.files-sidebar { background:var(--canvas); border-right:1px solid var(--line); padding:18px 14px; overflow:auto; }
+.files-sidebar > input { width:100%; min-width:0; border:1px solid var(--line); border-radius:8px; background:white; padding:9px 10px; font-size:12px; }
+.files-scope { display:flex; gap:6px; padding:12px 0; }
+.files-scope button { font-size:12px; padding:6px 10px; border:1px solid transparent; border-radius:7px; cursor:pointer; color:var(--muted); }
+.files-scope button[aria-pressed="true"] { background:white; color:var(--navy); border-color:var(--line); }
+.files-list { display:grid; gap:8px; }
+.files-list > button { display:grid; gap:5px; text-align:left; padding:12px; border:1px solid transparent; border-radius:10px; color:var(--navy); background:white; cursor:pointer; overflow-wrap:anywhere; }
+.files-list > button[aria-pressed="true"] { border-color:var(--blue); box-shadow:0 0 0 1px var(--blue); }
+.files-list strong { font-size:13px; }
+.files-list span,.files-list small { color:var(--muted); font-size:11px; line-height:1.6; }
+.files-detail { overflow:auto; padding:22px 24px; min-width:0; }
+.files-title h3,.files-form h3 { font-size:21px; margin:0 0 8px; overflow-wrap:anywhere; }
+.files-title p { color:var(--muted); font-size:13px; margin:0; }
+.files-detail-actions { margin:18px 0; }
+.files-detail-actions .admin-button { font-size:12px; }
+.files-notes { white-space:pre-wrap; font-size:13px; line-height:1.8; }
+.files-section { border-top:1px solid var(--line); padding-top:18px; margin-top:22px; }
+.files-section h4 { margin:0 0 8px; font-size:15px; }
+.file-version,.file-usage { padding:14px 0; border-bottom:1px solid var(--line); display:grid; gap:10px; }
+.file-version strong,.file-usage strong { font-size:13px; }
+.file-version p,.file-usage p { font-size:12px; line-height:1.7; margin:6px 0; overflow-wrap:anywhere; white-space:pre-wrap; }
+.file-version small,.file-usage small { font-size:11px; color:var(--muted); }
+.file-version .admin-button,.file-usage .admin-button { font-size:11px; padding:5px 9px; text-decoration:none; }
+.file-current { display:inline-block; font-weight:500; font-size:10px; border-radius:10px; padding:2px 7px; background:var(--blue-soft); color:var(--blue); margin-left:5px; }
+.files-form .edit-fields { padding:16px 0; }
+.files-project-picker { border:1px solid var(--line); border-radius:8px; max-height:150px; overflow:auto; padding:8px 10px; min-width:0; }
+.files-project-picker legend { font-size:12px; }
+.files-project-picker label { display:flex; gap:8px; font-size:12px; padding:5px 0; }
+.files-form .edit-field-wide { grid-column:1/-1; }
+.files-empty { padding:34px 0; }
+.files-empty h3 { font-size:20px; }
+.files-empty p { color:var(--muted); font-size:13px; line-height:1.8; }
+.files-footer { padding:10px 22px; font-size:11px; color:var(--muted); border-top:1px solid var(--line); }
+.files-footer summary { cursor:pointer; }
+.files-footer p { line-height:1.7; overflow-wrap:anywhere; }
+.files-dialog > .admin-alert,.files-dialog > .admin-notice { margin:8px 20px; }
+@media(max-width:700px) {
+  .files-dialog { inset:2dvh auto auto 50%; width:calc(100vw - 20px); max-width:calc(100vw - 20px); height:96dvh; max-height:96dvh; }
+  .files-layout { display:flex; flex-direction:column; overflow:auto; }
+  .files-sidebar { flex-shrink:0; border-right:0; border-bottom:1px solid var(--line); padding:12px 16px; max-height:220px; }
+  .files-list { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .files-detail { overflow:visible; padding:20px 16px; }
+  .files-toolbar { padding:12px 16px; gap:6px; flex-wrap:wrap; }
+  .files-dialog .admin-dialog-head h2 { font-size:19px; }
+  .files-footer { padding:9px 16px; }
+}
+
+.files-event-scope { display:grid; gap:6px; margin:0 0 12px; font-size:11px; color:var(--muted); }
+.files-event-scope select { width:100%; min-width:0; padding:8px; border:1px solid var(--line); border-radius:7px; background:white; color:var(--navy); }

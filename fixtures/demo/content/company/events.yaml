@@ -1,0 +1,11 @@
+company: demo-company
+events:
+  - id: 2026-01-12-annual-bd-plan
+    date: 2026-01-12
+    category: planning
+    type: milestone
+    title: 启动年度 BD 计划
+    summary: 团队完成虚构年度 BD 目标与重点行业方向确认。
+    importance: normal
+    participants:
+      - 林岚

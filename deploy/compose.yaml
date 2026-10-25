@@ -1,0 +1,36 @@
+name: airalogy-bd
+services:
+  bd:
+    image: airalogy-bd:local
+    build:
+      context: ..
+    init: true
+    restart: unless-stopped
+    env_file: ${BD_DEPLOY_ENV_FILE:-.env}
+    environment:
+      BD_MODE: server
+      BD_BACKUP_DIRECTORY: /backups
+    ports:
+      - "127.0.0.1:3100:3000"
+    volumes:
+      - workspace:/workspace
+      - backups:/backups
+      - python-cache:/opt/bd/.uv-cache
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777,size=256m
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: "1.0"
+    mem_limit: 1536m
+    pids_limit: 128
+    stop_grace_period: 5m
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+volumes:
+  workspace:
+  backups:
+  python-cache:

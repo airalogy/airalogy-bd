@@ -1,0 +1,19 @@
+project: project-demo-partnership
+events:
+  - id: 2026-01-05-initial-contact
+    date: 2026-01-05
+    type: contact
+    title: 建立初步联系
+    summary: 林岚与陈青建立联系，交流虚构战略合作的可能方向。
+    importance: normal
+    participants:
+      - 陈青
+      - 林岚
+
+  - id: 2026-01-15-solution-meeting
+    date: 2026-01-15
+    type: meeting
+    title: 召开首次方案会议
+    summary: 双方讨论虚构合作范围、验证计划和后续分工。
+    importance: key
+    related_record: meetings/20260115.md

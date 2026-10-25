@@ -1,0 +1,12 @@
+project: project-
+events:
+  - id: YYYY-MM-DD-event
+    date:
+    type: meeting
+    title:
+    summary:
+    importance: normal
+    # 无 related_record，或需补充记录中未列出的参与人时填写人员 ID。
+    participants:
+      - 姓名
+    related_record: meetings/YYYYMMDD.md

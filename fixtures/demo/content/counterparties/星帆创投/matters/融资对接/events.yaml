@@ -1,0 +1,13 @@
+project: project-demo-investment
+events:
+  - id: 2026-01-12-investment-contact
+    date: 2026-01-12
+    type: contact
+    title: 建立投资对接
+    summary: 经顾远引荐，林岚与陈青、宋禾就虚构投资机会进行初步交流。
+    importance: key
+    participants:
+      - 林岚
+      - 陈青
+      - 宋禾
+      - 顾远

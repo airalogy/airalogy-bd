@@ -1,0 +1,213 @@
+import assert from "node:assert/strict";
+import { aiMockTransport, exerciseAi } from "./ai-http.mjs";
+import { exerciseRemote } from "./remote-http.mjs";
+import {spawn,spawnSync} from "node:child_process";
+import {createHmac,randomBytes} from "node:crypto";
+import {cpSync,existsSync,mkdtempSync,readFileSync,rmSync,symlinkSync} from "node:fs";
+import net from "node:net";
+import {DatabaseSync} from "node:sqlite";
+import {tmpdir} from "node:os";
+import path from "node:path";
+import {fileURLToPath} from "node:url";
+import test from "node:test";
+import {httpFetch as fetch} from "./http-client.mjs";
+const root=fileURLToPath(new URL("..",import.meta.url));
+const cache=process.env.BD_TEST_CACHE||path.join(root,".uv-cache");
+const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+function otp(secret,offset=0) {
+  const alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  const bits=[...secret.replace(/=/g,"")].map(x=>alphabet.indexOf(x).toString(2).padStart(5,"0")).join("");
+  const key=Buffer.from(bits.match(/.{8}/g).map(x=>parseInt(x,2)));
+  const counter=Buffer.alloc(8);counter.writeBigUInt64BE(BigInt(Math.floor(Date.now()/30000)+offset));
+  const digest=createHmac("sha1",key).update(counter).digest();
+  return String((digest.readUInt32BE(digest.at(-1)&15)&0x7fffffff)%1000000).padStart(6,"0");
+}
+const project="project-demo-partnership",restricted="project-demo-investment";
+
+test("server HTTP enforces invitations, scope, roles, CSRF, concurrent saves, downloads and revocation",async()=>{
+  const directory=mkdtempSync(path.join(tmpdir(),"bd-team-http-"));
+  const content=path.join(directory,"content");
+  cpSync(path.join(root,"fixtures/demo/content"),content,{recursive:true});
+  symlinkSync(process.env.BD_TEST_RUNTIME||path.join(root,".airalogy-bd"),path.join(directory,".airalogy-bd"),"dir");
+  symlinkSync(cache,path.join(directory,".uv-cache"),"dir");
+  const local=request=>{
+    const result=spawnSync("uv",["run","--locked","--cache-dir",cache,path.join(root,"scripts/workspace_service.py"),"--content-dir",content],{input:JSON.stringify(request),encoding:"utf8"});
+    assert.equal(result.status,0,result.stderr);const response=JSON.parse(result.stdout);assert.equal(response.ok,true,JSON.stringify(response));return response.result;
+  };
+  const invitation=local({action:"account_init",email:"admin@example.invalid",name:"管理员"});
+  const probe=net.createServer();await new Promise(resolve=>probe.listen(0,"127.0.0.1",resolve));const port=probe.address().port;await new Promise(resolve=>probe.close(resolve));
+  const base=`http://127.0.0.1:${port}`;
+  const publicOrigin="https://bd.test.invalid", publicHost="bd.test.invalid";
+  const modelTransport=aiMockTransport(directory);
+  const server=spawn(process.execPath,[path.join(root,"bin/bd.mjs"),"start","--port",String(port)],{cwd:directory,env:{...process.env,NODE_OPTIONS:`--require ${modelTransport.preload}`,BD_MODE:"server",BD_PUBLIC_URL:publicOrigin,BETTER_AUTH_SECRET:randomBytes(32).toString("hex")},stdio:["ignore","pipe","pipe"]});
+  let output="";server.stdout.on("data",chunk=>output+=chunk);server.stderr.on("data",chunk=>output+=chunk);
+  const request=async(route,body,member,headers={})=>fetch(base+route,{method:body?"POST":"GET",headers:{Host:publicHost,...(body?{"Content-Type":"application/json",Origin:publicOrigin}:{}),...(member?{Cookie:member.cookie,"X-BD-CSRF":member.user.csrf}:{}),...headers},...(body?{body:JSON.stringify(body)}:{})});
+  const okay=async response=>{assert.equal(response.status,200,await response.clone().text());const body=await response.json();assert.equal(body.ok,true,JSON.stringify(body));return body.result;};
+  const cookieJar=(response,existing="")=>{
+    const jar=new Map(existing.split(";").filter(Boolean).map(value=>{const [key,...rest]=value.trim().split("=");return [key,rest.join("=")];}));
+    for(const value of response.headers.getSetCookie()) {const [key,...rest]=value.split(";")[0].split("=");if(/Max-Age=0(?:;|$)/i.test(value))jar.delete(key);else jar.set(key,rest.join("="));}
+    return [...jar].map(([key,value])=>`${key}=${value}`).join("; ");
+  };
+  const join=async(token)=>{
+    const info=await okay(await request("/api/auth",{action:"auth_invite_info",token}));
+    assert.equal(info.secret,undefined);
+    const accepted=await request("/api/auth",{action:"auth_accept",token,password:"member secure password",role:"admin",mfaVerified:true});
+    assert.equal((await okay(accepted)).step,"setup");
+    const partial={cookie:cookieJar(accepted),user:{csrf:""}};
+    assert.equal((await request("/api/workspace?action=workspace",null,partial)).status,401);
+    assert.equal((await request("/api/files?action=list",null,partial)).status,401);
+    const setup=await okay(await request("/api/auth",{action:"auth_setup",password:"member secure password"},partial));
+    const response=await request("/api/auth",{action:"auth_verify",code:otp(setup.secret)},partial);
+    const session=await okay(response);const cookie=response.headers.get("set-cookie");
+    assert.match(cookie,/HttpOnly/);assert.match(cookie,/; Secure/);assert.match(cookie,/__Secure-bd.session_token=/);assert.match(cookie,/SameSite=Lax/i);assert.equal(session.session_token,undefined);
+    assert.equal((await request("/api/workspace?action=workspace",null,partial)).status,401);
+    return {...session,cookie:cookieJar(response,partial.cookie),secret:setup.secret,email:info.email};
+  };
+  const passwordStep=async(member)=>{
+    const response=await request("/api/auth",{action:"auth_login",email:member.email,password:"member secure password"});
+    assert.equal((await okay(response)).step,"verify");
+    const partial={cookie:cookieJar(response),user:{csrf:""}};
+    assert.equal((await request("/api/workspace?action=workspace",null,partial)).status,401);
+    return partial;
+  };
+  try {
+    for(let count=0;count<160&&!output.includes("Ready");count++)await delay(100);
+    assert.ok(output.includes("Ready"),output);
+    const anonymous=await request("/");assert.equal(new URL(anonymous.url).pathname,"/login");assert.doesNotMatch(await anonymous.text(),/澄川创新|星帆创投|青禾集团/);
+    const anonymousAdmin=await request("/admin?section=ai");assert.equal(new URL(anonymousAdmin.url).pathname,"/login");assert.doesNotMatch(await anonymousAdmin.text(),/API 密钥|AI 设置|成员与权限/);
+    assert.equal((await request("/api/workspace?action=workspace")).status,401);
+    assert.equal((await request("/api/files?action=list")).status,401);
+    assert.equal((await request("/api/auth",{action:"team_invite",actor:{role:"admin"}})).status,401);
+    assert.equal((await request("/api/auth",{action:"auth_invite_info",token:invitation.token},null,{Origin:"https://evil.invalid"})).status,403);
+    assert.equal((await request("/api/auth",{action:"auth_invite_info",token:invitation.token},null,{Host:"wrong.invalid"})).status,403);
+    for(const route of ["/api/identity/sign-up/email","/api/identity/admin/create-user","/api/identity/two-factor/disable","/api/auth/sign-up/email"]) assert.equal((await request(route,{email:"intruder@example.invalid",password:"member secure password"})).status,404);
+    assert.equal((await request("/api/auth",{action:"auth_accept",token:invitation.token,password:"short"})).status,400);
+    const admin=await join(invitation.token);
+    const tampered={...admin,cookie:admin.cookie.replace(/session_token=./,"session_token=X")};
+    assert.equal((await request("/api/workspace?action=workspace",null,tampered)).status,401);
+    assert.equal((await request("/api/auth",{action:"team_update",...admin.user,active:false},admin)).status,409);
+    assert.equal((await request("/api/auth",{action:"auth_accept",token:invitation.token,password:"member secure password",code:otp(admin.secret)})).status,401);
+    const invite=async(role,email)=>okay(await request("/api/auth",{action:"team_invite",email,name:role,role,all_projects:false,project_ids:[project]},admin));
+    const viewer=await join((await invite("viewer","viewer@example.invalid")).token);
+    const editor=await join((await invite("editor","editor@example.invalid")).token);
+    for(const section of ["members","ai","usage","remote","backup"]){
+      const adminPage=await request(`/admin?section=${section}`,null,admin);assert.equal(adminPage.status,200);assert.match(await adminPage.text(),/管理中心/);
+      for(const member of [viewer,editor]){
+        const blocked=await request(`/admin?section=${section}`,null,member);assert.equal(new URL(blocked.url).pathname,"/");
+        assert.doesNotMatch(await blocked.text(),/管理中心|API 密钥|成员与权限|邀请新成员/);
+      }
+    }
+    await exerciseAi({directory,request,okay,admin,editor,viewer});
+    await exerciseRemote({directory,request,okay,admin,editor,viewer,join});
+    const workspace=await okay(await request("/api/workspace?action=workspace",null,viewer));
+    assert.deepEqual(workspace.data.projects.map(x=>x.id),[project]);
+    assert.equal(workspace.data.company_events.length,0);
+    assert.equal(workspace.data.people.length,2);
+    assert.doesNotMatch(JSON.stringify(workspace),/星帆创投|宋禾|顾远|project-demo-investment/);
+    const rendered=await (await request("/",null,viewer)).text();
+    assert.doesNotMatch(rendered,/星帆创投|宋禾|顾远|project-demo-investment/);
+    assert.match(rendered,/青禾集团合作/);
+    for(const action of ["history","historical","compare","backup_status"]){assert.equal((await request(`/api/workspace?action=${action}`,null,viewer)).status,403);}
+    for(const kind of ["project","progress"]){assert.equal((await request(`/api/workspace?${new URLSearchParams({action:"record",kind,id:restricted,project_id:restricted})}`,null,editor)).status,403);}
+    const endpoint="/api/workspace";
+    const opened=await okay(await request(endpoint+`?action=record&kind=project&id=${project}`,null,editor));
+    const edit={action:"save",kind:"project",id:project,revision:opened.revision,payload:{...opened.record.metadata,contacts:opened.record.contacts,body:"团队编辑测试正文"}};
+    assert.equal((await request(endpoint,edit,viewer)).status,403);
+    assert.equal((await request(endpoint,edit,editor,{"X-BD-CSRF":"forged"})).status,403);
+    assert.equal((await request(endpoint,edit,editor,{Origin:"https://evil.invalid"})).status,403);
+    assert.equal((await request(endpoint,{...edit,payload:{...edit.payload,sourced_by:["宋禾"]}},editor)).status,403);
+    assert.equal((await request(endpoint,{...edit,id:"new-project"},editor)).status,403);
+    const concurrent=await Promise.all([request(endpoint,edit,editor),request(endpoint,{...edit,payload:{...edit.payload,body:"另一位同时编辑"}},editor)]);
+    assert.deepEqual(concurrent.map(r=>r.status).sort(),[200,409]);
+    for(const response of concurrent)await response.arrayBuffer();
+    const progress=await okay(await request(endpoint+`?action=record&kind=progress&id=&project_id=${project}`,null,editor));
+    await okay(await request(endpoint,{action:"save",kind:"progress",id:"",project_id:project,revision:progress.revision,actor:{id:"spoof",name:"伪造录入者"},payload:{date:"2026-10-22",type:"meeting",title:"每日进展",summary:"仅测试事实",importance:"normal",participants:["林岚"],body:"# 每日进展\n完成演示。",location:"线上"}},editor));
+    const history=await okay(await request(endpoint+`?action=history&kind=project&id=${project}`,null,admin));
+    assert.equal(history.versions[0].actor.name,"editor");
+    const upload=async(ids,title,member=admin)=>{
+      const form=new FormData();form.set("metadata",JSON.stringify({payload:{title,organization:"虚构机构",category:"bp",project_ids:ids,home_counterparty_id:ids[0]===project?"counterparty-917f1872213b3ab5":"counterparty-13414ee5502c4f23",status:"draft"}}));
+      form.set("file",new File([title],"测试.txt",{type:"text/plain"}));
+      return fetch(base+"/api/files",{method:"POST",headers:{Host:publicHost,Origin:publicOrigin,Cookie:member.cookie,"X-BD-CSRF":member.user.csrf},body:form});
+    };
+    await okay(await upload([project],"授权附件"));
+    const secretFile=await okay(await upload([restricted],"限制附件"));
+    await okay(await upload([project,restricted],"跨事项附件"));
+    assert.equal((await upload([project],"只读上传",viewer)).status,403);
+    assert.equal((await upload([restricted],"越权上传",editor)).status,403);
+    const files=await okay(await request("/api/files?action=list",null,viewer));
+    assert.deepEqual(files.files.map(x=>x.title),["授权附件"]);
+    const file=files.files[0];
+    const download=`/api/files?${new URLSearchParams({action:"download",id:file.id,version_id:file.current_version})}`;
+    const binary=await request(download,null,viewer);assert.equal(binary.status,200);assert.equal(await binary.text(),"授权附件");
+    assert.equal((await request(`/api/files?action=download&id=${secretFile.id}&version_id=wrong`,null,viewer)).status,403);
+    assert.equal((await request(download+"&snapshot="+history.versions[0].version,null,viewer)).status,403);
+    assert.equal((await request("/api/files",{action:"file_reveal",id:file.id},admin)).status,403);
+    assert.equal((await request("/api/auth",{action:"team_update",id:viewer.user.id,role:"admin",all_projects:true,project_ids:[],active:true,revision:viewer.user.revision},viewer)).status,403);
+    const members=await okay(await request("/api/auth",{action:"team_list"},admin));
+    const fresh=members.users.find(x=>x.id===viewer.user.id);
+    const pendingViewer=await passwordStep(viewer);
+    await okay(await request("/api/auth",{action:"team_update",...fresh,active:false},admin));
+    assert.equal((await request("/api/workspace?action=workspace",null,viewer)).status,401);
+    assert.equal((await request(download,null,viewer)).status,401);
+    assert.equal((await request("/api/auth",{action:"auth_verify",code:otp(viewer.secret)},pendingViewer)).status,401);
+    assert.equal((await request("/api/auth",{action:"auth_login",email:viewer.email,password:"member secure password"})).status,401);
+    const pendingPermissions=await passwordStep(editor);
+    const freshEditor=(await okay(await request("/api/auth",{action:"team_list"},admin))).users.find(x=>x.id===editor.user.id);
+    await okay(await request("/api/auth",{action:"team_update",...freshEditor,active:true},admin));
+    assert.equal((await request("/api/auth",{action:"auth_verify",code:otp(editor.secret)},pendingPermissions)).status,401);
+    assert.equal((await request("/api/workspace?action=workspace",null,editor)).status,401);
+    const pendingEditor=await passwordStep(editor);
+    const replacement=await okay(await request("/api/auth",{action:"team_reset",id:editor.user.id},admin));
+    assert.equal((await request("/api/auth",{action:"auth_verify",code:otp(editor.secret)},pendingEditor)).status,401);
+    assert.equal((await request("/api/workspace?action=workspace",null,editor)).status,401);
+    const recovered=await join(replacement.token);
+    assert.equal(recovered.user.id,editor.user.id);assert.equal(recovered.user.role,"editor");
+    assert.deepEqual(recovered.user.project_ids,[project]);
+    const loginChallenge=await passwordStep(recovered);
+    const signed=await request("/api/auth",{action:"auth_verify",code:otp(recovered.secret)},loginChallenge);
+    const loggedIn={...await okay(signed),cookie:cookieJar(signed,loginChallenge.cookie)};
+    await okay(await request("/api/auth",{action:"auth_logout"},loggedIn));
+    assert.equal((await request("/api/workspace?action=workspace",null,loggedIn)).status,401);
+    const duplicate=await invite("viewer","duplicate@example.invalid");
+    const concurrentAccepts=await Promise.all([request("/api/auth",{action:"auth_accept",token:duplicate.token,password:"member secure password"}),request("/api/auth",{action:"auth_accept",token:duplicate.token,password:"member secure password"})]);
+    assert.deepEqual(concurrentAccepts.map(x=>x.status).sort(),[200,401]);
+    const unfinished=await invite("viewer","unfinished@example.invalid");
+    const sourceDB=new DatabaseSync(path.join(directory,".bd-auth/accounts.sqlite3"));
+    const transferTokens=sourceDB.prepare("SELECT token FROM ba_session").all().map(x=>x.token);
+    sourceDB.close();
+    const backup=local({action:"file_backup"});
+    const archive=local({action:"backup_download",id:backup.id});
+    const restored=path.join(directory,"restored");
+    local({action:"restore_backup",archive:archive.path,destination:restored});
+    assert.equal(existsSync(path.join(restored,".bd-ai")),false,"AI credentials and pending drafts must not be restored with business backups");
+    const restoredDB=new DatabaseSync(path.join(restored,".bd-auth/accounts.sqlite3"));
+    for(const table of ["ba_session","ba_verification","ba_rate_limit","invitations","remote_tokens","remote_drafts","remote_grants","remote_settings","remote_attempts"]) assert.equal(restoredDB.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n,0);
+    const restoredMember=restoredDB.prepare("SELECT * FROM users WHERE id=?").get(recovered.user.id);
+    assert.equal(restoredMember.role,"editor");assert.equal(restoredMember.project_ids,JSON.stringify([project]));
+    assert.ok(restoredDB.prepare("SELECT password FROM ba_account LIMIT 1").get().password);
+    restoredDB.close();
+    const snapshotBytes=readFileSync(path.join(restored,".bd-auth/accounts.sqlite3"));
+    for(const token of transferTokens) assert.equal(snapshotBytes.includes(Buffer.from(token)),false);
+    assert.ok(unfinished.token);
+    const audit=await okay(await request("/api/auth",{action:"team_audit"},admin));
+    assert.ok(audit.entries.some(e=>e.action==="save"&&e.actor_id===editor.user.id&&e.outcome==="success"));
+    await okay(await request("/api/auth",{action:"auth_logout"},recovered));
+    assert.equal((await request("/api/workspace?action=workspace",null,recovered)).status,401);
+    const raw=new DatabaseSync(path.join(directory,".bd-auth/accounts.sqlite3"));
+    raw.prepare("UPDATE ba_session SET expiresAt=?").run(new Date(Date.now()-1000).toISOString());raw.close();
+    assert.equal((await request("/api/workspace?action=workspace",null,admin)).status,401);
+    let limited;
+    for(let i=0;i<21;i++)limited=await request("/api/auth",{action:"auth_login",email:"unknown@example.invalid",password:"wrong password"},null,{"x-real-ip":"203.0.113.77"});
+    assert.equal(limited.status,429);
+  } finally {
+    server.kill("SIGTERM");await Promise.race([new Promise(resolve=>server.once("close",resolve)),delay(6000)]);
+    if(server.exitCode===null)server.kill("SIGKILL");rmSync(directory,{recursive:true,force:true});
+  }
+});
+
+test("server startup rejects unsafe mode and public URL before serving",()=>{
+  for(const env of [{BD_MODE:"server",BD_PUBLIC_URL:"https://bd.example.invalid",BETTER_AUTH_SECRET:"short"},{BD_MODE:"mistyped"},{BD_MODE:"server",BD_PUBLIC_URL:"http://bd.example.invalid"},{BD_MODE:"server",BD_PUBLIC_URL:"https://bd.example.invalid/path"}]){
+    const result=spawnSync(process.execPath,[path.join(root,"bin/bd.mjs"),"start","--content",path.join(root,"fixtures/demo/content")],{env:{...process.env,...env},encoding:"utf8"});
+    assert.equal(result.status,1);assert.match(result.stderr,/BD_MODE|BD_PUBLIC_URL|BETTER_AUTH_SECRET/);
+  }
+});

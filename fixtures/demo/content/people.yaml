@@ -1,0 +1,21 @@
+people:
+  - id: 林岚
+    name: 林岚
+    affiliation: 澄川创新科技有限公司商务负责人
+
+  - id: 陈青
+    name: 陈青
+    affiliation: 青禾集团战略合作总监
+    phone: "010-00000000"
+    wechat: demo_chenqing
+    email: chenqing@example.invalid
+  - id: 宋禾
+    name: 宋禾
+    affiliation: 星帆创投投资经理
+    phone: null
+    wechat: null
+    email: null
+  - id: 顾远
+    name: 顾远
+    affiliation: 虚构创业顾问
+    email: guyuan@example.invalid

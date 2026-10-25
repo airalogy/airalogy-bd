@@ -1,0 +1,173 @@
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
+import path from "node:path";
+
+// Exercise the actual production HTTP, MFA-session, permission and workspace-file boundary.
+export async function exerciseRemote({ directory, request, okay, admin, editor, viewer, join }) {
+  const matter = "project-demo-partnership", restricted = "project-demo-investment";
+  const web = (operation, input = {}, member = admin, headers) => request("/api/remote", { ...input, operation }, member, headers);
+  const rpc = (method, params = {}, token = "bdr_" + "x".repeat(43), headers = {}) => request("/api/mcp", { jsonrpc: "2.0", id: 1, method, params }, null,
+    { Authorization: `Bearer ${token}`, Accept: "application/json, text/event-stream", "MCP-Protocol-Version": "2025-11-25", ...headers });
+  const call = async (name, args, token, expected = false) => {
+    const response = await rpc("tools/call", { name, arguments: args }, token);
+    assert.equal(response.status, 200, await response.clone().text());
+    const result = (await response.json()).result;
+    assert.equal(result.isError, expected, JSON.stringify(result));
+    return JSON.parse(result.content[0].text);
+  };
+  const status = async () => okay(await request("/api/remote?action=settings", null, admin));
+  const configure = async enabled => okay(await web("configure", { enabled, revision: (await status()).revision }));
+  const issue = async (member, canDraft = true) => okay(await web("issue", { label: "Test Codex", canDraft, days: 7 }, member));
+  const record = async member => okay(await request(`/api/workspace?action=record&kind=project&id=${matter}`, null, member));
+  const newDraft = async (token, extra = {}) => {
+    const current = await call("read_matter", { matter_id: matter }, token);
+    const args = { matter_id: matter, revision: current.revision, operation: "add_progress", request_id: randomUUID(),
+      changes: { date: "2026-10-23", type: "meeting", title: "远程草稿测试", summary: "准备签署，尚未签署", body: "仅记录用户明确提供的事实。" }, ...extra };
+    return { args, draft: await call("submit_draft", args, token) };
+  };
+  assert.equal((await status()).enabled, false);
+  assert.equal((await rpc("initialize", { protocolVersion: "2025-11-25" })).status, 503);
+  assert.equal((await request("/api/mcp", { jsonrpc: "2.0", id: 1, method: "tools/list" }, admin)).status, 401);
+  assert.equal((await request("/api/remote?action=status")).status, 401);
+  for (const member of [editor, viewer]) {
+    assert.equal((await request("/api/remote?action=settings", null, member)).status, 403);
+    assert.equal((await web("configure", { enabled: true, revision: "initial" }, member)).status, 403);
+    assert.equal((await web("grant", { memberId: member.user.id, allowed: true }, member)).status, 403);
+  }
+  assert.equal((await web("configure", { enabled: true, revision: "initial" }, admin, { "X-BD-CSRF": "wrong" })).status, 403);
+  await configure(true);
+  assert.equal((await web("issue", { label: "Unapproved", canDraft: true }, editor)).status, 403);
+  for (const member of [admin, editor, viewer]) await okay(await web("grant", { memberId: member.user.id, allowed: true }));
+  assert.equal((await web("issue", { label: "Too long", days: 31 }, editor)).status, 422);
+  assert.equal((await web("issue", { label: "Viewer writer", canDraft: true }, viewer)).status, 422);
+  const writable = await issue(editor), readonly = await issue(viewer, false), adminToken = await issue(admin);
+  assert.doesNotMatch(readFileSync(path.join(directory, ".bd-auth/accounts.sqlite3")).toString(), new RegExp(writable.token));
+  const memberStatus = await okay(await request("/api/remote?action=status", null, editor));
+  assert.equal(memberStatus.members, undefined);
+  assert.equal(memberStatus.tokens.length, 1);
+  assert.doesNotMatch(JSON.stringify(memberStatus), new RegExp(writable.token));
+  assert.equal((await request("/api/workspace?action=workspace", null, null, { Authorization: `Bearer ${writable.token}` })).status, 401);
+  assert.equal((await web("confirm", { draftId: "anything", confirmed: true }, null, { Authorization: `Bearer ${writable.token}` })).status, 401);
+  assert.equal((await rpc("tools/list", {}, writable.token, { Origin: "https://evil.invalid" })).status, 403);
+  assert.equal((await rpc("tools/list", {}, writable.token, { Host: "evil.invalid" })).status, 403);
+  assert.equal((await rpc("tools/list", {}, writable.token, { "MCP-Protocol-Version": "invalid" })).status, 400);
+  assert.equal((await rpc("tools/list", {}, writable.token, { Accept: "application/json" })).status, 406);
+  const init = await rpc("initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } }, writable.token, { Origin: "" });
+  assert.equal((await init.json()).result.protocolVersion, "2025-11-25");
+  const tools = (await (await rpc("tools/list", {}, readonly.token)).json()).result.tools.map(t => t.name);
+  assert.deepEqual(tools, ["search_matters", "read_matter", "read_progress"]);
+  assert.ok((await (await rpc("tools/call", { name: "save", arguments: {} }, adminToken.token)).json()).error);
+  assert.ok((await (await rpc("tools/call", { name: "submit_draft", arguments: {} }, readonly.token)).json()).error);
+  const found = await call("search_matters", {}, writable.token);
+  assert.deepEqual(found.matters.map(m => m.id), [matter]);
+  assert.doesNotMatch(JSON.stringify(found), /星帆创投|宋禾|phone|wechat|email|attachments/);
+  assert.equal((await call("read_matter", { matter_id: restricted }, writable.token, true)).code, "forbidden");
+  const current = await call("read_matter", { matter_id: matter }, writable.token);
+  assert.doesNotMatch(JSON.stringify(current), /demo_chenqing|phone|wechat|email|related_record|documents|contacts.yaml/);
+  assert.equal((await call("read_progress", { matter_id: matter, progress_id: "missing" }, writable.token, true)).code, "not_found");
+
+  const before = await record(editor);
+  const pending = await newDraft(writable.token);
+  assert.equal(pending.draft.status, "pending");
+  assert.deepEqual(await record(editor), before, "Submitting a draft must not change business files");
+  assert.equal((await call("submit_draft", pending.args, writable.token)).draftId, pending.draft.draftId);
+  assert.equal((await call("submit_draft", { ...pending.args, changes: { title: "different" } }, writable.token, true)).code, "conflict");
+  const drafts = await okay(await request("/api/remote?action=drafts", null, editor));
+  assert.equal(drafts.drafts.length, 1);
+  assert.ok(drafts.drafts[0].changes.some(change => change.field === "summary" && change.after === "准备签署，尚未签署"));
+  assert.equal((await okay(await request("/api/remote?action=drafts", null, admin))).drafts.length, 0);
+  const confirmation = { draftId: pending.draft.draftId, confirmed: true, payload: { summary: "malicious tamper" } };
+  assert.equal((await web("confirm", confirmation, admin)).status, 409);
+  assert.equal((await web("confirm", confirmation, editor, { "X-BD-CSRF": "wrong" })).status, 403);
+  assert.equal((await web("confirm", { ...confirmation, confirmed: false }, editor)).status, 422);
+  const concurrent = await Promise.all([web("confirm", confirmation, editor), web("confirm", confirmation, editor)]);
+  assert.deepEqual(concurrent.map(r => r.status).sort(), [200, 409]);
+  for (const response of concurrent) await response.arrayBuffer();
+  const after = await record(editor);
+  assert.equal(after.record.events.length, before.record.events.length + 1);
+  assert.doesNotMatch(JSON.stringify(after), /malicious tamper/);
+  const savedId = after.record.events.find(event => event.title === "远程草稿测试").id;
+  const detail = await call("read_progress", { matter_id: matter, progress_id: savedId }, writable.token);
+  assert.equal(detail.fields.summary, "准备签署，尚未签署");
+  const replay = await call("submit_draft", pending.args, writable.token);
+  assert.equal(replay.status, "saved");
+  assert.equal((await record(editor)).record.events.length, after.record.events.length);
+  const history = await okay(await request(`/api/workspace?action=history&kind=project&id=${matter}`, null, admin));
+  assert.equal(history.versions[0].actor.id, editor.user.id);
+
+  // Edit existing progress and matter text; reject unsupported mutation fields.
+  const patch = await newDraft(writable.token, { operation: "update_progress", progress_id: savedId, changes: { summary: "对方确认后续讨论，尚未签署。" } });
+  await okay(await web("confirm", { draftId: patch.draft.draftId, confirmed: true }, editor));
+  const matterDraft = await newDraft(writable.token, { operation: "update_matter", changes: { next_action: "等待对方反馈" } });
+  await okay(await web("confirm", { draftId: matterDraft.draft.draftId, confirmed: true }, editor));
+  assert.equal((await record(editor)).record.metadata.next_action, "等待对方反馈");
+  // Existing administrator recovery can restore the edited event without reverting the later matter edit.
+  const comparison = await okay(await request(`/api/workspace?${new URLSearchParams({ action: "compare", kind: "progress", id: savedId, project_id: matter, version: history.versions[0].version })}`, null, admin));
+  assert.equal(comparison.can_restore, true);
+  await okay(await request("/api/workspace", { action: "restore", kind: "progress", id: savedId, project_id: matter, version: history.versions[0].version, revision: comparison.revision }, admin));
+  const restored = await record(editor);
+  assert.equal(restored.record.events.find(event => event.id === savedId).summary, "准备签署，尚未签署");
+  assert.equal(restored.record.metadata.next_action, "等待对方反馈");
+  // Reset only the test rate window; production has no test override.
+  const db = new DatabaseSync(path.join(directory, ".bd-auth/accounts.sqlite3"));
+  const clearRate = () => db.exec("DELETE FROM remote_attempts");
+  clearRate();
+  for (const changes of [{ contacts: [] }, { new_counterparty: { name: "bad" } }, { name: "rename" }, { body: 123 }]) {
+    const snapshot = await call("read_matter", { matter_id: matter }, writable.token);
+    assert.equal((await call("submit_draft", { ...pending.args, revision: snapshot.revision, request_id: randomUUID(), operation: "update_matter", changes }, writable.token, true)).code, "invalid");
+  }
+  const stale = await newDraft(writable.token);
+  const fresh = await record(editor);
+  await okay(await request("/api/workspace", { action: "save", kind: "project", id: matter, revision: fresh.revision, payload: { ...fresh.record.metadata, contacts: fresh.record.contacts, body: fresh.record.body + "\n同事的新修改。" } }, editor));
+  assert.equal((await web("confirm", { draftId: stale.draft.draftId, confirmed: true }, editor)).status, 409);
+  assert.match((await record(editor)).record.body, /同事的新修改/);
+  const rejected = await newDraft(writable.token);
+  await okay(await web("reject", { draftId: rejected.draft.draftId }, editor));
+  assert.equal((await web("confirm", { draftId: rejected.draft.draftId, confirmed: true }, editor)).status, 409);
+  const revoked = await newDraft(writable.token);
+  await okay(await web("revoke", { tokenId: writable.id }, editor));
+  assert.equal((await rpc("tools/list", {}, writable.token)).status, 401);
+  assert.equal((await web("confirm", { draftId: revoked.draft.draftId, confirmed: true }, editor)).status, 409);
+  clearRate();
+  const next = await issue(editor);
+  const expiring = await newDraft(next.token);
+  db.prepare("UPDATE remote_drafts SET expires=0 WHERE id=?").run(expiring.draft.draftId);
+  assert.equal((await web("confirm", { draftId: expiring.draft.draftId, confirmed: true }, editor)).status, 409);
+  db.prepare("UPDATE remote_tokens SET expires=0 WHERE id=?").run(next.id);
+  assert.equal((await rpc("tools/list", {}, next.token)).status, 401);
+  const disabled = await issue(editor);
+  const disabledDraft = await newDraft(disabled.token);
+  await configure(false);
+  assert.equal((await rpc("tools/list", {}, disabled.token)).status, 503);
+  assert.equal((await web("confirm", { draftId: disabledDraft.draft.draftId, confirmed: true }, editor)).status, 503);
+  await configure(true);
+  assert.equal((await rpc("tools/list", {}, disabled.token)).status, 401);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM remote_drafts").get().n, 0);
+
+  // Existing account permission changes and login reset invalidate access immediately.
+  const invitation = await okay(await request("/api/auth", { action: "team_invite", email: "remote@example.invalid", name: "Remote member", role: "editor", all_projects: false, project_ids: [matter] }, admin));
+  const member = await join(invitation.token);
+  await okay(await web("grant", { memberId: member.user.id, allowed: true }));
+  const oldToken = await issue(member);
+  const orphan = await newDraft(oldToken.token);
+  await okay(await request("/api/auth", { action: "team_update", ...member.user, active: false }, admin));
+  assert.equal((await rpc("tools/list", {}, oldToken.token)).status, 401);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM remote_drafts WHERE id=?").get(orphan.draft.draftId).n, 0);
+  const limited = await issue(editor);
+  const blocked = await newDraft(limited.token);
+  await okay(await web("grant", { memberId: editor.user.id, allowed: false }));
+  assert.equal((await rpc("tools/list", {}, limited.token)).status, 401);
+  assert.equal((await web("confirm", { draftId: blocked.draft.draftId, confirmed: true }, editor)).status, 403);
+  await okay(await web("grant", { memberId: editor.user.id, allowed: true }));
+  const rateToken = await issue(editor);
+  for (let index = 0; index < 60; index++) db.prepare("INSERT INTO remote_attempts VALUES(?,?)").run(editor.user.id, Math.floor(Date.now() / 1000));
+  assert.equal((await rpc("tools/list", {}, rateToken.token)).status, 429);
+  clearRate();
+  db.close();
+  const audit = await okay(await request("/api/auth", { action: "team_audit" }, admin));
+  assert.ok(audit.entries.some(e => e.action === "remote.confirm" && e.outcome === "success"));
+  assert.doesNotMatch(JSON.stringify(audit), new RegExp(rateToken.token));
+  await configure(false);
+}

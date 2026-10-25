@@ -1,0 +1,3729 @@
+{
+  "reviewed_on": "2026-10-22",
+  "scope": "Declared npm and Python locked packages, including optional platforms. Metadata review; not a complete inventory of embedded native libraries, bundled framework code or container operating-system packages.",
+  "lock_sha256": {
+    "pnpm-lock.yaml": "7f401dd71a9750b70ab8d70b27bc23c1f8e527663d31c77afa799193ebb6b272",
+    "scripts/generate_dashboard_data.py.lock": "e56196a8de04123f7065acb41ae9e3c7cf89920e56e24791d1145e9d11ad1d27",
+    "scripts/oss_backup.py.lock": "511c468ad7c286474ba7b15dbb2687c5ca6cd7dcc6378e17ba04d4e220fe72c6",
+    "scripts/validate.py.lock": "1317fe8e93e990c287105fe019de4606bef3e16cfa5363c6d450dee4935dd8d8",
+    "scripts/workspace_service.py.lock": "1317fe8e93e990c287105fe019de4606bef3e16cfa5363c6d450dee4935dd8d8"
+  },
+  "npm": [
+    {
+      "name": "@alloc/quick-lru",
+      "version": "5.2.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@babel/code-frame",
+      "version": "7.29.7",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@babel/compat-data",
+      "version": "7.29.7",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@babel/core",
+      "version": "7.29.7",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@babel/generator",
+      "version": "7.29.8",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@babel/helper-compilation-targets",
+      "version": "7.29.7",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@babel/helper-globals",
+      "version": "7.29.7",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@babel/helper-module-imports",
+      "version": "7.29.7",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@babel/helper-module-transforms",
+      "version": "7.29.7",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@babel/helper-string-parser",
+      "version": "7.29.7",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@babel/helper-validator-identifier",
+      "version": "7.29.7",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@babel/helper-validator-option",
+      "version": "7.29.7",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@babel/helpers",
+      "version": "7.29.7",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@babel/parser",
+      "version": "7.29.9",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@babel/template",
+      "version": "7.29.7",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@babel/traverse",
+      "version": "7.29.8",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@babel/types",
+      "version": "7.29.8",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@better-auth/core",
+      "version": "1.7.12",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@better-auth/drizzle-adapter",
+      "version": "1.7.12",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@better-auth/kysely-adapter",
+      "version": "1.7.12",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@better-auth/memory-adapter",
+      "version": "1.7.12",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@better-auth/mongo-adapter",
+      "version": "1.7.12",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@better-auth/prisma-adapter",
+      "version": "1.7.12",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@better-auth/telemetry",
+      "version": "1.7.12",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@better-auth/utils",
+      "version": "0.5.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@better-fetch/fetch",
+      "version": "1.3.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@emnapi/runtime",
+      "version": "1.11.3",
+      "license": "MIT",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@eslint-community/eslint-utils",
+      "version": "4.10.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@eslint-community/eslint-utils",
+      "version": "4.9.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@eslint-community/regexpp",
+      "version": "4.12.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@eslint/config-array",
+      "version": "0.21.2",
+      "license": "Apache-2.0",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@eslint/config-helpers",
+      "version": "0.4.2",
+      "license": "Apache-2.0",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@eslint/core",
+      "version": "0.17.0",
+      "license": "Apache-2.0",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@eslint/eslintrc",
+      "version": "3.3.6",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@eslint/js",
+      "version": "9.39.4",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@eslint/object-schema",
+      "version": "2.1.7",
+      "license": "Apache-2.0",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@eslint/plugin-kit",
+      "version": "0.4.1",
+      "license": "Apache-2.0",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@humanfs/core",
+      "version": "0.19.2",
+      "license": "Apache-2.0",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@humanfs/node",
+      "version": "0.16.8",
+      "license": "Apache-2.0",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@humanfs/types",
+      "version": "0.15.0",
+      "license": "Apache-2.0",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@humanwhocodes/module-importer",
+      "version": "1.0.1",
+      "license": "Apache-2.0",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@humanwhocodes/retry",
+      "version": "0.4.3",
+      "license": "Apache-2.0",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@img/colour",
+      "version": "1.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@img/sharp-darwin-arm64",
+      "version": "0.35.5",
+      "license": "Apache-2.0",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@img/sharp-darwin-x64",
+      "version": "0.35.5",
+      "license": "Apache-2.0",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@img/sharp-freebsd-wasm32",
+      "version": "0.35.5",
+      "license": "Apache-2.0",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@img/sharp-libvips-darwin-arm64",
+      "version": "1.3.4",
+      "license": "LGPL-3.0-or-later",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@img/sharp-libvips-darwin-x64",
+      "version": "1.3.4",
+      "license": "LGPL-3.0-or-later",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@img/sharp-libvips-linux-arm",
+      "version": "1.3.4",
+      "license": "LGPL-3.0-or-later",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@img/sharp-libvips-linux-arm64",
+      "version": "1.3.4",
+      "license": "LGPL-3.0-or-later",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@img/sharp-libvips-linux-ppc64",
+      "version": "1.3.4",
+      "license": "LGPL-3.0-or-later",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@img/sharp-libvips-linux-riscv64",
+      "version": "1.3.4",
+      "license": "LGPL-3.0-or-later",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@img/sharp-libvips-linux-s390x",
+      "version": "1.3.4",
+      "license": "LGPL-3.0-or-later",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@img/sharp-libvips-linux-x64",
+      "version": "1.3.4",
+      "license": "LGPL-3.0-or-later",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@img/sharp-libvips-linuxmusl-arm64",
+      "version": "1.3.4",
+      "license": "LGPL-3.0-or-later",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@img/sharp-libvips-linuxmusl-x64",
+      "version": "1.3.4",
+      "license": "LGPL-3.0-or-later",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@img/sharp-linux-arm",
+      "version": "0.35.5",
+      "license": "Apache-2.0",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@img/sharp-linux-arm64",
+      "version": "0.35.5",
+      "license": "Apache-2.0",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@img/sharp-linux-ppc64",
+      "version": "0.35.5",
+      "license": "Apache-2.0",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@img/sharp-linux-riscv64",
+      "version": "0.35.5",
+      "license": "Apache-2.0",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@img/sharp-linux-s390x",
+      "version": "0.35.5",
+      "license": "Apache-2.0",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@img/sharp-linux-x64",
+      "version": "0.35.5",
+      "license": "Apache-2.0",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@img/sharp-linuxmusl-arm64",
+      "version": "0.35.5",
+      "license": "Apache-2.0",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@img/sharp-linuxmusl-x64",
+      "version": "0.35.5",
+      "license": "Apache-2.0",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@img/sharp-wasm32",
+      "version": "0.35.5",
+      "license": "Apache-2.0 AND LGPL-3.0-or-later AND MIT",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@img/sharp-webcontainers-wasm32",
+      "version": "0.35.5",
+      "license": "Apache-2.0",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@img/sharp-win32-arm64",
+      "version": "0.35.5",
+      "license": "Apache-2.0 AND LGPL-3.0-or-later",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@img/sharp-win32-ia32",
+      "version": "0.35.5",
+      "license": "Apache-2.0 AND LGPL-3.0-or-later",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@img/sharp-win32-x64",
+      "version": "0.35.5",
+      "license": "Apache-2.0 AND LGPL-3.0-or-later",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@jridgewell/gen-mapping",
+      "version": "0.3.13",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@jridgewell/remapping",
+      "version": "2.3.5",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@jridgewell/resolve-uri",
+      "version": "3.1.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@jridgewell/sourcemap-codec",
+      "version": "1.5.5",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@jridgewell/sourcemap-codec",
+      "version": "1.6.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@jridgewell/trace-mapping",
+      "version": "0.3.31",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@next/env",
+      "version": "16.4.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@next/eslint-plugin-next",
+      "version": "16.4.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@next/swc-darwin-arm64",
+      "version": "16.4.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@next/swc-darwin-x64",
+      "version": "16.4.2",
+      "license": "MIT",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@next/swc-linux-arm64-gnu",
+      "version": "16.4.2",
+      "license": "MIT",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@next/swc-linux-arm64-musl",
+      "version": "16.4.2",
+      "license": "MIT",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@next/swc-linux-x64-gnu",
+      "version": "16.4.2",
+      "license": "MIT",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@next/swc-linux-x64-musl",
+      "version": "16.4.2",
+      "license": "MIT",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@next/swc-win32-arm64-msvc",
+      "version": "16.4.2",
+      "license": "MIT",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@next/swc-win32-x64-msvc",
+      "version": "16.4.2",
+      "license": "MIT",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@noble/ciphers",
+      "version": "2.4.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@noble/hashes",
+      "version": "2.4.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@nodelib/fs.scandir",
+      "version": "2.1.5",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@nodelib/fs.stat",
+      "version": "2.0.5",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@nodelib/fs.walk",
+      "version": "1.2.8",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@pkgr/utils",
+      "version": "2.3.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@radix-ui/primitive",
+      "version": "1.1.7",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@radix-ui/react-collection",
+      "version": "1.1.15",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@radix-ui/react-compose-refs",
+      "version": "1.1.5",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@radix-ui/react-context",
+      "version": "1.2.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@radix-ui/react-dialog",
+      "version": "1.1.23",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@radix-ui/react-direction",
+      "version": "1.1.4",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@radix-ui/react-dismissable-layer",
+      "version": "1.1.19",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@radix-ui/react-focus-guards",
+      "version": "1.1.6",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@radix-ui/react-focus-scope",
+      "version": "1.1.16",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@radix-ui/react-id",
+      "version": "1.1.4",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@radix-ui/react-portal",
+      "version": "1.1.17",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@radix-ui/react-presence",
+      "version": "1.1.10",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@radix-ui/react-primitive",
+      "version": "2.1.10",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@radix-ui/react-roving-focus",
+      "version": "1.1.19",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@radix-ui/react-slot",
+      "version": "1.3.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@radix-ui/react-toggle",
+      "version": "1.1.18",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@radix-ui/react-toggle-group",
+      "version": "1.1.19",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@radix-ui/react-use-callback-ref",
+      "version": "1.1.4",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@radix-ui/react-use-controllable-state",
+      "version": "1.2.6",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@radix-ui/react-use-effect-event",
+      "version": "0.0.5",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@radix-ui/react-use-is-hydrated",
+      "version": "0.1.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@radix-ui/react-use-layout-effect",
+      "version": "1.1.4",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@rtsao/scc",
+      "version": "1.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@standard-schema/spec",
+      "version": "1.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@swc/helpers",
+      "version": "0.5.23",
+      "license": "Apache-2.0",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@tailwindcss/node",
+      "version": "4.2.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@tailwindcss/oxide",
+      "version": "4.2.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@tailwindcss/oxide-android-arm64",
+      "version": "4.2.1",
+      "license": "MIT",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@tailwindcss/oxide-darwin-arm64",
+      "version": "4.2.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@tailwindcss/oxide-darwin-x64",
+      "version": "4.2.1",
+      "license": "MIT",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@tailwindcss/oxide-freebsd-x64",
+      "version": "4.2.1",
+      "license": "MIT",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@tailwindcss/oxide-linux-arm-gnueabihf",
+      "version": "4.2.1",
+      "license": "MIT",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@tailwindcss/oxide-linux-arm64-gnu",
+      "version": "4.2.1",
+      "license": "MIT",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@tailwindcss/oxide-linux-arm64-musl",
+      "version": "4.2.1",
+      "license": "MIT",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@tailwindcss/oxide-linux-x64-gnu",
+      "version": "4.2.1",
+      "license": "MIT",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@tailwindcss/oxide-linux-x64-musl",
+      "version": "4.2.1",
+      "license": "MIT",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@tailwindcss/oxide-wasm32-wasi",
+      "version": "4.2.1",
+      "license": "MIT",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@tailwindcss/oxide-win32-arm64-msvc",
+      "version": "4.2.1",
+      "license": "MIT",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@tailwindcss/oxide-win32-x64-msvc",
+      "version": "4.2.1",
+      "license": "MIT",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "@tailwindcss/postcss",
+      "version": "4.2.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@types/debug",
+      "version": "4.1.13",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@types/estree",
+      "version": "1.0.9",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@types/estree-jsx",
+      "version": "1.0.5",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@types/hast",
+      "version": "3.0.5",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@types/json-schema",
+      "version": "7.0.15",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@types/json5",
+      "version": "0.0.29",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@types/mdast",
+      "version": "4.0.4",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@types/ms",
+      "version": "2.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@types/node",
+      "version": "22.19.19",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@types/node",
+      "version": "25.9.5",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@types/react",
+      "version": "19.2.14",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@types/react-dom",
+      "version": "19.2.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@types/unist",
+      "version": "2.0.11",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@types/unist",
+      "version": "3.0.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@typescript-eslint/eslint-plugin",
+      "version": "8.72.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@typescript-eslint/parser",
+      "version": "8.72.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@typescript-eslint/project-service",
+      "version": "8.72.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@typescript-eslint/scope-manager",
+      "version": "8.72.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@typescript-eslint/tsconfig-utils",
+      "version": "8.72.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@typescript-eslint/type-utils",
+      "version": "8.72.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@typescript-eslint/types",
+      "version": "8.72.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@typescript-eslint/typescript-estree",
+      "version": "8.72.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@typescript-eslint/utils",
+      "version": "8.72.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@typescript-eslint/visitor-keys",
+      "version": "8.72.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@ungap/structured-clone",
+      "version": "1.3.3",
+      "license": "ISC",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "acorn",
+      "version": "8.18.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "acorn-jsx",
+      "version": "5.3.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "ajv",
+      "version": "6.15.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "ansi-styles",
+      "version": "4.3.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "argparse",
+      "version": "2.0.1",
+      "license": "Python-2.0",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "aria-hidden",
+      "version": "1.2.6",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "aria-query",
+      "version": "5.3.2",
+      "license": "Apache-2.0",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "array-buffer-byte-length",
+      "version": "1.0.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "array-includes",
+      "version": "3.2.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "array.prototype.findlast",
+      "version": "1.2.5",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "array.prototype.findlastindex",
+      "version": "1.2.6",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "array.prototype.flat",
+      "version": "1.3.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "array.prototype.flatmap",
+      "version": "1.3.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "array.prototype.tosorted",
+      "version": "1.1.4",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "arraybuffer.prototype.slice",
+      "version": "1.0.4",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "ast-types-flow",
+      "version": "0.0.8",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "async-function",
+      "version": "1.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "available-typed-arrays",
+      "version": "1.0.7",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "axe-core",
+      "version": "4.14.0",
+      "license": "MPL-2.0",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "axobject-query",
+      "version": "4.1.0",
+      "license": "Apache-2.0",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "bail",
+      "version": "2.0.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "balanced-match",
+      "version": "1.0.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "balanced-match",
+      "version": "4.0.4",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "baseline-browser-mapping",
+      "version": "2.11.30",
+      "license": "Apache-2.0",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "better-auth",
+      "version": "1.7.12",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "better-call",
+      "version": "1.4.4",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "brace-expansion",
+      "version": "1.1.21",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "brace-expansion",
+      "version": "5.0.12",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "braces",
+      "version": "3.0.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "browserslist",
+      "version": "4.28.8",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "call-bind",
+      "version": "1.0.9",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "call-bind-apply-helpers",
+      "version": "1.0.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "call-bound",
+      "version": "1.0.4",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "callsites",
+      "version": "3.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "caniuse-lite",
+      "version": "1.0.30001817",
+      "license": "CC-BY-4.0",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "ccount",
+      "version": "2.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "chalk",
+      "version": "4.1.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "character-entities",
+      "version": "2.0.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "character-entities-html4",
+      "version": "2.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "character-entities-legacy",
+      "version": "3.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "character-reference-invalid",
+      "version": "2.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "client-only",
+      "version": "0.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "color-convert",
+      "version": "2.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "color-name",
+      "version": "1.1.4",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "comma-separated-tokens",
+      "version": "2.0.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "concat-map",
+      "version": "0.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "convert-source-map",
+      "version": "2.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "core-util-is",
+      "version": "1.0.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "cross-spawn",
+      "version": "7.0.6",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "csstype",
+      "version": "3.2.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "damerau-levenshtein",
+      "version": "1.0.8",
+      "license": "BSD-2-Clause",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "data-view-buffer",
+      "version": "1.0.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "data-view-byte-length",
+      "version": "1.0.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "data-view-byte-offset",
+      "version": "1.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "debug",
+      "version": "3.2.7",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "debug",
+      "version": "4.4.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "decode-named-character-reference",
+      "version": "1.3.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "deep-is",
+      "version": "0.1.4",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "define-data-property",
+      "version": "1.1.4",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "define-lazy-prop",
+      "version": "2.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "define-properties",
+      "version": "1.2.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "defu",
+      "version": "6.1.7",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "dequal",
+      "version": "2.0.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "detect-libc",
+      "version": "2.1.2",
+      "license": "Apache-2.0",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "detect-node-es",
+      "version": "1.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "devlop",
+      "version": "1.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "dir-glob",
+      "version": "3.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "doctrine",
+      "version": "2.1.0",
+      "license": "Apache-2.0",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "docx",
+      "version": "9.7.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "dunder-proto",
+      "version": "1.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "electron-to-chromium",
+      "version": "1.5.407",
+      "license": "ISC",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "emoji-regex",
+      "version": "9.2.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "enhanced-resolve",
+      "version": "5.24.5",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "enhanced-resolve",
+      "version": "5.26.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "entities",
+      "version": "6.0.1",
+      "license": "BSD-2-Clause",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "es-abstract",
+      "version": "1.24.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "es-abstract-get",
+      "version": "1.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "es-define-property",
+      "version": "1.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "es-errors",
+      "version": "1.3.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "es-iterator-helpers",
+      "version": "1.4.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "es-object-atoms",
+      "version": "1.1.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "es-set-tostringtag",
+      "version": "2.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "es-shim-unscopables",
+      "version": "1.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "es-to-primitive",
+      "version": "1.3.4",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "escalade",
+      "version": "3.2.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "escape-string-regexp",
+      "version": "4.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "escape-string-regexp",
+      "version": "5.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "eslint",
+      "version": "9.39.4",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "eslint-config-next",
+      "version": "16.4.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "eslint-import-resolver-node",
+      "version": "0.3.10",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "eslint-import-resolver-typescript",
+      "version": "3.5.2",
+      "license": "ISC",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "eslint-module-utils",
+      "version": "2.14.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "eslint-plugin-import",
+      "version": "2.32.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "eslint-plugin-jsx-a11y",
+      "version": "6.10.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "eslint-plugin-react",
+      "version": "7.37.5",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "eslint-plugin-react-hooks",
+      "version": "7.1.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "eslint-scope",
+      "version": "8.4.0",
+      "license": "BSD-2-Clause",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "eslint-visitor-keys",
+      "version": "3.4.3",
+      "license": "Apache-2.0",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "eslint-visitor-keys",
+      "version": "4.2.1",
+      "license": "Apache-2.0",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "eslint-visitor-keys",
+      "version": "5.0.1",
+      "license": "Apache-2.0",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "espree",
+      "version": "10.4.0",
+      "license": "BSD-2-Clause",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "esquery",
+      "version": "1.7.0",
+      "license": "BSD-3-Clause",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "esrecurse",
+      "version": "4.3.0",
+      "license": "BSD-2-Clause",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "estraverse",
+      "version": "5.3.0",
+      "license": "BSD-2-Clause",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "estree-util-is-identifier-name",
+      "version": "3.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "esutils",
+      "version": "2.0.3",
+      "license": "BSD-2-Clause",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "extend",
+      "version": "3.0.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "fast-deep-equal",
+      "version": "3.1.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "fast-glob",
+      "version": "3.3.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "fast-glob",
+      "version": "3.3.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "fast-json-stable-stringify",
+      "version": "2.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "fast-levenshtein",
+      "version": "2.0.6",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "fastq",
+      "version": "1.20.3",
+      "license": "ISC",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "fdir",
+      "version": "6.5.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "file-entry-cache",
+      "version": "8.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "fill-range",
+      "version": "7.1.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "find-up",
+      "version": "5.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "flat-cache",
+      "version": "4.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "flatted",
+      "version": "3.4.4",
+      "license": "ISC",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "for-each",
+      "version": "0.3.5",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "function-bind",
+      "version": "1.1.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "function.prototype.name",
+      "version": "1.2.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "functions-have-names",
+      "version": "1.2.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "generator-function",
+      "version": "2.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "gensync",
+      "version": "1.0.0-beta.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "get-intrinsic",
+      "version": "1.3.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "get-nonce",
+      "version": "1.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "get-proto",
+      "version": "1.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "get-symbol-description",
+      "version": "1.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "get-tsconfig",
+      "version": "4.14.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "glob-parent",
+      "version": "5.1.2",
+      "license": "ISC",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "glob-parent",
+      "version": "6.0.2",
+      "license": "ISC",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "globals",
+      "version": "14.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "globals",
+      "version": "16.4.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "globalthis",
+      "version": "1.0.4",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "globalyzer",
+      "version": "0.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "globby",
+      "version": "13.1.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "globrex",
+      "version": "0.1.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "gopd",
+      "version": "1.2.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "graceful-fs",
+      "version": "4.2.11",
+      "license": "ISC",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "has-bigints",
+      "version": "1.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "has-flag",
+      "version": "4.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "has-property-descriptors",
+      "version": "1.0.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "has-proto",
+      "version": "1.2.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "has-symbols",
+      "version": "1.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "has-tostringtag",
+      "version": "1.0.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "hash.js",
+      "version": "1.1.7",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "hasown",
+      "version": "2.0.4",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "hast-util-from-parse5",
+      "version": "8.0.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "hast-util-parse-selector",
+      "version": "4.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "hast-util-raw",
+      "version": "9.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "hast-util-sanitize",
+      "version": "5.0.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "hast-util-to-jsx-runtime",
+      "version": "2.3.6",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "hast-util-to-parse5",
+      "version": "8.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "hast-util-whitespace",
+      "version": "3.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "hastscript",
+      "version": "9.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "hermes-estree",
+      "version": "0.25.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "hermes-parser",
+      "version": "0.25.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "html-url-attributes",
+      "version": "3.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "html-void-elements",
+      "version": "3.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "ignore",
+      "version": "5.2.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "ignore",
+      "version": "5.3.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "ignore",
+      "version": "7.0.13",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "immediate",
+      "version": "3.0.6",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "import-fresh",
+      "version": "3.3.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "imurmurhash",
+      "version": "0.1.4",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "inherits",
+      "version": "2.0.4",
+      "license": "ISC",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "inline-style-parser",
+      "version": "0.2.7",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "internal-slot",
+      "version": "1.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "is-alphabetical",
+      "version": "2.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "is-alphanumerical",
+      "version": "2.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "is-array-buffer",
+      "version": "3.0.5",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "is-async-function",
+      "version": "2.1.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "is-bigint",
+      "version": "1.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "is-boolean-object",
+      "version": "1.2.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "is-callable",
+      "version": "1.2.7",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "is-core-module",
+      "version": "2.17.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "is-data-view",
+      "version": "1.0.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "is-date-object",
+      "version": "1.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "is-decimal",
+      "version": "2.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "is-docker",
+      "version": "2.2.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "is-document.all",
+      "version": "1.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "is-extglob",
+      "version": "2.1.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "is-finalizationregistry",
+      "version": "1.1.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "is-generator-function",
+      "version": "1.1.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "is-glob",
+      "version": "4.0.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "is-hexadecimal",
+      "version": "2.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "is-map",
+      "version": "2.0.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "is-negative-zero",
+      "version": "2.0.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "is-number",
+      "version": "7.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "is-number-object",
+      "version": "1.1.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "is-plain-obj",
+      "version": "4.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "is-regex",
+      "version": "1.2.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "is-set",
+      "version": "2.0.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "is-shared-array-buffer",
+      "version": "1.0.4",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "is-string",
+      "version": "1.1.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "is-symbol",
+      "version": "1.1.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "is-typed-array",
+      "version": "1.1.15",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "is-weakmap",
+      "version": "2.0.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "is-weakref",
+      "version": "1.1.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "is-weakset",
+      "version": "2.0.4",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "is-wsl",
+      "version": "2.2.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "isarray",
+      "version": "1.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "isarray",
+      "version": "2.0.5",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "isexe",
+      "version": "2.0.0",
+      "license": "ISC",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "iterator.prototype",
+      "version": "1.1.5",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "jiti",
+      "version": "2.7.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "jose",
+      "version": "6.2.13",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "js-tokens",
+      "version": "3.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "js-tokens",
+      "version": "4.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "js-yaml",
+      "version": "4.3.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "jsesc",
+      "version": "3.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "json-buffer",
+      "version": "3.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "json-schema-traverse",
+      "version": "0.4.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "json-stable-stringify-without-jsonify",
+      "version": "1.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "json5",
+      "version": "1.0.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "json5",
+      "version": "2.2.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "jsx-ast-utils",
+      "version": "3.3.5",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "jszip",
+      "version": "3.10.1",
+      "license": "(MIT OR GPL-3.0-or-later)",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "keyv",
+      "version": "4.5.4",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "kysely",
+      "version": "0.29.7",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "language-subtag-registry",
+      "version": "0.3.20",
+      "license": "ODC-By-1.0",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "language-tags",
+      "version": "1.0.9",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "levn",
+      "version": "0.4.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "lie",
+      "version": "3.3.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "lightningcss",
+      "version": "1.31.1",
+      "license": "MPL-2.0",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "lightningcss-android-arm64",
+      "version": "1.31.1",
+      "license": "MPL-2.0",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "lightningcss-darwin-arm64",
+      "version": "1.31.1",
+      "license": "MPL-2.0",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "lightningcss-darwin-x64",
+      "version": "1.31.1",
+      "license": "MPL-2.0",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "lightningcss-freebsd-x64",
+      "version": "1.31.1",
+      "license": "MPL-2.0",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "lightningcss-linux-arm-gnueabihf",
+      "version": "1.31.1",
+      "license": "MPL-2.0",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "lightningcss-linux-arm64-gnu",
+      "version": "1.31.1",
+      "license": "MPL-2.0",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "lightningcss-linux-arm64-musl",
+      "version": "1.31.1",
+      "license": "MPL-2.0",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "lightningcss-linux-x64-gnu",
+      "version": "1.31.1",
+      "license": "MPL-2.0",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "lightningcss-linux-x64-musl",
+      "version": "1.31.1",
+      "license": "MPL-2.0",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "lightningcss-win32-arm64-msvc",
+      "version": "1.31.1",
+      "license": "MPL-2.0",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "lightningcss-win32-x64-msvc",
+      "version": "1.31.1",
+      "license": "MPL-2.0",
+      "evidence": "npm registry metadata"
+    },
+    {
+      "name": "locate-path",
+      "version": "6.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "lodash.merge",
+      "version": "4.6.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "longest-streak",
+      "version": "3.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "loose-envify",
+      "version": "1.4.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "lru-cache",
+      "version": "5.1.1",
+      "license": "ISC",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "magic-string",
+      "version": "0.30.21",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "markdown-table",
+      "version": "3.0.4",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "math-intrinsics",
+      "version": "1.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "mdast-util-find-and-replace",
+      "version": "3.0.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "mdast-util-from-markdown",
+      "version": "2.0.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "mdast-util-gfm",
+      "version": "3.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "mdast-util-gfm-autolink-literal",
+      "version": "2.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "mdast-util-gfm-footnote",
+      "version": "2.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "mdast-util-gfm-strikethrough",
+      "version": "2.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "mdast-util-gfm-table",
+      "version": "2.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "mdast-util-gfm-task-list-item",
+      "version": "2.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "mdast-util-mdx-expression",
+      "version": "2.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "mdast-util-mdx-jsx",
+      "version": "3.2.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "mdast-util-mdxjs-esm",
+      "version": "2.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "mdast-util-phrasing",
+      "version": "4.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "mdast-util-to-hast",
+      "version": "13.2.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "mdast-util-to-markdown",
+      "version": "2.1.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "mdast-util-to-string",
+      "version": "4.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "merge2",
+      "version": "1.4.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "micromark",
+      "version": "4.0.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "micromark-core-commonmark",
+      "version": "2.0.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "micromark-extension-gfm",
+      "version": "3.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "micromark-extension-gfm-autolink-literal",
+      "version": "2.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "micromark-extension-gfm-footnote",
+      "version": "2.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "micromark-extension-gfm-strikethrough",
+      "version": "2.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "micromark-extension-gfm-table",
+      "version": "2.1.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "micromark-extension-gfm-tagfilter",
+      "version": "2.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "micromark-extension-gfm-task-list-item",
+      "version": "2.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "micromark-factory-destination",
+      "version": "2.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "micromark-factory-label",
+      "version": "2.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "micromark-factory-space",
+      "version": "2.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "micromark-factory-title",
+      "version": "2.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "micromark-factory-whitespace",
+      "version": "2.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "micromark-util-character",
+      "version": "2.1.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "micromark-util-chunked",
+      "version": "2.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "micromark-util-classify-character",
+      "version": "2.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "micromark-util-combine-extensions",
+      "version": "2.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "micromark-util-decode-numeric-character-reference",
+      "version": "2.0.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "micromark-util-decode-string",
+      "version": "2.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "micromark-util-encode",
+      "version": "2.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "micromark-util-html-tag-name",
+      "version": "2.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "micromark-util-normalize-identifier",
+      "version": "2.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "micromark-util-resolve-all",
+      "version": "2.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "micromark-util-sanitize-uri",
+      "version": "2.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "micromark-util-subtokenize",
+      "version": "2.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "micromark-util-symbol",
+      "version": "2.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "micromark-util-types",
+      "version": "2.0.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "micromatch",
+      "version": "4.0.8",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "minimalistic-assert",
+      "version": "1.0.1",
+      "license": "ISC",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "minimatch",
+      "version": "10.2.6",
+      "license": "BlueOak-1.0.0",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "minimatch",
+      "version": "3.1.5",
+      "license": "ISC",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "minimist",
+      "version": "1.2.8",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "ms",
+      "version": "2.1.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "nanoid",
+      "version": "3.3.20",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "nanoid",
+      "version": "5.1.16",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "nanostores",
+      "version": "1.5.5",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "natural-compare",
+      "version": "1.4.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "next",
+      "version": "16.4.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "node-exports-info",
+      "version": "1.6.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "node-releases",
+      "version": "2.0.53",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "object-assign",
+      "version": "4.1.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "object-inspect",
+      "version": "1.13.4",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "object-keys",
+      "version": "1.1.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "object.assign",
+      "version": "4.1.7",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "object.entries",
+      "version": "1.1.9",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "object.fromentries",
+      "version": "2.0.8",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "object.groupby",
+      "version": "1.0.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "object.values",
+      "version": "1.2.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "open",
+      "version": "8.4.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "optionator",
+      "version": "0.9.4",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "own-keys",
+      "version": "1.0.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "p-limit",
+      "version": "3.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "p-locate",
+      "version": "5.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "pako",
+      "version": "1.0.11",
+      "license": "(MIT AND Zlib)",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "parent-module",
+      "version": "1.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "parse-entities",
+      "version": "4.0.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "parse5",
+      "version": "7.3.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "path-exists",
+      "version": "4.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "path-key",
+      "version": "3.1.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "path-parse",
+      "version": "1.0.7",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "path-type",
+      "version": "4.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "picocolors",
+      "version": "1.1.1",
+      "license": "ISC",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "picomatch",
+      "version": "2.3.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "picomatch",
+      "version": "4.0.5",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "possible-typed-array-names",
+      "version": "1.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "postcss",
+      "version": "8.5.23",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "postcss",
+      "version": "8.5.31",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "prelude-ls",
+      "version": "1.2.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "process-nextick-args",
+      "version": "2.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "prop-types",
+      "version": "15.8.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "property-information",
+      "version": "7.2.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "punycode",
+      "version": "2.3.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "queue-microtask",
+      "version": "1.2.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "react",
+      "version": "19.2.6",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "react-dom",
+      "version": "19.2.6",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "react-is",
+      "version": "16.13.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "react-markdown",
+      "version": "10.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "react-remove-scroll",
+      "version": "2.7.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "react-remove-scroll-bar",
+      "version": "2.3.8",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "react-style-singleton",
+      "version": "2.2.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "react-to-print",
+      "version": "3.3.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "readable-stream",
+      "version": "2.3.8",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "reflect.getprototypeof",
+      "version": "1.0.10",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "regexp.prototype.flags",
+      "version": "1.5.4",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "rehype-raw",
+      "version": "7.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "rehype-sanitize",
+      "version": "6.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "remark-gfm",
+      "version": "4.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "remark-parse",
+      "version": "11.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "remark-rehype",
+      "version": "11.1.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "remark-stringify",
+      "version": "11.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "resolve",
+      "version": "2.0.0-next.7",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "resolve-from",
+      "version": "4.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "resolve-pkg-maps",
+      "version": "1.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "reusify",
+      "version": "1.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "rou3",
+      "version": "0.9.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "run-parallel",
+      "version": "1.2.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "safe-array-concat",
+      "version": "1.1.4",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "safe-buffer",
+      "version": "5.1.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "safe-push-apply",
+      "version": "1.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "safe-regex-test",
+      "version": "1.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "sax",
+      "version": "1.6.1",
+      "license": "BlueOak-1.0.0",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "scheduler",
+      "version": "0.27.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "semver",
+      "version": "6.3.1",
+      "license": "ISC",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "semver",
+      "version": "7.8.5",
+      "license": "ISC",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "set-cookie-parser",
+      "version": "3.1.4",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "set-function-length",
+      "version": "1.2.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "set-function-name",
+      "version": "2.0.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "set-proto",
+      "version": "1.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "setimmediate",
+      "version": "1.0.5",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "sharp",
+      "version": "0.35.5",
+      "license": "Apache-2.0",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "shebang-command",
+      "version": "2.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "shebang-regex",
+      "version": "3.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "side-channel",
+      "version": "1.1.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "side-channel-list",
+      "version": "1.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "side-channel-map",
+      "version": "1.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "side-channel-weakmap",
+      "version": "1.0.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "slash",
+      "version": "4.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "source-map-js",
+      "version": "1.2.2",
+      "license": "BSD-3-Clause",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "space-separated-tokens",
+      "version": "2.0.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "stop-iteration-iterator",
+      "version": "1.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "string.prototype.includes",
+      "version": "2.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "string.prototype.matchall",
+      "version": "4.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "string.prototype.repeat",
+      "version": "1.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "string.prototype.trim",
+      "version": "1.2.11",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "string.prototype.trimend",
+      "version": "1.0.10",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "string.prototype.trimstart",
+      "version": "1.0.8",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "string_decoder",
+      "version": "1.1.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "stringify-entities",
+      "version": "4.0.4",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "strip-bom",
+      "version": "3.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "strip-json-comments",
+      "version": "3.1.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "style-to-js",
+      "version": "1.1.21",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "style-to-object",
+      "version": "1.0.14",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "styled-jsx",
+      "version": "5.1.6",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "supports-color",
+      "version": "7.2.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "supports-preserve-symlinks-flag",
+      "version": "1.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "synckit",
+      "version": "0.8.4",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "tailwindcss",
+      "version": "4.2.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "tapable",
+      "version": "2.3.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "tiny-glob",
+      "version": "0.2.9",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "tinyglobby",
+      "version": "0.2.17",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "to-regex-range",
+      "version": "5.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "trim-lines",
+      "version": "3.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "trough",
+      "version": "2.2.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "ts-api-utils",
+      "version": "2.5.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "tsconfig-paths",
+      "version": "3.15.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "tslib",
+      "version": "2.8.1",
+      "license": "0BSD",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "type-check",
+      "version": "0.4.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "typed-array-buffer",
+      "version": "1.0.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "typed-array-byte-length",
+      "version": "1.0.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "typed-array-byte-offset",
+      "version": "1.0.5",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "typed-array-length",
+      "version": "1.0.8",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "typescript",
+      "version": "5.9.3",
+      "license": "Apache-2.0",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "typescript-eslint",
+      "version": "8.72.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "unbox-primitive",
+      "version": "1.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "undici-types",
+      "version": "6.21.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "undici-types",
+      "version": "7.24.6",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "unified",
+      "version": "11.0.5",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "unist-util-is",
+      "version": "6.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "unist-util-position",
+      "version": "5.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "unist-util-stringify-position",
+      "version": "4.0.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "unist-util-visit",
+      "version": "5.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "unist-util-visit-parents",
+      "version": "6.0.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "update-browserslist-db",
+      "version": "1.3.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "uri-js",
+      "version": "4.4.1",
+      "license": "BSD-2-Clause",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "use-callback-ref",
+      "version": "1.3.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "use-sidecar",
+      "version": "1.1.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "util-deprecate",
+      "version": "1.0.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "vfile",
+      "version": "6.0.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "vfile-location",
+      "version": "5.0.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "vfile-message",
+      "version": "4.0.3",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "web-namespaces",
+      "version": "2.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "which",
+      "version": "2.0.2",
+      "license": "ISC",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "which-boxed-primitive",
+      "version": "1.1.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "which-builtin-type",
+      "version": "1.2.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "which-collection",
+      "version": "1.0.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "which-typed-array",
+      "version": "1.1.24",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "word-wrap",
+      "version": "1.2.5",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "xml",
+      "version": "1.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "xml-js",
+      "version": "1.6.11",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "yallist",
+      "version": "3.1.1",
+      "license": "ISC",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "yocto-queue",
+      "version": "0.1.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "zod",
+      "version": "4.6.7",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "zod-validation-error",
+      "version": "4.0.2",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "zwitch",
+      "version": "2.0.4",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    }
+  ],
+  "python": [
+    {
+      "name": "aliyun-python-sdk-core",
+      "version": "2.16.1",
+      "license": "Apache-2.0",
+      "evidence": "installed wheel metadata"
+    },
+    {
+      "name": "aliyun-python-sdk-kms",
+      "version": "2.16.5",
+      "license": "Apache-2.0",
+      "evidence": "installed wheel metadata"
+    },
+    {
+      "name": "certifi",
+      "version": "2026.10.19",
+      "license": "MPL-2.0",
+      "evidence": "installed wheel metadata"
+    },
+    {
+      "name": "cffi",
+      "version": "2.1.1",
+      "license": "MIT-0",
+      "evidence": "installed wheel metadata"
+    },
+    {
+      "name": "charset-normalizer",
+      "version": "3.5.2",
+      "license": "MIT",
+      "evidence": "installed wheel metadata"
+    },
+    {
+      "name": "crcmod",
+      "version": "1.7",
+      "license": "MIT",
+      "evidence": "installed wheel metadata"
+    },
+    {
+      "name": "cryptography",
+      "version": "50.0.2",
+      "license": "Apache-2.0 OR BSD-3-Clause",
+      "evidence": "installed wheel metadata"
+    },
+    {
+      "name": "idna",
+      "version": "3.20",
+      "license": "BSD-3-Clause",
+      "evidence": "installed wheel metadata"
+    },
+    {
+      "name": "jmespath",
+      "version": "1.1.0",
+      "license": "MIT",
+      "evidence": "installed wheel metadata"
+    },
+    {
+      "name": "oss2",
+      "version": "2.19.1",
+      "license": "MIT",
+      "evidence": "installed wheel metadata"
+    },
+    {
+      "name": "pycparser",
+      "version": "3.11",
+      "license": "BSD-3-Clause",
+      "evidence": "installed wheel metadata"
+    },
+    {
+      "name": "pycryptodome",
+      "version": "4.1.0",
+      "license": "BSD-2-Clause AND Unlicense AND MIT",
+      "evidence": "installed wheel metadata"
+    },
+    {
+      "name": "PyYAML",
+      "version": "6.0.3",
+      "license": "MIT",
+      "evidence": "installed wheel metadata"
+    },
+    {
+      "name": "requests",
+      "version": "2.34.2",
+      "license": "Apache-2.0",
+      "evidence": "installed wheel metadata"
+    },
+    {
+      "name": "six",
+      "version": "1.17.0",
+      "license": "MIT",
+      "evidence": "installed wheel metadata"
+    },
+    {
+      "name": "typing-extensions",
+      "version": "4.16.0",
+      "license": "PSF-2.0",
+      "evidence": "PyPI metadata"
+    },
+    {
+      "name": "urllib3",
+      "version": "2.8.0",
+      "license": "MIT",
+      "evidence": "installed wheel metadata"
+    }
+  ]
+}

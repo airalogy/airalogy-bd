@@ -1,0 +1,12 @@
+company: workspace-id
+events:
+  - id: YYYY-MM-DD-event-id
+    date: YYYY-MM-DD
+    category: fundraising
+    type: milestone
+    title: 公司事件标题
+    summary: 用一句话说明发生了什么，以及对公司的意义。
+    importance: key
+    participants: []
+    organizers: []
+    related_record: records/YYYYMMDD.md

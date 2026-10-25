@@ -1,0 +1,7 @@
+people:
+  - id: 姓名
+    name: 姓名
+    affiliation: 单位及职位
+    phone: null # 电话请加引号，保留 + 号与前导零
+    wechat: null
+    email: null

@@ -1,0 +1,13 @@
+project: project-demo-partnership
+contacts:
+  - person_id: 陈青
+    side: counterparty
+    project_roles:
+      - business_contact
+    notes: 虚构合作方主要联系人
+
+  - person_id: 林岚
+    side: internal
+    project_roles:
+      - project_owner
+    notes: 负责虚构合作方案和后续跟进
