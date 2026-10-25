@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {cpSync,existsSync,mkdtempSync,readFileSync,readdirSync,rmSync,writeFileSync,symlinkSync,realpathSync} from 'node:fs';
+import {cpSync,existsSync,mkdirSync,mkdtempSync,readFileSync,readdirSync,rmSync,writeFileSync,symlinkSync,realpathSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -74,6 +74,34 @@ test('automatic backup validates destination, records success, suppresses redund
     assert.notEqual(readFileSync(path.join(restored,'content/people.yaml'),'utf8'),readFileSync(path.join(w.content,'people.yaml'),'utf8'));
     assert.equal(w.call({action:'backup_config',revision:'stale',config:status.config}).code,'conflict');
   }finally{w.close();}
+});
+test('restored workspaces recreate required empty directories and pass validation on disk',()=>{
+  for(const empty of [false,true]) {
+    const w=setup();try {
+      if(empty) {
+        rmSync(path.join(w.content,'counterparties'),{recursive:true});
+        mkdirSync(path.join(w.content,'counterparties'));
+        writeFileSync(path.join(w.content,'people.yaml'),'people: []\n');
+        writeFileSync(path.join(w.content,'company/events.yaml'),'company: demo-company\nevents: []\n');
+      }
+      const backup=w.ok({action:'file_backup'});
+      const archive=w.ok({action:'backup_download',id:backup.id});
+      const destination=path.join(w.directory,'restored');
+      w.ok({action:'restore_backup',archive:archive.path,destination});
+      const content=path.join(destination,'content');
+      assert.ok(existsSync(path.join(content,'counterparties')));
+      assert.ok(existsSync(path.join(content,'company/records')));
+      if(!empty) assert.ok(existsSync(path.join(content,'counterparties/星帆创投/matters/融资对接/meetings')));
+      const validated=spawnSync(process.execPath,[path.join(root,'bin/bd.mjs'),'validate','--content',content],{
+        cwd:root,encoding:'utf8',env:{...process.env,BD_CACHE_DIR:cache},
+      });
+      assert.equal(validated.status,0,validated.stdout+validated.stderr);
+      const backedUpAgain=spawnSync(process.execPath,[path.join(root,'bin/bd.mjs'),'backup','--content',content,'--output',path.join(w.directory,'restored-backup.zip')],{
+        cwd:root,encoding:'utf8',env:{...process.env,BD_CACHE_DIR:cache},
+      });
+      assert.equal(backedUpAgain.status,0,backedUpAgain.stdout+backedUpAgain.stderr);
+    }finally{w.close();}
+  }
 });
 test('backup failure is visible without overwriting data or discarding the previous backup',()=>{
   const w=setup();try{

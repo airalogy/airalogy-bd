@@ -48,6 +48,7 @@ try {
   assert.equal((await okay(await request("/api/auth"))).id,member.user.id);
   docker(["stop",prefix]);docker(["rm",prefix]);
   docker(["run","--rm",...shared,image,"restore-backup","--archive",backup.last_success.path,"--destination","/workspace/restored"]);
+  docker(["run","--rm",...shared,image,"validate","--content","/workspace/restored/content"]);
   await start("/workspace/restored/content");
   assert.equal((await request("/api/auth")).status,401);
   const password=await request("/api/auth",{action:"auth_login",email:"admin@example.invalid",password:"container test password"},null);

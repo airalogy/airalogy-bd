@@ -276,6 +276,7 @@ class Workspace:
                 directory.rmdir()
             except OSError:
                 pass
+        (self.root / "counterparties").mkdir(exist_ok=True)
         for name in files:
             if MATTER_README.fullmatch(name):
                 (self.root / Path(name).parent / "meetings").mkdir(exist_ok=True)

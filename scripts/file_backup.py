@@ -170,6 +170,8 @@ def restore_backup(archive_path, destination):
                 if (staging / name).exists():
                     shutil.move(str(staging / name), destination / name)
             restored = Workspace(destination / "content")
+            # Backups contain files, so reconstruct required empty directories too.
+            restored.repair_directories(restored.read_files())
             result = subprocess.run(["git", "clone", "--no-checkout", "--quiet", str(staging / "history.bundle"), str(restored.repo)], capture_output=True, text=True)
             if result.returncode:
                 raise LibraryError("历史版本导入失败。")
