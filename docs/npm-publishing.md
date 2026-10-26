@@ -11,6 +11,8 @@
 5. 对经过验证的同一个 `.tgz` 执行 `npm publish /path/to/release-artifacts/airalogy-airalogy-bd-X.Y.Z.tgz --access public --registry=https://registry.npmjs.org/`，按 npm 提示完成双因素验证，不重新从不同工作目录打包发布。
 6. 用 `npm view @airalogy/airalogy-bd@X.Y.Z version dist.integrity --registry=https://registry.npmjs.org/` 核对版本，再从公开仓库安装到另一个空工作区验证。完成后将 GitHub Release 的版本、提交和安装方式一并记录。
 
+npm 接收发布后会扫描安装包，通常需等待数分钟才可按包名安装。先确认公开注册表可查询到该版本，再执行安装验证；等待期间不重复发布同一版本。首次 pnpm 安装需按 README 明确许可 `sharp` 与 `unrs-resolver` 的构建脚本。
+
 公开安装包只包含通用程序、模板、文档和许可证。产品包移除 `private: true`，独立业务工作区仍设置 `private: true`。工作区、数据库、密钥、业务附件和备份不应进入 npm 包。
 
 版本发布后不可覆盖；修复发布为新版本。应用版本发布、更新本地依赖、服务器部署分别执行。尚未验证的安装包不能仅因源码测试通过就视为可发布。

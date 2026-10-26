@@ -34,14 +34,14 @@ Airalogy BD 是一套支持本地使用与团队服务器部署的 BD 管理工�
 ```sh
 mkdir company-bd
 cd company-bd
-pnpm dlx @airalogy/airalogy-bd@1.1.0 init --id company-id --name 公司名称
+pnpm --allow-build=sharp --allow-build=unrs-resolver dlx @airalogy/airalogy-bd@1.1.0 init --id company-id --name 公司名称
 pnpm install
 ```
 
-初始化会固定当前程序版本，不依赖临时下载目录。也可以先用 pnpm 安装，再初始化：
+首次安装需要明确许可 `sharp` 和 `unrs-resolver` 的构建脚本，上述命令只允许这两项。初始化会固定当前程序版本，不依赖临时下载目录。也可以先用 pnpm 安装，再初始化：
 
 ```sh
-pnpm add -D -E @airalogy/airalogy-bd@1.1.0
+pnpm add -D -E @airalogy/airalogy-bd@1.1.0 --allow-build=sharp --allow-build=unrs-resolver
 pnpm exec bd init --id company-id --name 公司名称
 ```
 
