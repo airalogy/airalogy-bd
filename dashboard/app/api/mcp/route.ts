@@ -1,7 +1,7 @@
 import { boundedBody, privateHeaders, serverMode, trustedRequest } from "../../lib/server-auth";
 import { invokeRemote } from "../../lib/workspace-server";
 import { remoteTools } from "../../lib/remote-tools";
-import buildInfo from "../../lib/build-info.json";
+import buildInfo from "../../lib/software-build";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

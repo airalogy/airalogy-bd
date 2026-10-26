@@ -1,4 +1,4 @@
-import buildInfo from "./lib/build-info.json";
+import buildInfo from "./lib/software-build";
 import { productInfo } from "./lib/product-info";
 
 export default function SoftwareVersion({ locale, timezone }: { locale: string; timezone: string }) {

@@ -139,6 +139,8 @@ function workspaceRequest(contentDirectory, request) {
 }
 
 function runNext(command, contentDirectory, forwardedArguments) {
+  const sourceDevelopment = command === "dev" && forwardedArguments.includes("--source");
+  if (sourceDevelopment) forwardedArguments = forwardedArguments.filter(argument => argument !== "--source");
   const serverMode = process.env.BD_MODE === "server";
   if (process.env.BD_MODE && !["local","server"].includes(process.env.BD_MODE)) fail("BD_MODE 只支持 local 或 server。");
   if (serverMode && command !== "build") {
@@ -149,15 +151,19 @@ function runNext(command, contentDirectory, forwardedArguments) {
   }
   if (command !== "build") workspaceRequest(contentDirectory, {action:"checkpoint",origin:"checkpoint",label:"启动工作台时留存资料",force:true});
   const dataFile = command === "build" ? generateData(contentDirectory) : path.join(contentDirectory,"generated","dashboard.json");
-  const dashboardDirectory = runtimeDashboardDirectory({prepare:command !== "start"});
+  // Let Next.js watch the real source tree and manage Fast Refresh itself.
+  // Installed workspaces and production builds retain their isolated runtime.
+  const dashboardDirectory = sourceDevelopment ? dashboardSourceDirectory : runtimeDashboardDirectory({prepare:command !== "start"});
   const nextBinary = require.resolve("next/dist/bin/next");
-  const env = {...process.env, BD_DATA_FILE:dataFile, BD_CONTENT_DIR:contentDirectory, BD_SERVICE_FILE:path.join(scriptsDirectory,"workspace_service.py"), BD_CACHE_DIR:cacheDirectory, BD_CSRF_TOKEN:randomBytes(32).toString("hex")};
-  if (command === "build") {run(process.execPath,[nextBinary,command,dashboardDirectory,...(forwardedArguments.some(x=>["--webpack","--turbopack","--turbo"].includes(x))?[]:["--webpack"]),...forwardedArguments],{env});return;}
+  const env = {...process.env, BD_DATA_FILE:dataFile, BD_CONTENT_DIR:contentDirectory, BD_SERVICE_FILE:path.join(scriptsDirectory,"workspace_service.py"), BD_CACHE_DIR:cacheDirectory, BD_CSRF_TOKEN:randomBytes(32).toString("hex"), NEXT_PUBLIC_BD_DEV_BUILD_INFO:sourceDevelopment ? JSON.stringify(createBuildInfo(packageRoot)) : ""};
+  const bundler = command !== "start" && !forwardedArguments.some(x=>["--webpack","--turbopack","--turbo"].includes(x)) ? ["--webpack"] : [];
+  if (command === "build") {run(process.execPath,[nextBinary,command,dashboardDirectory,...bundler,...forwardedArguments],{env});return;}
   const hosts = forwardedArguments.flatMap((arg,index) => ["--hostname","-H"].includes(arg) ? [forwardedArguments[index+1]] : arg.startsWith("--hostname=") ? [arg.slice(11)] : arg.startsWith("-H") ? [arg.slice(2)] : []);
   const suppliedHost = hosts.length > 0;
   if (!serverMode && hosts.some(host => !["localhost","127.0.0.1","::1"].includes(host))) fail("本地模式只允许绑定本机地址；对外服务请配置服务器模式和登录账号。");
+  if (sourceDevelopment) console.log("源码开发模式：由 Next.js 自动刷新，编译缓存保存在 dashboard/.next。");
   const watcher = spawn(process.execPath,[path.join(scriptsDirectory,"watch-content.mjs")],{env,stdio:"inherit"});
-  const server = spawn(process.execPath,[nextBinary,command,dashboardDirectory,...(!suppliedHost ? ["--hostname","127.0.0.1"] : []),...forwardedArguments],{env,stdio:"inherit"});
+  const server = spawn(process.execPath,[nextBinary,command,dashboardDirectory,...bundler,...(!suppliedHost ? ["--hostname","127.0.0.1"] : []),...forwardedArguments],{env,stdio:"inherit"});
   const stop = signal => {watcher.kill(signal);server.kill(signal);};
   process.once("SIGINT",() => stop("SIGINT"));
   process.once("SIGTERM",() => stop("SIGTERM"));
@@ -182,7 +188,7 @@ function printHelp() {
   bd launch
   bd validate [--content <dir>]
   bd data [--content <dir>]
-  bd dev [--content <dir>] [Next.js options]
+  bd dev [--source] [--content <dir>] [Next.js options]
   bd build [--content <dir>] [Next.js options]
   bd start [--content <dir>] [Next.js options]
   bd lint

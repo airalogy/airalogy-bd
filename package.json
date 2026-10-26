@@ -18,7 +18,6 @@
     "dashboard/app/**/*.json",
     "dashboard/public/airalogy-logo.svg",
     "dashboard/eslint.config.mjs",
-    "dashboard/next-env.d.ts",
     "dashboard/next.config.ts",
     "dashboard/postcss.config.mjs",
     "dashboard/tsconfig.json",
@@ -45,12 +44,13 @@
     "version:check": "node scripts/check-version.mjs",
     "validate": "node bin/bd.mjs validate --content fixtures/demo/content",
     "data": "node bin/bd.mjs data --content fixtures/demo/content",
-    "dev": "node bin/bd.mjs dev --content fixtures/demo/content",
+    "dev": "node bin/bd.mjs dev --source --content fixtures/demo/content",
     "build": "node bin/bd.mjs build --content fixtures/demo/content",
     "lint": "node bin/bd.mjs lint",
     "test": "pnpm version:check && pnpm publication:check && pnpm validate && pnpm lint && pnpm build && node --test tests/*.test.mjs",
     "publication:check": "node scripts/check-publication.mjs",
-    "test:package": "node tests/package-smoke.mjs"
+    "test:package": "node tests/package-smoke.mjs",
+    "test:dev": "node tests/dev-smoke.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.23",

@@ -4,6 +4,7 @@ node_modules
 /.next/
 /.airalogy-bd/
 dashboard/.next/
+dashboard/next-env.d.ts
 dashboard/tsconfig.tsbuildinfo
 fixtures/demo/content/generated/
 

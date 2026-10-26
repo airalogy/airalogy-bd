@@ -19,6 +19,7 @@ test("software identity follows executable sources rather than company data, cac
     assert.ok(Number.isFinite(Date.parse(first.built_at)));
     put("content/people.yaml","changed business content");
     put("dashboard/.next/cache/test","changed generated output");
+    put("dashboard/next-env.d.ts","generated Next.js declarations");
     put("scripts/__pycache__/service.pyc","python cache");
     put("dashboard/node_modules/dependency/index.js","dependency symlink substitute");
     put("README.md","documentation edit");

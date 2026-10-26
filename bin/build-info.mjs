@@ -7,7 +7,7 @@ import path from "node:path";
 export function createBuildInfo(packageRoot) {
   const manifest = JSON.parse(readFileSync(path.join(packageRoot, "package.json"), "utf8"));
   const hash = createHash("sha256");
-  const ignored = new Set(["node_modules", ".next", "__pycache__", ".pytest_cache", ".DS_Store", "tsconfig.tsbuildinfo"]);
+  const ignored = new Set(["node_modules", ".next", "__pycache__", ".pytest_cache", ".DS_Store", "tsconfig.tsbuildinfo", "next-env.d.ts"]);
   const visit = relative => {
     const absolute = path.join(packageRoot, relative);
     if (!existsSync(absolute)) return;

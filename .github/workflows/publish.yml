@@ -48,6 +48,8 @@ jobs:
           pnpm install --frozen-lockfile
       - name: Test source
         run: pnpm test
+      - name: Test native development refresh
+        run: pnpm test:dev
       - name: Test the actual installation package
         run: pnpm test:package --output-dir "$RUNNER_TEMP/npm-artifacts"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

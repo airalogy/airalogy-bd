@@ -2,6 +2,8 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // Development must not generate instruction files inside the source checkout.
+  agentRules: false,
   serverExternalPackages: ["better-auth"],
   async headers() {
     return [{source:"/:path*",headers:[
