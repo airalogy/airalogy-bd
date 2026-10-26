@@ -24,7 +24,7 @@ npm 接收发布后会扫描安装包，通常需等待数分钟才可按包名�
 ### 一次性配置
 
 1. 在 GitHub 仓库创建名为 `npm` 的 Environment，Deployment branches and tags 选择 Selected branches and tags，只添加类型为 Tag、名称为 `v*.*.*` 的规则，不允许分支进入此环境。
-2. 在 npm 包的 Settings → Trusted publishing 添加 GitHub Actions：组织 `airalogy`、仓库 `airalogy-bd`、工作流文件名 `publish.yml`、环境 `npm`。只允许直接 Publish，不额外允许 staged publish 或 dist-tag 管理。更改信任配置仍需管理员完成 npm 双因素验证。
+2. 在 npm 包的 Settings → Trusted publishing 添加 GitHub Actions：组织 `airalogy`、仓库 `airalogy-bd`、工作流文件名 `publish.yml`、环境 `npm`。允许直接 Publish；本工作流只执行正式发布，不使用 staged publish 或独立的 dist-tag 管理。更改信任配置仍需管理员完成 npm 双因素验证。
 3. 也可使用 npm 11.15.0 以上的官方命令完成绑定：
 
    ```sh
