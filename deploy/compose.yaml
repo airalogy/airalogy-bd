@@ -1,9 +1,7 @@
 name: airalogy-bd
 services:
   bd:
-    image: airalogy-bd:local
-    build:
-      context: ..
+    image: ${BD_IMAGE:?Set BD_IMAGE to a published version or digest}
     init: true
     restart: unless-stopped
     env_file: ${BD_DEPLOY_ENV_FILE:-.env}

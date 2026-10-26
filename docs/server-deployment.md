@@ -21,26 +21,52 @@
 
 可以和现有服务共用 ECS，但使用独立容器、数据卷和反向代理站点。先确认空闲内存、CPU、磁盘和备份容量；镜像构建建议在 CI 或开发机完成，避免构建影响生产站点。示例限制为 1 CPU / 1.5 GiB，需按实际负载调整。只有宿主机的 `127.0.0.1:3100` 暴露应用；使用现有 Nginx 接入 HTTPS，不抢占现有站点的 80/443 端口。
 
-以下命令在本代码仓库执行。需要 Docker Engine 和 Compose v2。
+### 推荐：使用预构建镜像
+
+需要 Docker Engine 和 Compose v2。选择附带 `airalogy-bd-X.Y.Z-deploy.tar.gz`、且 **Release packages** 工作流成功的 GitHub Release。npm 上存在某个版本不代表该版本的容器镜像已经发布。
+
+下载并解压部署包到独立目录，无需下载源码或在服务器构建。部署包包含 `compose.yaml`、`.env.example`、`image.json` 和使用说明。镜像名为 `ghcr.io/airalogy/airalogy-bd:X.Y.Z`，支持 Linux amd64 / arm64；生成的配置进一步锁定该版本的镜像摘要，Docker 自动选择匹配的架构。核对 Release 的 `SHA256SUMS` 后，在解压目录执行：
 
 ```sh
-cp deploy/.env.example deploy/.env
-chmod 600 deploy/.env
-# 生成认证密钥，将输出填入 deploy/.env 的 BETTER_AUTH_SECRET，并单独妥善保管。
+cp .env.example .env
+chmod 600 .env
+# 生成认证密钥，将输出填入 .env 的 BETTER_AUTH_SECRET，并独立妥善保管。
 openssl rand -hex 32
-# 编辑 deploy/.env，至少设置 BD_PUBLIC_URL 和 BETTER_AUTH_SECRET。
-docker compose -f deploy/compose.yaml build
-docker compose -f deploy/compose.yaml run --rm bd init --id company-id --name 公司名称
-docker compose -f deploy/compose.yaml run --rm bd account-init --email admin@example.com --name 管理员姓名
-docker compose -f deploy/compose.yaml up -d
+# 编辑 .env，至少设置 BD_PUBLIC_URL 和 BETTER_AUTH_SECRET。
+docker compose pull
+docker compose run --rm bd init --id company-id --name 公司名称
+docker compose run --rm bd account-init --email admin@example.com --name 管理员姓名
+docker compose up -d
 ```
 
-官方 npm 下载不稳定时，可在构建时传 `--build-arg NPM_REGISTRY=https://registry.npmmirror.com`。此选项仅影响依赖下载，仍按同一锁文件校验完整性，不改变运行时配置。
+安装过程不需要 Node.js、pnpm 或 uv，运行依赖已在镜像内。公开 GHCR 镜像支持匿名拉取。连接 GHCR 受限时，可由维护人员将同一镜像同步到公司镜像仓库并核对摘要，再设置 `BD_IMAGE`；不要改用不明来源的镜像。
+
+### 使用仓库中的配置或从源码构建
+
+仓库中的 `deploy/compose.yaml` 同样只拉取镜像。复制 `deploy/.env.example` 为 `deploy/.env`，填写已发布的 `BD_IMAGE` 版本或摘要及必要配置；使用下列命令使 Compose 同时读取镜像选择和运行环境：
+
+```sh
+docker compose --env-file deploy/.env -f deploy/compose.yaml pull
+docker compose --env-file deploy/.env -f deploy/compose.yaml run --rm bd init --id company-id --name 公司名称
+docker compose --env-file deploy/.env -f deploy/compose.yaml run --rm bd account-init --email admin@example.com --name 管理员姓名
+docker compose --env-file deploy/.env -f deploy/compose.yaml up -d
+```
+
+需要修改源码时，将 `deploy/.env` 的 `BD_IMAGE` 明确设为 `airalogy-bd:local`，增加源码构建配置：
+
+```sh
+docker compose --env-file deploy/.env -f deploy/compose.yaml -f deploy/compose.build.yaml build
+docker compose --env-file deploy/.env -f deploy/compose.yaml -f deploy/compose.build.yaml up -d
+```
+
+官方 npm 下载不稳定时，可仅在源码构建命令后添加 `--build-arg NPM_REGISTRY=https://registry.npmmirror.com`。它只影响构建依赖下载，仍按锁文件校验完整性。
+
+下文的仓库命令均显式指定 `deploy/.env` 和 Compose 文件。使用下载的部署包时，在解压目录改为 `docker compose` 即可。
 
 复制终端的一次性链接，由管理员本人打开设置登录。不要把该链接贴入公共日志或工单。初始化已存在管理员时会拒绝重复创建；丢失验证器或管理员账号无法登录时，由持有服务器权限的维护人员执行：
 
 ```sh
-docker compose -f deploy/compose.yaml run --rm bd account-recover --email admin@example.com
+docker compose --env-file deploy/.env -f deploy/compose.yaml run --rm bd account-recover --email admin@example.com
 ```
 
 恢复命令立即注销该账号旧会话、密码和验证器，发出新的单次邀请。不会改变原有角色或事项授权。邀请过期也可重新签发。
@@ -61,7 +87,7 @@ docker compose -f deploy/compose.yaml run --rm bd account-recover --email admin@
 
 1. 创建专用私有 Bucket，开启阻止公共访问；不要为备份前缀配置公开策略、静态网站或公共下载域名。
 2. 创建专用 RAM 身份，仅允许目标 Bucket 的 `oss:GetBucketAcl`，以及 `bd-backups/*` 前缀的 `oss:PutObject`、`oss:GetObject`（含 HEAD）。不需要删除、列举全 Bucket 或修改 ACL 的管理权限。通过 ECS 环境配置专用 AccessKey，或配置会被外部系统及时轮换的临时 STS 凭据；应用本身不负责 STS 续期，不要使用主账号密钥。
-3. 填写 `deploy/.env` 的地域、Bucket、HTTPS Endpoint、前缀和 `OSS_ACCESS_KEY_ID` / `OSS_ACCESS_KEY_SECRET`。同地域 ECS 可用对应 `-internal` Endpoint。凭据只存在部署环境，页面、业务资料和备份均不保存它们。限制环境文件及 Docker 管理权限。
+3. 填写部署环境文件 `.env` 的地域、Bucket、HTTPS Endpoint、前缀和 `OSS_ACCESS_KEY_ID` / `OSS_ACCESS_KEY_SECRET`。同地域 ECS 可用对应 `-internal` Endpoint。凭据只存在部署环境，页面、业务资料和备份均不保存它们。限制环境文件及 Docker 管理权限。
 4. 设置 `BD_OSS_BACKUP=1`，重新创建容器。若曾在页面保存过设置，页面设置优先于环境默认值；需在“备份”页面开启“同步到私有 OSS”。立即备份一次，确认页面同时出现本地位置和 OSS 对象位置。
 5. OSS 对象使用唯一名称、私有 ACL、AES256 服务端加密和 Content-MD5 校验。上传后再次核对大小与 SHA-256 元数据，确认后才标记整次备份成功。备份含密码哈希和已加密的验证器密钥，必须按敏感资料管理。
 6. OSS 生命周期由管理员在 Bucket 中配置，例如仅对 `bd-backups/` 保留 90 天。程序没有删除 OSS 对象的权限。是否启用版本控制/保留策略由公司运维决定。
@@ -87,8 +113,8 @@ docker compose -f deploy/compose.yaml run --rm bd account-recover --email admin@
 从 OSS 控制台下载 ZIP（维护人员身份）或选择本地 ZIP。保持原工作区不动，先恢复到尚不存在的新目录，例如在维护用容器中：
 
 ```sh
-docker compose -f deploy/compose.yaml stop bd
-docker compose -f deploy/compose.yaml run --rm bd restore-backup --archive /backups/备份文件.zip --destination /workspace/restored
+docker compose --env-file deploy/.env -f deploy/compose.yaml stop bd
+docker compose --env-file deploy/.env -f deploy/compose.yaml run --rm bd restore-backup --archive /backups/备份文件.zip --destination /workspace/restored
 ```
 
 此时数据在 `/workspace/restored/content`，账号在 `/workspace/restored/.bd-auth`。将部署服务的 `command` 设置为 `["start", "--content", "/workspace/restored/content", "--hostname", "0.0.0.0", "--port", "3000"]` 后启动；账号恢复等维护命令也传同一 `--content`。应用会重新校验全部文件及关联、重建显示数据；恢复原 `BETTER_AUTH_SECRET` 后，已绑定成员重新登录，未完成激活的成员可重新签发邀请。重新配置并验证备份。确认事项、附件下载、权限和历史完整后，才处理恢复前的工作区目录。勿执行 `docker compose down -v`，它会删除持久卷。

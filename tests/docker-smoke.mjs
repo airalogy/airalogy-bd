@@ -3,12 +3,15 @@
 import assert from "node:assert/strict";
 import {spawnSync} from "node:child_process";
 import {createHmac,randomBytes} from "node:crypto";
+import {readFileSync} from "node:fs";
 import {httpFetch as fetch} from "./http-client.mjs";
 const prefix="bd-smoke-"+randomBytes(6).toString("hex");
 const image=process.env.BD_TEST_IMAGE||"airalogy-bd:test";
+const expectedVersion=process.env.BD_TEST_VERSION||JSON.parse(readFileSync(new URL("../package.json",import.meta.url))).version;
+const platform=process.env.BD_TEST_PLATFORM;
 const volumes=[prefix+"-workspace",prefix+"-backups",prefix+"-cache"];
 const origin="https://bd.container.test.invalid";
-const shared=["--init","--read-only","--tmpfs","/tmp:mode=1777,size=256m","--cap-drop","ALL","--security-opt","no-new-privileges:true","--memory","1536m","-v",volumes[0]+":/workspace","-v",volumes[1]+":/backups","-v",volumes[2]+":/opt/bd/.uv-cache","-e","BD_PUBLIC_URL="+origin,"-e","BD_BACKUP_DIRECTORY=/backups","-e","BETTER_AUTH_SECRET="+randomBytes(32).toString("hex")];
+const shared=[...(platform?["--platform",platform]:[]),"--init","--read-only","--tmpfs","/tmp:mode=1777,size=256m","--cap-drop","ALL","--security-opt","no-new-privileges:true","--memory","1536m","-v",volumes[0]+":/workspace","-v",volumes[1]+":/backups","-v",volumes[2]+":/opt/bd/.uv-cache","-e","BD_PUBLIC_URL="+origin,"-e","BD_BACKUP_DIRECTORY=/backups","-e","BETTER_AUTH_SECRET="+randomBytes(32).toString("hex")];
 const docker=(args,allowFailure=false)=>{const result=spawnSync("docker",args,{encoding:"utf8",timeout:120000,maxBuffer:4000000});if(!allowFailure)assert.equal(result.status,0,result.stderr);return result.stdout.trim();};
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 let base="",member=null;
@@ -22,7 +25,17 @@ async function start(content){
   throw new Error("Container did not start: "+docker(["logs",prefix],true));
 }
 try {
-  docker(["run","--rm",...shared,image,"init","--id","test-company","--name","容器测试公司"]);
+  const info=JSON.parse(docker(["image","inspect",image]))[0];
+  assert.equal(info.Config.User,"10001:10001");
+  if(process.env.BD_TEST_REVISION) {
+    assert.equal(info.Config.Labels["org.opencontainers.image.version"],expectedVersion);
+    assert.equal(info.Config.Labels["org.opencontainers.image.revision"],process.env.BD_TEST_REVISION);
+  }
+  const actualVersion=docker(["run","--rm",...shared,"--network","none","--entrypoint","node",image,"-p","require('/opt/bd/package.json').version"]);
+  assert.equal(actualVersion,expectedVersion);
+  const build=JSON.parse(docker(["run","--rm",...shared,"--network","none","--entrypoint","node",image,"-p","JSON.stringify(require('/opt/bd/runtime/app/lib/build-info.json'))"]));
+  assert.equal(build.version,expectedVersion);
+  docker(["run","--rm","--rm",...shared,image,"init","--id","test-company","--name","容器测试公司"]);
   const invitation=docker(["run","--rm",...shared,image,"account-init","--email","admin@example.invalid","--name","测试管理员"]);
   const token=invitation.match(/\/join#([A-Za-z0-9_-]+)/)?.[1];assert.ok(token);
   await start();
@@ -63,7 +76,7 @@ try {
   assert.equal((await okay(await request("/api/auth",{action:"auth_invite_info",token:recoveredToken},null))).email,"admin@example.invalid");
   member=await enroll(recoveredToken);
   assert.equal((await okay(await request("/api/workspace?action=workspace"))).data.workspace.name,"容器测试公司");
-  console.log("Container smoke passed: non-root, read-only system, invitation/login, empty private workspace, verified backup, restart persistence, isolated restore, revoked sessions and account recovery.");
+  console.log("Container smoke passed: exact version, offline runtime, non-root, read-only system, invitation/login, empty private workspace, verified backup, restart persistence, isolated restore, revoked sessions and account recovery.");
 } finally {
   docker(["rm","-f",prefix],true);
   for(const volume of volumes)docker(["volume","rm",volume],true);

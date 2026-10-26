@@ -1,0 +1,5 @@
+# Optional source-build overlay. Set BD_IMAGE=airalogy-bd:local explicitly.
+services:
+  bd:
+    build:
+      context: ..

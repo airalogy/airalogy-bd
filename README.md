@@ -27,6 +27,15 @@ Airalogy BD 是一套支持本地使用与团队服务器部署的 BD 管理工�
 - uv
 - Git
 
+## 安装方式
+
+- 团队成员：打开公司部署的网址，无需安装。
+- 公司服务器：优先下载 GitHub Release 的预构建镜像部署包，按[团队部署说明](docs/server-deployment.md)使用固定版本镜像；不需要在服务器安装开发依赖或构建程序。
+- 本地工作台：用 pnpm 安装固定版本的 npm 包，步骤见下文。
+- 开发与定制：检出 GitHub 源码。
+
+容器镜像与 npm、GitHub Release 使用同一 `x.y.z`，支持 Linux amd64 / arm64。以 Release 中的部署附件和工作流成功状态确认可用性，不根据 npm 版本推断镜像已经发布。
+
 ## 安装与初始化
 
 在独立的业务工作区安装指定版本。以下以 `1.1.1` 为例，需要该版本已发布到 npm：
@@ -112,6 +121,8 @@ pnpm dev
 ```
 
 `fixtures/demo/content/` 只包含虚构数据，用于平台回归测试。
+
+日常开发直接运行 `pnpm dev`，不构建 Docker。当前入口会准备独立运行目录，修改产品源码后需重启开发服务使新代码生效；业务资料变更会自动刷新。按改动运行针对性测试，发版前再执行完整测试。Docker 构建和双架构容器演练用于正式发版，以及 Dockerfile、系统依赖或容器运行配置的修改，不是每次开发都必须执行的步骤。
 
 需要在独立工作区调试源码时，可执行 `node /path/to/airalogy-bd/bin/bd.mjs init --source`，再安装工作区依赖。`--source` 仅为新依赖使用本地链接；初始化不会覆盖已有依赖版本或自定义命令。npm 安装包的验证和发布见[发布说明](docs/npm-publishing.md)。
 
@@ -278,7 +289,7 @@ bd dev --content /path/to/new-workspace/content
 
 版本信息在 `bd build` / `bd dev` 准备运行目录时固定，`bd start` 沿用已有构建的信息；修改或升级源码后需重新构建并启动才能加载。界面仅展示当前运行版本，不自动查询远程发布，发布状态由发布标签与分发产物确定。
 
-`pnpm version:check` 检查软件版本与更新记录是否一致，已纳入 `pnpm test`。代码提交和推送不自动发版或部署。正式发布 GitHub Release 后，已配置的[可信发布流程](docs/npm-publishing.md)会验证并发布 npm 安装包；服务器部署仍单独执行。
+`pnpm version:check` 检查软件版本与更新记录是否一致，已纳入 `pnpm test`。代码提交和推送不自动发版或部署。正式发布 GitHub Release 后，已配置的[可信发布流程](docs/npm-publishing.md)会验证并发布 npm 安装包、同版本容器镜像和部署附件；服务器部署仍单独执行。
 
 公开前运行 `pnpm publication:check`，并按 [公开代码检查说明](docs/publication-check.md) 复核源码及实际分发文件。
 

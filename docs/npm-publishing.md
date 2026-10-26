@@ -19,7 +19,7 @@ npm 接收发布后会扫描安装包，通常需等待数分钟才可按包名�
 
 ## GitHub 可信发布
 
-仓库提供 [npm release 工作流](../.github/workflows/publish.yml)。正式发布 GitHub Release 时自动检查并发布 npm；普通提交、推送、仅创建标签、草稿 Release 和手动检查均不会发布 npm。预发布版本不允许发布到 `latest`。
+仓库提供 [Release packages 工作流](../.github/workflows/publish.yml)。正式发布 GitHub Release 时自动检查并发布 npm 和同版本容器镜像；普通提交、推送、仅创建标签、草稿 Release 和手动检查均不会发布 npm。预发布版本不允许发布到 `latest`。
 
 ### 一次性配置
 
@@ -38,13 +38,26 @@ npm 接收发布后会扫描安装包，通常需等待数分钟才可按包名�
 ### 日常发版
 
 1. 修改版本号与更新记录，完成审阅后将源码提交、推送到 `main`。
-2. 如需提前检查，在 GitHub Actions → npm release → Run workflow 中选择 `main`。手动运行只检查并保留安装包，不取得 npm 发布身份。
+2. 如需提前检查，在 GitHub Actions → Release packages → Run workflow 中选择 `main`。手动运行检查安装包及两种架构的镜像，不取得 npm 或 GHCR 发布权限。
 3. 为已准备好的提交创建 `vX.Y.Z` 标签，在 GitHub 正式发布对应的 Release。标签必须匹配 `package.json` 的 `x.y.z`，指向 `main` 历史中的提交；发布后不移动标签或覆盖版本。
 4. 工作流先执行完整测试，再打包并在独立工作区验证安装、初始化、启动器、Logo、资料保留和生产构建。测试任务只有源码读取权限，不具有 OIDC 发布权限。
-5. 独立发布任务进入 `npm` 环境，下载本次测试的同一份归档并核对 SHA-256、包名、版本及来源。该任务不检出业务程序、不安装程序依赖、不运行安装包脚本；通过 OIDC 临时身份向 npm 发布，并等待公开注册表中的 SHA-512 完整性校验通过。
+5. 两个原生架构 runner 分别构建并实际测试 Linux amd64 / arm64 镜像，按架构复用 GitHub Actions 构建缓存，覆盖邀请、登录、备份、重启和恢复。两者通过后才开始发布 npm。
+6. 独立发布任务进入 `npm` 环境，下载本次测试的同一份归档并核对 SHA-256、包名、版本及来源。该任务不检出业务程序、不安装程序依赖、不运行安装包脚本；通过 OIDC 临时身份向 npm 发布，并等待公开注册表中的 SHA-512 完整性校验通过。
 
-GitHub Release 创建成功不表示 npm 已成功发布，须等待 Actions 的 `publish` 任务完成。npm 扫描或网络验证超时后，先检查注册表是否已存在该版本；不能盲目重发。工作流会拒绝覆盖已有版本。验证归档保存在该次 Actions 的 Artifacts 中，保留 14 天。服务器部署和业务工作区依赖更新仍需另外执行。
+GitHub Release 创建成功不表示 npm 已成功发布，须等待整个 **Release packages** 工作流完成；镜像发布、匿名拉取验证和 Release 附件均为独立步骤。npm 扫描或网络验证超时后，先检查注册表是否已存在该版本；不能盲目重发。工作流会拒绝覆盖已有版本。验证归档保存在该次 Actions 的 Artifacts 中，保留 14 天，测试镜像归档保留 7 天。失败时优先选择 GitHub 的 **Re-run failed jobs**，复用同一批已验证归档；不要移动标签或重新构建后覆盖已发布版本。服务器部署和业务工作区依赖更新仍需另外执行。
 
 仓库管理员及有权修改工作流、创建版本标签和 Release 的维护者能影响发布，应只向受信任人员授予相关权限。需要多人审批时，可在 `npm` 环境增加 Required reviewers，不必改回长期 npm 密钥。
 
-参考：[npm 公开组织包](https://docs.npmjs.com/creating-and-publishing-scoped-public-packages/)、[npm Trusted Publishing](https://docs.npmjs.com/trusted-publishers/)、[npm trust 命令](https://docs.npmjs.com/cli/v11/commands/npm-trust/)。
+## 容器与 Release 附件
+
+镜像发布到 `ghcr.io/airalogy/airalogy-bd:X.Y.Z`，与 npm 和 GitHub Release 的版本一致。只提供固定版本及用于合并的 `X.Y.Z-amd64` / `X.Y.Z-arm64` 标签，不自动更新 `latest`。镜像记录源码提交号及版本，并由已测试的两份归档合并成一个多架构版本，发布任务不会重新构建镜像。
+
+GHCR 使用该次 GitHub Actions 的 `GITHUB_TOKEN`，不需要保存个人访问令牌。构建和容器测试没有镜像写权限；只有镜像发布任务取得 `packages: write`，Release 附件任务单独取得 `contents: write`。正式发布任务共用现有的 `npm` 环境及版本标签限制，不修改 npm 的信任绑定。
+
+**首次 GHCR 发布后**，包管理员需要在 GitHub Packages 的 `airalogy-bd` 设置中将 Visibility 设为 **Public**。GHCR 新包默认私有，不能根据源码仓库公开就假定镜像也已公开。工作流在全新任务中清空 Docker 登录配置，分别验证两种架构可匿名拉取；如果首次发布停在此处，设置公开后重跑失败任务。组织须允许该仓库创建和发布容器包。
+
+镜像验证完成后，Release 自动附上 npm 的同一 `.tgz` 及其校验文件、锁定镜像摘要的 `airalogy-bd-X.Y.Z-deploy.tar.gz`、`image.json` 与 `SHA256SUMS`。部署包不含账号、密钥或业务资料。普通提交和手动检查不创建这些正式发布附件，也不部署服务器。
+
+不同注册表不能提供跨平台的原子发布：若 npm 已成功而镜像步骤失败，该 Release 尚未完整交付。按失败步骤重试，不更换已发布包。相同镜像摘要或 Release 附件可以安全重试；检测到同版本下不同内容时会拒绝覆盖。镜像归档过期后需人工检查发布状态，不能用新构建直接替换已有版本。
+
+参考：[GitHub Container Registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)、[npm 公开组织包](https://docs.npmjs.com/creating-and-publishing-scoped-public-packages/)、[npm Trusted Publishing](https://docs.npmjs.com/trusted-publishers/)、[npm trust 命令](https://docs.npmjs.com/cli/v11/commands/npm-trust/)。
