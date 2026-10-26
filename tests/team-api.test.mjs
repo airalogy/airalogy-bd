@@ -52,12 +52,13 @@ test("server HTTP enforces invitations, scope, roles, CSRF, concurrent saves, do
     return [...jar].map(([key,value])=>`${key}=${value}`).join("; ");
   };
   let clientNumber=10;
-  const join=async(token)=>{
+  const join=async(token,providedEmail)=>{
     const ip=`192.0.2.${clientNumber++}`;
     const info=await okay(await request("/api/auth",{action:"auth_invite_info",token}));
     assert.equal(info.secret,undefined);
-    const chosen=info.username||info.email.split("@")[0].replace(/[^a-z0-9._]/gi,"_");
-    const accepted=await request("/api/auth",{action:"auth_accept",token,username:chosen,password:"member secure password",role:"admin",mfaVerified:true},null,{"X-Real-IP":ip});
+    const email=info.email||providedEmail;
+    const chosen=info.username||email.trim().split("@")[0].replace(/[^a-z0-9._]/gi,"_");
+    const accepted=await request("/api/auth",{action:"auth_accept",token,email,username:chosen,password:"member secure password",role:"admin",mfaVerified:true},null,{"X-Real-IP":ip});
     assert.equal((await okay(accepted)).step,"setup");
     const partial={cookie:cookieJar(accepted),user:{csrf:""},ip};
     assert.equal((await request("/api/workspace?action=workspace",null,partial)).status,401);
@@ -68,7 +69,7 @@ test("server HTTP enforces invitations, scope, roles, CSRF, concurrent saves, do
     assert.match(cookie,/HttpOnly/);assert.match(cookie,/; Secure/);assert.match(cookie,/__Secure-bd.session_token=/);assert.match(cookie,/SameSite=Lax/i);assert.equal(session.session_token,undefined);
     assert.equal((await request("/api/workspace?action=workspace",null,partial)).status,401);
     assert.equal(session.user.username,chosen.toLowerCase());
-    return {...session,cookie:cookieJar(response,partial.cookie),secret:setup.secret,email:info.email,ip};
+    return {...session,cookie:cookieJar(response,partial.cookie),secret:setup.secret,email:email.trim().toLowerCase(),ip};
   };
   const passwordStep=async(member)=>{
     const response=await request("/api/auth",{action:"auth_login",email:member.email,password:"member secure password"},null,{"X-Real-IP":member.ip});
@@ -122,6 +123,37 @@ test("server HTTP enforces invitations, scope, roles, CSRF, concurrent saves, do
     const invite=async(role,email)=>okay(await request("/api/auth",{action:"team_invite",email,name:role,role,all_projects:false,project_ids:[project]},admin));
     const viewer=await join((await invite("viewer","viewer@example.invalid")).token);
     const editor=await join((await invite("editor","editor@example.invalid")).token);
+    // Administrators need only a name and grants; email is supplied by the invited member.
+    let selfInvite=await okay(await request("/api/auth",{action:"team_invite",name:"自行填写邮箱",role:"viewer",project_ids:[project]},admin));
+    const otherInvite=await okay(await request("/api/auth",{action:"team_invite",name:"自行填写邮箱",email:"  ",role:"viewer",project_ids:[]},admin));
+    const selfInfo=await okay(await request("/api/auth",{action:"auth_invite_info",token:selfInvite.token}));
+    assert.equal(selfInfo.email,null);assert.equal(selfInfo.username,null);
+    const pendingSelf=(await okay(await request("/api/auth",{action:"team_list"},admin))).users.filter(x=>x.name==="自行填写邮箱");
+    assert.equal(pendingSelf.length,2);assert.notEqual(pendingSelf[0].id,pendingSelf[1].id);
+    const selfId=pendingSelf.find(x=>x.project_ids.includes(project)).id;
+    const expiredToken=selfInvite.token;
+    const expiryDB=new DatabaseSync(path.join(directory,".bd-auth/accounts.sqlite3"));
+    expiryDB.prepare("UPDATE invitations SET expires=? WHERE user_id=?").run(Math.floor(Date.now()/1000)-1,selfId);expiryDB.close();
+    assert.equal((await okay(await request("/api/auth",{action:"team_list"},admin))).users.find(x=>x.id===selfId).status,"expired");
+    assert.equal((await request("/api/auth",{action:"auth_invite_info",token:expiredToken})).status,401);
+    assert.equal((await request("/api/auth",{action:"auth_accept",token:expiredToken,email:"expired@example.invalid",username:"expired_member",password:"member secure password"})).status,401);
+    selfInvite=await okay(await request("/api/auth",{action:"team_reset",id:selfId},admin));
+    assert.ok(selfInvite.expires>Math.floor(Date.now()/1000)+47*3600);
+    assert.equal((await request("/api/auth",{action:"auth_invite_info",token:expiredToken})).status,401);
+    const renewed=(await okay(await request("/api/auth",{action:"team_list"},admin))).users.find(x=>x.id===selfId);
+    assert.equal(renewed.status,"invited");assert.equal(renewed.email,null);assert.equal(renewed.role,"viewer");assert.deepEqual(renewed.project_ids,[project]);
+    assert.equal((await request("/api/auth",{action:"team_invite",name:"无权邀请"},viewer)).status,403);
+    for(const email of [undefined,"","invalid-email"])assert.equal((await request("/api/auth",{action:"auth_accept",token:selfInvite.token,email,username:"self_member",password:"member secure password"})).status,400);
+    assert.equal((await request("/api/auth",{action:"auth_accept",token:selfInvite.token,email:admin.user.email,username:"self_member",password:"member secure password"})).status,409);
+    assert.equal((await request("/api/workspace?action=workspace",null,admin)).status,200,"An invitation must never replace an existing account selected by email");
+    assert.equal((await request("/api/auth",{action:"auth_accept",token:duplicateName.token,email:"changed@example.invalid",username:"changed",password:"member secure password"})).status,400,"Preset invite email stays bound");
+    const selfMember=await join(selfInvite.token," Self_Member@Example.Invalid ");
+    assert.equal(selfMember.user.id,selfId);assert.equal(selfMember.user.email,"self_member@example.invalid");assert.equal(selfMember.user.name,"自行填写邮箱");assert.equal(selfMember.user.role,"viewer");assert.deepEqual(selfMember.user.project_ids,[project]);
+    assert.equal((await request("/api/auth",{action:"auth_accept",token:otherInvite.token,email:selfMember.user.email,username:"other_member",password:"member secure password"})).status,409);
+    await join(otherInvite.token,"other_member@example.invalid");
+    const raceA=await invite("viewer"),raceB=await invite("viewer");
+    const raced=await Promise.all([raceA,raceB].map((inv,index)=>request("/api/auth",{action:"auth_accept",token:inv.token,email:"raced@example.invalid",username:`raced_${index}`,password:"member secure password"},null,{"X-Real-IP":`192.0.2.${180+index}`})));
+    assert.deepEqual(raced.map(r=>r.status).sort(),[200,409],"Concurrent invitations cannot claim the same email");
     // Existing accounts can keep their password, MFA and grants while adding a username.
     const legacy=await join((await invite("viewer","legacy@example.invalid")).token);
     const legacyDB=new DatabaseSync(path.join(directory,".bd-auth/accounts.sqlite3"));
@@ -205,6 +237,7 @@ test("server HTTP enforces invitations, scope, roles, CSRF, concurrent saves, do
     assert.equal((await request("/api/workspace?action=workspace",null,editor)).status,401);
     const pendingEditor=await passwordStep(editor);
     const replacement=await okay(await request("/api/auth",{action:"team_reset",id:editor.user.id},admin));
+    assert.equal((await request("/api/auth",{action:"auth_accept",token:replacement.token,email:"changed@example.invalid",username:editor.user.username,password:"member secure password"})).status,400,"Recovery cannot change the original account email");
     assert.equal((await request("/api/auth",{action:"auth_verify",code:otp(editor.secret)},pendingEditor)).status,401);
     assert.equal((await request("/api/workspace?action=workspace",null,editor)).status,401);
     const recovered=await join(replacement.token);
@@ -219,6 +252,8 @@ test("server HTTP enforces invitations, scope, roles, CSRF, concurrent saves, do
     const concurrentAccepts=await Promise.all([request("/api/auth",{action:"auth_accept",token:duplicate.token,username:"duplicate",password:"member secure password"}),request("/api/auth",{action:"auth_accept",token:duplicate.token,username:"duplicate",password:"member secure password"})]);
     assert.deepEqual(concurrentAccepts.map(x=>x.status).sort(),[200,401]);
     const unfinished=await invite("viewer","unfinished@example.invalid");
+    const pendingNoEmail=await okay(await request("/api/auth",{action:"team_invite",name:"备份待激活成员",role:"viewer",project_ids:[project]},admin));
+    assert.equal((await okay(await request("/api/auth",{action:"auth_invite_info",token:pendingNoEmail.token}))).email,null);
     const sourceDB=new DatabaseSync(path.join(directory,".bd-auth/accounts.sqlite3"));
     const transferTokens=sourceDB.prepare("SELECT token FROM ba_session").all().map(x=>x.token);
     sourceDB.close();
@@ -232,6 +267,8 @@ test("server HTTP enforces invitations, scope, roles, CSRF, concurrent saves, do
     const restoredMember=restoredDB.prepare("SELECT * FROM users WHERE id=?").get(recovered.user.id);
     assert.equal(restoredMember.username,"editor");assert.equal(restoredMember.role,"editor");assert.equal(restoredMember.project_ids,JSON.stringify([project]));
     assert.ok(restoredDB.prepare("SELECT password FROM ba_account LIMIT 1").get().password);
+    const restoredPending=restoredDB.prepare("SELECT * FROM users WHERE name=?").get("备份待激活成员");
+    assert.equal(restoredPending.email,null);assert.equal(restoredPending.active,0);assert.equal(restoredPending.project_ids,JSON.stringify([project]));
     restoredDB.close();
     const snapshotBytes=readFileSync(path.join(restored,".bd-auth/accounts.sqlite3"));
     for(const token of transferTokens) assert.equal(snapshotBytes.includes(Buffer.from(token)),false);

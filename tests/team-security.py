@@ -32,6 +32,65 @@ OSS = {'BD_OSS_REGION':'cn-hangzhou','BD_OSS_BUCKET':'test-private-bucket','BD_O
 
 
 class AccountTests(unittest.TestCase):
+    def test_email_optional_invites_keep_identity_grants_and_survive_backup(self):
+        with tempfile.TemporaryDirectory() as temp:
+            content=Path(temp)/'content';content.mkdir()
+            accounts=Accounts(content)
+            actor={'id':'admin','name':'管理员','role':'admin'}
+            with self.assertRaises(AuthError):
+                accounts.invite({'name':'管理员','role':'admin'},None,set(),bootstrap=True)
+            first=accounts.invite({'name':'同名成员','role':'editor','project_ids':['matter']},actor,{'matter'})
+            second=accounts.invite({'name':'同名成员','email':'  ','role':'viewer'},actor,{'matter'})
+            one,two=accounts.invitation(first['token']),accounts.invitation(second['token'])
+            self.assertNotEqual(one['user_id'],two['user_id'])
+            self.assertIsNone(one['email']);self.assertIsNone(two['email'])
+            with self.assertRaises(AuthError):
+                accounts.invite({'name':'格式错误','email':'bad-address'},actor,set())
+            replacement=accounts.reset(one['user_id'],actor)
+            with self.assertRaises(AuthError):accounts.invite_info(first['token'])
+            self.assertIsNone(accounts.invite_info(replacement['token'])['email'])
+            backup=Path(temp)/'accounts.sqlite3'
+            self.assertTrue(backup_accounts(content,backup));validate_account_backup(backup)
+            with sqlite3.connect(backup) as db:
+                row=db.execute('SELECT email,role,project_ids,active FROM users WHERE id=?',(one['user_id'],)).fetchone()
+                self.assertEqual(row,(None,'editor','["matter"]',0))
+                self.assertEqual(db.execute('SELECT COUNT(*) FROM invitations').fetchone()[0],0)
+                db.execute('UPDATE users SET active=1 WHERE id=?',(one['user_id'],))
+            with self.assertRaisesRegex(AuthError,'不能缺少邮箱'):validate_account_backup(backup)
+            accounts.close()
+
+    def test_required_email_schema_upgrade_preserves_members_and_references(self):
+        for username in (False,True):
+            with self.subTest(username=username), tempfile.TemporaryDirectory() as temp:
+                content=Path(temp)/'content';content.mkdir()
+                directory=Path(temp)/'.bd-auth';directory.mkdir()
+                with sqlite3.connect(directory/'accounts.sqlite3') as db:
+                    db.execute('''CREATE TABLE users(id TEXT PRIMARY KEY,email TEXT UNIQUE NOT NULL,name TEXT NOT NULL,
+                        role TEXT NOT NULL,all_projects INTEGER NOT NULL,project_ids TEXT NOT NULL,active INTEGER NOT NULL,
+                        credential_revision TEXT NOT NULL,revision TEXT NOT NULL''' + (',username TEXT' if username else '') + ')')
+                    db.execute("INSERT INTO users(id,email,name,role,all_projects,project_ids,active,credential_revision,revision) VALUES('existing','existing@example.invalid','成员','editor',0,'[\"matter\"]',1,'credentials','permissions')")
+                    if username:
+                        db.execute("UPDATE users SET username='existing_member'")
+                        db.execute('CREATE UNIQUE INDEX users_username_unique ON users(username COLLATE NOCASE)')
+                    db.execute('CREATE TABLE invitations(digest TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),expires INTEGER NOT NULL)')
+                    db.execute("INSERT INTO invitations VALUES('digest','existing',9999999999)")
+                    db.execute('CREATE TABLE ba_user(id TEXT PRIMARY KEY,memberId TEXT,credentialRevision TEXT)')
+                    db.execute("INSERT INTO ba_user VALUES('provider-id','existing','credentials')")
+                    db.row_factory=sqlite3.Row
+                    before=dict(db.execute('SELECT * FROM users').fetchone())
+                accounts=Accounts(content)
+                self.assertEqual(dict(accounts.db.execute('SELECT * FROM users').fetchone()),before|({'username':None} if not username else {}))
+                self.assertEqual(tuple(accounts.db.execute('SELECT * FROM invitations').fetchone()),('digest','existing',9999999999))
+                self.assertEqual(tuple(accounts.db.execute('SELECT * FROM ba_user').fetchone()),('provider-id','existing','credentials'))
+                self.assertEqual(accounts.db.execute('PRAGMA foreign_key_check').fetchall(),[])
+                self.assertEqual(accounts.db.execute('PRAGMA foreign_keys').fetchone()[0],1)
+                pending=accounts.invite({'name':'新成员'}, {'id':'admin','name':'管理员','role':'admin'},set())
+                self.assertIsNone(accounts.invite_info(pending['token'])['email'])
+                accounts.close()
+                reopened=Accounts(content)
+                self.assertEqual(reopened.db.execute("SELECT id FROM users WHERE email='existing@example.invalid'").fetchone()[0],'existing')
+                reopened.close()
+
     def test_interrupted_username_binding_is_reconciled_before_backup(self):
         with tempfile.TemporaryDirectory() as temp:
             content=Path(temp)/'content';content.mkdir()

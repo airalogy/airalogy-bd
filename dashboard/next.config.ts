@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   // Development must not generate instruction files inside the source checkout.
   agentRules: false,
-  serverExternalPackages: ["better-auth"],
+  serverExternalPackages: ["better-auth", "nodemailer"],
   async headers() {
     return [{source:"/:path*",headers:[
       {key:"X-Content-Type-Options",value:"nosniff"},

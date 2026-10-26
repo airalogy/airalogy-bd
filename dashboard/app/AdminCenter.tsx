@@ -23,7 +23,7 @@ export default function AdminCenter({ user, projects, timezone, unavailable, ini
       {!user && <p className="admin-notice">当前为本机单人模式，由本机使用者管理设置。团队模式启用后，仅管理员账号可以进入本页面。</p>}
       {unavailable && <p className="admin-alert" role="alert">工作区资料暂时不可用，事项列表未能加载，请先检查工作区。</p>}
       <nav className="admin-center-nav" aria-label="管理中心功能">{Object.entries(sections).map(([key, label]) => <Link key={key} href={`/admin?section=${key}`} aria-current={section === key ? "page" : undefined}>{label}</Link>)}</nav>
-      {section === "members" && (user ? <TeamManagement user={user} projects={projects} /> : <section className="panel admin-center-panel"><h2>成员与权限</h2><p>成员邀请、停用账号和事项授权在团队模式中提供。本机单人模式无需创建账号。</p></section>)}
+      {section === "members" && (user ? <TeamManagement user={user} projects={projects} timezone={timezone} /> : <section className="panel admin-center-panel"><h2>成员与权限</h2><p>成员邀请、停用账号和事项授权在团队模式中提供。本机单人模式无需创建账号。</p></section>)}
       {section === "ai" && <AiSettings />}
       {section === "usage" && <section className="panel admin-center-panel"><h2>AI 用量与费用</h2><AiUsage initialFrom={dates.from} initialTo={dates.to} /></section>}
       {section === "backup" && <BackupSettings timezone={timezone} onChanged={() => {}} />}

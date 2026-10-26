@@ -1,8 +1,8 @@
 {
-  "reviewed_on": "2026-10-22",
-  "scope": "Declared npm and Python locked packages, including optional platforms. Metadata review; not a complete inventory of embedded native libraries, bundled framework code or container operating-system packages.",
+  "reviewed_on": "2026-10-26",
+  "scope": "Declared npm and Python locked packages, including optional platforms. Metadata review; not a complete inventory of embedded native libraries, bundled framework code or container operating-system packages. 2026-10-26 update: reviewed the two added Nodemailer packages; all other locked package versions are unchanged.",
   "lock_sha256": {
-    "pnpm-lock.yaml": "7f401dd71a9750b70ab8d70b27bc23c1f8e527663d31c77afa799193ebb6b272",
+    "pnpm-lock.yaml": "250e84fb3d38ff8fbce9e404353bc5d9f1a7f930dd86bbaff0c1034aaa3c5ca0",
     "scripts/generate_dashboard_data.py.lock": "e56196a8de04123f7065acb41ae9e3c7cf89920e56e24791d1145e9d11ad1d27",
     "scripts/oss_backup.py.lock": "511c468ad7c286474ba7b15dbb2687c5ca6cd7dcc6378e17ba04d4e220fe72c6",
     "scripts/validate.py.lock": "1317fe8e93e990c287105fe019de4606bef3e16cfa5363c6d450dee4935dd8d8",
@@ -852,6 +852,12 @@
     {
       "name": "@types/node",
       "version": "25.9.5",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@types/nodemailer",
+      "version": "8.0.2",
       "license": "MIT",
       "evidence": "installed package metadata"
     },
@@ -2755,6 +2761,12 @@
       "name": "node-releases",
       "version": "2.0.53",
       "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "nodemailer",
+      "version": "10.2.1",
+      "license": "MIT-0",
       "evidence": "installed package metadata"
     },
     {

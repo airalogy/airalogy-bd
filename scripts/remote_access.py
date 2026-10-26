@@ -82,7 +82,7 @@ class RemoteAccess:
         if not token or token["expires"] <= int(time.time()):
             raise AuthError("远程凭据无效或已失效。", "unauthenticated")
         row = self.db.execute("SELECT * FROM users WHERE id=? AND active=1 AND revision=?", (token["owner"], token["binding"])).fetchone()
-        if not row or not self.accounts.enrolled(row["id"]):
+        if not row or not self.accounts.enrolled(row["id"]) or not self.accounts.email_allowed(row["id"]):
             raise AuthError("账号或权限已变化，请重新登录并生成凭据。", "unauthenticated")
         actor = public_user(row)
         self.grant(actor)

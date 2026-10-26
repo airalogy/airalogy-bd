@@ -26,6 +26,13 @@ def fingerprint(value):
     return hashlib.sha256(value.encode()).hexdigest()
 
 
+def email_verification_required():
+    value = os.environ.get("BD_REQUIRE_EMAIL_VERIFICATION", "0") or "0"
+    if value not in {"0", "1"}:
+        raise AuthError("BD_REQUIRE_EMAIL_VERIFICATION 只支持 0 或 1。", "unavailable")
+    return os.environ.get("BD_MODE") == "server" and value == "1"
+
+
 def public_user(row):
     return {key: row[key] for key in ("id", "email", "name", "username", "role", "active", "revision")} | {
         "all_projects": bool(row["all_projects"]), "project_ids": json.loads(row["project_ids"]),
@@ -48,7 +55,7 @@ class Accounts:
         self.db.executescript("""
             PRAGMA foreign_keys=ON;
             CREATE TABLE IF NOT EXISTS users (
-                id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, name TEXT NOT NULL,
+                id TEXT PRIMARY KEY, email TEXT UNIQUE, name TEXT NOT NULL,
                 role TEXT NOT NULL, all_projects INTEGER NOT NULL, project_ids TEXT NOT NULL,
                 active INTEGER NOT NULL DEFAULT 0, credential_revision TEXT NOT NULL DEFAULT '', revision TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS invitations (
@@ -60,6 +67,7 @@ class Accounts:
                 target TEXT NOT NULL, outcome TEXT NOT NULL);
         """)
 
+        self.allow_pending_email()
         # Additive migration keeps existing IDs, grants and email logins unchanged.
         with self.db:
             self.db.execute("BEGIN IMMEDIATE")
@@ -72,6 +80,34 @@ class Accounts:
                     if not re.fullmatch(r'[a-z0-9][a-z0-9._]{2,29}', row['username']):
                         raise AuthError('账号用户名格式无效。', 'invalid')
                     self.db.execute('UPDATE users SET username=? WHERE id=?', (row['username'],row['id']))
+
+    def allow_pending_email(self):
+        if not any(row['name'] == 'email' and row['notnull'] for row in self.db.execute('PRAGMA table_info(users)')):
+            return
+        # SQLite requires a table rebuild to remove NOT NULL. Keep parent IDs and
+        # all referencing rows, then verify foreign keys before committing the swap.
+        self.db.execute('PRAGMA foreign_keys=OFF')
+        try:
+            with self.db:
+                self.db.execute('BEGIN IMMEDIATE')
+                columns = {row['name'] for row in self.db.execute('PRAGMA table_info(users)')}
+                if any(row['name'] == 'email' and row['notnull'] for row in self.db.execute('PRAGMA table_info(users)')):
+                    self.db.execute('''CREATE TABLE users_pending_email (
+                        id TEXT PRIMARY KEY, email TEXT UNIQUE, name TEXT NOT NULL,
+                        role TEXT NOT NULL, all_projects INTEGER NOT NULL, project_ids TEXT NOT NULL,
+                        active INTEGER NOT NULL DEFAULT 0, credential_revision TEXT NOT NULL DEFAULT '',
+                        revision TEXT NOT NULL, username TEXT)''')
+                    names = 'id,email,name,role,all_projects,project_ids,active,credential_revision,revision'
+                    if 'username' in columns:
+                        names += ',username'
+                    self.db.execute(f'INSERT INTO users_pending_email({names}) SELECT {names} FROM users')
+                    self.db.execute('DROP TABLE users')
+                    self.db.execute('ALTER TABLE users_pending_email RENAME TO users')
+                    self.db.execute('CREATE UNIQUE INDEX users_username_unique ON users(username COLLATE NOCASE)')
+                    if self.db.execute('PRAGMA foreign_key_check').fetchone():
+                        raise AuthError('账号结构更新未通过关联校验。', 'invalid')
+        finally:
+            self.db.execute('PRAGMA foreign_keys=ON')
 
     def close(self):
         self.db.close()
@@ -86,14 +122,14 @@ class Accounts:
         # session again under the business lock so revocation wins over queued writes.
         if not token or not self.has_provider():
             raise AuthError("请登录后继续。", "unauthenticated")
-        row = self.db.execute("""SELECT u.*,s.csrf,CAST(strftime('%s',s.expiresAt) AS INTEGER) AS expires FROM ba_session s
+        row = self.db.execute("""SELECT u.*,b.emailVerified AS email_verified,s.csrf,CAST(strftime('%s',s.expiresAt) AS INTEGER) AS expires FROM ba_session s
             JOIN ba_user b ON b.id=s.userId JOIN users u ON u.id=b.memberId
             WHERE s.token=? AND CAST(strftime('%s',s.expiresAt) AS INTEGER)>? AND u.active=1 AND b.twoFactorEnabled=1
             AND s.mfaVerified=1 AND s.permissionRevision=u.revision
             AND b.credentialRevision=u.credential_revision""", (token, int(time.time()))).fetchone()
-        if not row:
+        if not row or (email_verification_required() and not row["email_verified"]):
             raise AuthError("登录已失效，请重新登录。", "unauthenticated")
-        return public_user(row) | {"csrf": row["csrf"], "expires": row["expires"]}
+        return public_user(row) | {"csrf": row["csrf"], "expires": row["expires"], "email_verified": bool(row["email_verified"])}
 
     def has_provider(self):
         return bool(self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='ba_session'").fetchone())
@@ -103,11 +139,19 @@ class Accounts:
             if self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone():
                 self.db.execute("DELETE FROM " + table + " WHERE owner=?", (identity,))
         if self.has_provider():
+            row = self.db.execute("SELECT email FROM users WHERE id=?", (identity,)).fetchone()
+            if row and row["email"]:
+                self.db.execute("DELETE FROM ba_verification WHERE identifier IN (?,?)", ("email-verification-otp-" + row["email"], "bd-email-send-" + row["email"]))
             self.db.execute("DELETE FROM ba_session WHERE userId IN (SELECT id FROM ba_user WHERE memberId=?)", (identity,))
             self.db.execute("DELETE FROM ba_verification WHERE value IN (SELECT id FROM ba_user WHERE memberId=?)", (identity,))
 
     def enrolled(self, identity):
         return self.has_provider() and bool(self.db.execute("SELECT 1 FROM ba_user b JOIN users u ON u.id=b.memberId WHERE u.id=? AND b.credentialRevision=u.credential_revision AND b.twoFactorEnabled=1", (identity,)).fetchone())
+
+    def email_allowed(self, identity):
+        if not email_verification_required():
+            return True
+        return self.has_provider() and bool(self.db.execute("SELECT 1 FROM ba_user b JOIN users u ON u.id=b.memberId WHERE u.id=? AND b.credentialRevision=u.credential_revision AND b.emailVerified=1", (identity,)).fetchone())
 
     @staticmethod
     def require_admin(actor):
@@ -135,7 +179,9 @@ class Accounts:
     def invite(self, payload, actor, known, bootstrap=False):
         if not bootstrap:
             self.require_admin(actor)
-        email = self.email(payload.get("email"))
+        supplied = payload.get("email")
+        empty_email = supplied is None or (isinstance(supplied, str) and not supplied.strip())
+        email = self.email(supplied) if bootstrap or not empty_email else None
         name = str(payload.get("name", "")).strip()
         if not 1 <= len(name) <= 100:
             raise AuthError("请填写成员姓名（不超过 100 个字符）。", "invalid")
@@ -143,7 +189,7 @@ class Accounts:
         with self.db:
             if bootstrap and self.db.execute("SELECT 1 FROM users LIMIT 1").fetchone():
                 raise AuthError("管理员已初始化，请通过成员管理邀请其他账号。", "conflict")
-            if self.db.execute("SELECT 1 FROM users WHERE email=?", (email,)).fetchone():
+            if email and self.db.execute("SELECT 1 FROM users WHERE email=? COLLATE NOCASE", (email,)).fetchone():
                 raise AuthError("该邮箱已有账号，请在成员列表中重新签发邀请或重置登录。", "conflict")
             identity = secrets.token_hex(16)
             self.db.execute("INSERT INTO users(id,email,name,role,all_projects,project_ids,revision,credential_revision) VALUES(?,?,?,?,?,?,?,?)",
@@ -175,6 +221,8 @@ class Accounts:
         invitation = self.db.execute('SELECT expires FROM invitations WHERE user_id=?', (row['id'],)).fetchone()
         status = ('active' if self.enrolled(row['id']) else 'setup') if row['active'] else (
             ('invited' if invitation['expires'] > time.time() else 'expired') if invitation else 'disabled')
+        if row['active'] and not self.email_allowed(row['id']):
+            status = 'email'
         return public_user(row) | {'status': status, 'invitation_expires': invitation['expires'] if invitation else None}
 
     def update(self, payload, actor, known):
@@ -256,6 +304,12 @@ def validate_account_backup(path):
         current = {'id','email','name','role','all_projects','project_ids','active','credential_revision','revision'}
         if columns not in (current, current | {'username'}):
             raise AuthError('账号备份格式不受支持。', 'invalid')
+        for row in db.execute('SELECT email,active FROM users'):
+            if row[0] is None:
+                if row[1]:
+                    raise AuthError('已激活账号不能缺少邮箱。', 'invalid')
+            elif Accounts.email(row[0]) != row[0]:
+                raise AuthError('账号邮箱格式无效。', 'invalid')
         if 'username' in columns:
             names = [row[0] for row in db.execute('SELECT username FROM users WHERE username IS NOT NULL')]
             if any(not isinstance(name, str) or not re.fullmatch(r'[a-z0-9][a-z0-9._]{2,29}', name) for name in names) or len(names) != len(set(names)):

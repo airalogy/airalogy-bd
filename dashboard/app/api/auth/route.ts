@@ -6,7 +6,7 @@ import { normalizeUsername } from "../../lib/username-policy";
 
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
-const publicActions=["auth_login","auth_invite_info","auth_accept","auth_setup","auth_verify"];
+const publicActions=["auth_login","auth_invite_info","auth_accept","auth_setup","auth_verify","auth_email_verify"];
 
 function updatedCookies(request:Request,response:Response) {
   const jar=new Map((request.headers.get("cookie")||"").split(";").filter(Boolean).map(value=>{
@@ -20,23 +20,30 @@ function updatedCookies(request:Request,response:Response) {
 }
 async function authentication(input:Record<string,unknown>,request:Request) {
   const provider=await getAuthProvider();
-  let route="",body:Record<string,unknown>={};
+  let route="",body:Record<string,unknown>={},loginIdentifier="";
   if(input.action==="auth_accept") {
-    const created=await provider.accept(input.token,input.password,input.username);
+    const created=await provider.accept(input.token,input.password,input.username,input.email);
+    loginIdentifier=created.email;
     route="/sign-in/email";body={email:created.email,password:input.password,rememberMe:true};
   } else if(input.action==="auth_login") {
     const identifier=String(input.identifier ?? input.email ?? "").trim().toLowerCase();
+    loginIdentifier=identifier;
     const email=identifier.includes("@");
     route=email?"/sign-in/email":"/sign-in/username";
     body={...(email?{email:identifier}:{username:normalizeUsername(identifier)}),password:input.password,rememberMe:true};
   } else if(input.action==="auth_username") {
     return Response.json({ok:true,result:await provider.setUsername(request,input.username)},{headers:privateHeaders});
+  } else if(input.action==="auth_email_verify") {
+    if(!provider.emailRequired)return denied();
+    const identifier=String(input.identifier||"").trim().toLowerCase();
+    const identity=provider.db.prepare("SELECT b.email FROM ba_user b JOIN users u ON u.id=b.memberId WHERE (b.email=? OR u.username=?) AND u.active=1 AND b.credentialRevision=u.credential_revision").get(identifier,identifier) as {email:string}|undefined;
+    route="/email-otp/verify-email";body={email:identity?.email||"unknown@example.invalid",otp:input.code};
   } else if(input.action==="auth_verify") {
     route="/two-factor/verify-totp";body={code:input.code,trustDevice:false};
   } else if(input.action==="auth_setup") {
     const session=await provider.providerSession(requestSession(request));
     const member=session && provider.member(session.user.memberId);
-    if(!session || !member?.active || member.credential_revision!==session.user.credentialRevision || member.revision!==session.session.permissionRevision || session.user.twoFactorEnabled) return denied("请重新登录后设置验证器。",401);
+    if(!session || !member?.active || member.credential_revision!==session.user.credentialRevision || member.revision!==session.session.permissionRevision || session.user.twoFactorEnabled || (provider.emailRequired && !session.user.emailVerified)) return denied("请重新登录后设置验证器。",401);
     const pending=provider.db.prepare("SELECT 1 FROM ba_two_factor WHERE userId=?").get(session.user.id);
     route=pending?"/two-factor/get-totp-uri":"/two-factor/enable";
     body={password:input.password,method:"totp"};
@@ -44,11 +51,23 @@ async function authentication(input:Record<string,unknown>,request:Request) {
   else return denied();
   const response=await provider.handle(route,body,request);
   const data=await response.json();
+  if(["auth_login","auth_accept"].includes(String(input.action)) && provider.emailRequired && data.code==="EMAIL_NOT_VERIFIED") {
+    // The official password endpoint has authenticated the password before returning this code.
+    // Email sending is not exposed as an anonymous endpoint.
+    const identity=provider.db.prepare("SELECT b.email FROM ba_user b JOIN users u ON u.id=b.memberId WHERE (b.email=? OR u.username=?) AND u.active=1 AND b.credentialRevision=u.credential_revision").get(loginIdentifier,loginIdentifier) as {email:string}|undefined;
+    if(!identity)return denied("账号信息已失效，请重新登录。",401);
+    const delivery=await provider.handle("/email-otp/send-verification-otp",{email:identity.email,type:"email-verification"},request);
+    if(delivery.status===429 && input.action!=="auth_accept")return Response.json({ok:false,error:"发送次数过多，请一分钟后重试。"},{status:429,headers:privateHeaders});
+    return Response.json({ok:true,result:{step:"email",email_sent:delivery.ok}},{headers:privateHeaders});
+  }
   if(!response.ok) return Response.json({ok:false,code:response.status===429?"rate_limited":"unauthenticated",error:response.status===429?"尝试次数过多，请稍后重试。":"账号信息或验证码不正确；邀请失效时请联系管理员。"},{status:response.status,headers:privateHeaders});
   const headers=new Headers(privateHeaders);
   for(const value of response.headers.getSetCookie()) headers.append("Set-Cookie",value);
   let result:Record<string,unknown>;
-  if(input.action==="auth_verify") {
+  if(input.action==="auth_email_verify") {
+    // Email ownership alone never signs a user in or returns provider identity/session data.
+    return Response.json({ok:true,result:{email_verified:true}},{headers:privateHeaders});
+  } else if(input.action==="auth_verify") {
     const cookie=updatedCookies(request,response);
     const verified=await invokeWorkspace({action:"auth_session"},cookie);
     if(!verified.ok)return serviceResponse(verified);

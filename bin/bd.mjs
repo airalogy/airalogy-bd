@@ -145,6 +145,9 @@ function runNext(command, contentDirectory, forwardedArguments) {
   if (process.env.BD_MODE && !["local","server"].includes(process.env.BD_MODE)) fail("BD_MODE 只支持 local 或 server。");
   if (serverMode && command !== "build") {
     deploymentOrigin();
+    const emailVerification = process.env.BD_REQUIRE_EMAIL_VERIFICATION || "0";
+    if (!["0","1"].includes(emailVerification)) fail("BD_REQUIRE_EMAIL_VERIFICATION 只支持 0 或 1。");
+    if (emailVerification === "1" && ["BD_SMTP_HOST","BD_SMTP_USER","BD_SMTP_PASSWORD","BD_MAIL_FROM"].some(key => !process.env[key]?.trim())) fail("开启邮箱验证前，请先配置发信服务器、用户名、密码和发件邮箱；暂不启用时将 BD_REQUIRE_EMAIL_VERIFICATION 设为 0。");
     if (!process.env.BETTER_AUTH_SECRET || process.env.BETTER_AUTH_SECRET.length < 32) fail("请配置至少 32 字符的 BETTER_AUTH_SECRET。");
     if (command !== "start") fail("服务器模式请使用 bd build 构建后运行 bd start。");
     if (!existsSync(path.join(path.dirname(contentDirectory), ".bd-auth", "accounts.sqlite3")) || !workspaceRequest(contentDirectory,{action:"account_status"}).initialized) fail("请先使用 bd account-init 初始化管理员。");

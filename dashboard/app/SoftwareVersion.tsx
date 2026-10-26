@@ -18,7 +18,6 @@ export default function SoftwareVersion({ locale, timezone }: { locale: string; 
         {local && <div><dt>代码版本</dt><dd>{buildInfo.revision || "尚未提交"}</dd></div>}
       </dl>
       {local && <p>本地修改以构建标识区分；更新后可在这里核对。</p>}
-      <p>显示当前运行的软件版本，未检查远程更新。</p>
     </div>
   </details>;
 }
