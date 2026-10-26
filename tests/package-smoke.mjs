@@ -52,7 +52,8 @@ try {
   mkdirSync(output, { recursive: true });
   const packed = spawnSync("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", output, "--cache", path.join(temp, "npm-cache")], { cwd: root, encoding: "utf8" });
   assert.equal(packed.status, 0, packed.stderr);
-  const info = JSON.parse(packed.stdout)[0];
+  const report = JSON.parse(packed.stdout);
+  const info = Array.isArray(report) ? report[0] : report[product.name];
   const archive = path.join(output, info.filename);
   const extracted = path.join(temp, "extracted"); mkdirSync(extracted);
   await run("tar", ["-xzf", archive, "-C", extracted], temp);

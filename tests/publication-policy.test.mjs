@@ -52,7 +52,9 @@ test("actual npm package includes source but excludes private files inside sourc
     for (const file of [...keep, ...privateFiles]) {
       const target = path.join(directory, file); mkdirSync(path.dirname(target), { recursive: true }); writeFileSync(target, "SYNTHETIC_PACKAGING_PROBE_ONLY\n");
     }
-    const manifest = JSON.parse(execFileSync("npm", ["pack", "--dry-run", "--ignore-scripts", "--json", "--cache", path.join(directory, ".cache")], { cwd: directory, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }))[0];
+    const packed = JSON.parse(execFileSync("npm", ["pack", "--dry-run", "--ignore-scripts", "--json", "--cache", path.join(directory, ".cache")], { cwd: directory, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }));
+    // npm 12 keys its JSON report by package name; earlier versions return an array.
+    const manifest = Array.isArray(packed) ? packed[0] : packed['synthetic-package-policy'];
     const files = manifest.files.map(file => file.path);
     for (const file of keep) assert.ok(files.includes(file), file);
     for (const file of privateFiles) assert.ok(!files.includes(file), file);
