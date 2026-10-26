@@ -17,12 +17,34 @@ npm 接收发布后会扫描安装包，通常需等待数分钟才可按包名�
 
 版本发布后不可覆盖；修复发布为新版本。应用版本发布、更新本地依赖、服务器部署分别执行。尚未验证的安装包不能仅因源码测试通过就视为可发布。
 
-## 后续使用可信发布
+## GitHub 可信发布
 
-推荐使用 npm Trusted Publishing，将该包绑定到 `airalogy/airalogy-bd` 仓库中专门的 GitHub Actions 工作流。首次包创建完成后，由包管理员在 npm 包设置中配置组织、仓库和工作流文件名；开启前应准备好流程，并按照 npm 当前的配置有效期完成首次验证。
+仓库提供 [npm release 工作流](../.github/workflows/publish.yml)。正式发布 GitHub Release 时自动检查并发布 npm；普通提交、推送、仅创建标签、草稿 Release 和手动检查均不会发布 npm。预发布版本不允许发布到 `latest`。
 
-工作流应从指定版本标签检出并核对版本，在不授予发布凭据的任务中安装、测试和生成归档，再由独立发布任务取得 OIDC 临时身份并上传已验证的同一归档。使用受保护的发布环境控制正式发布；普通提交和推送不触发发布。CI 使用支持可信发布的 npm CLI（至少 11.5.1）与 Node.js（至少 22.14.0），无需保存长期 npm 发布 Token。
+### 一次性配置
 
-此配置需要 npm 包和 GitHub 权限配合，文档本身不会启用远程自动发布。首次人工发布与后续可信发布都不要求用户改用 npm 安装；使用者仍可通过 pnpm 固定版本安装。
+1. 在 GitHub 仓库创建名为 `npm` 的 Environment，Deployment branches and tags 选择 Selected branches and tags，只添加类型为 Tag、名称为 `v*.*.*` 的规则，不允许分支进入此环境。
+2. 在 npm 包的 Settings → Trusted publishing 添加 GitHub Actions：组织 `airalogy`、仓库 `airalogy-bd`、工作流文件名 `publish.yml`、环境 `npm`。只允许直接 Publish，不额外允许 staged publish 或 dist-tag 管理。更改信任配置仍需管理员完成 npm 双因素验证。
+3. 也可使用 npm 11.15.0 以上的官方命令完成绑定：
 
-参考：[npm 公开组织包](https://docs.npmjs.com/creating-and-publishing-scoped-public-packages/)、[npm Trusted Publishing](https://docs.npmjs.com/trusted-publishers/)。
+   ```sh
+   npm trust github @airalogy/airalogy-bd --repo airalogy/airalogy-bd --file publish.yml --env npm --allow-publish
+   ```
+
+4. 新建信任关系必须在两天内完成首次成功发布。仅保存配置、执行 `--dry-run` 或通过测试不会验证这项关系；超时需删除过期关系并重新创建。因此应在下一正式版本准备就绪时完成绑定。
+
+工作流使用 GitHub 托管的 Ubuntu runner、固定版本的 Node.js/npm/pnpm/uv，以及固定提交的 Actions。无需配置 `NPM_TOKEN` 或其他长期发布密钥，现有 npm 账号双因素验证继续保留。此文档与工作流文件不能代替上述远程设置；可用 `npm trust list @airalogy/airalogy-bd` 和 GitHub Environment 设置检查实际状态。
+
+### 日常发版
+
+1. 修改版本号与更新记录，完成审阅后将源码提交、推送到 `main`。
+2. 如需提前检查，在 GitHub Actions → npm release → Run workflow 中选择 `main`。手动运行只检查并保留安装包，不取得 npm 发布身份。
+3. 为已准备好的提交创建 `vX.Y.Z` 标签，在 GitHub 正式发布对应的 Release。标签必须匹配 `package.json` 的 `x.y.z`，指向 `main` 历史中的提交；发布后不移动标签或覆盖版本。
+4. 工作流先执行完整测试，再打包并在独立工作区验证安装、初始化、启动器、Logo、资料保留和生产构建。测试任务只有源码读取权限，不具有 OIDC 发布权限。
+5. 独立发布任务进入 `npm` 环境，下载本次测试的同一份归档并核对 SHA-256、包名、版本及来源。该任务不检出业务程序、不安装程序依赖、不运行安装包脚本；通过 OIDC 临时身份向 npm 发布，并等待公开注册表中的 SHA-512 完整性校验通过。
+
+GitHub Release 创建成功不表示 npm 已成功发布，须等待 Actions 的 `publish` 任务完成。npm 扫描或网络验证超时后，先检查注册表是否已存在该版本；不能盲目重发。工作流会拒绝覆盖已有版本。验证归档保存在该次 Actions 的 Artifacts 中，保留 14 天。服务器部署和业务工作区依赖更新仍需另外执行。
+
+仓库管理员及有权修改工作流、创建版本标签和 Release 的维护者能影响发布，应只向受信任人员授予相关权限。需要多人审批时，可在 `npm` 环境增加 Required reviewers，不必改回长期 npm 密钥。
+
+参考：[npm 公开组织包](https://docs.npmjs.com/creating-and-publishing-scoped-public-packages/)、[npm Trusted Publishing](https://docs.npmjs.com/trusted-publishers/)、[npm trust 命令](https://docs.npmjs.com/cli/v11/commands/npm-trust/)。

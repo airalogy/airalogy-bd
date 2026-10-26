@@ -278,7 +278,7 @@ bd dev --content /path/to/new-workspace/content
 
 版本信息在 `bd build` / `bd dev` 准备运行目录时固定，`bd start` 沿用已有构建的信息；修改或升级源码后需重新构建并启动才能加载。界面仅展示当前运行版本，不自动查询远程发布，发布状态由发布标签与分发产物确定。
 
-`pnpm version:check` 检查软件版本与更新记录是否一致，已纳入 `pnpm test`。代码提交和推送不自动创建发布标签、安装包或线上部署。
+`pnpm version:check` 检查软件版本与更新记录是否一致，已纳入 `pnpm test`。代码提交和推送不自动发版或部署。正式发布 GitHub Release 后，已配置的[可信发布流程](docs/npm-publishing.md)会验证并发布 npm 安装包；服务器部署仍单独执行。
 
 公开前运行 `pnpm publication:check`，并按 [公开代码检查说明](docs/publication-check.md) 复核源码及实际分发文件。
 
