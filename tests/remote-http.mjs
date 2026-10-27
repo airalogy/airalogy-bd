@@ -35,6 +35,11 @@ export async function exerciseRemote({ directory, request, okay, admin, editor, 
     return { args, draft: await call("submit_draft", args, token) };
   };
   assert.equal((await status()).enabled, false);
+  assert.equal((await status()).granted, true, "Administrators need no separate grant");
+  assert.equal((await status()).members.find(member => member.id === admin.user.id).granted, true);
+  assert.equal((await status()).tokens.length, 0, "Role eligibility never creates a credential");
+  assert.equal((await web("issue", { label: "Global switch still off" })).status, 503);
+  for (const allowed of [true, false]) assert.equal((await web("grant", { memberId: admin.user.id, allowed })).status, 422);
   assert.equal((await request("/api/remote?action=pending")).status, 401);
   for (const member of [admin, editor, viewer]) assert.equal(await pendingCount(member), 0);
   assert.equal((await rpc("initialize", { protocolVersion: "2025-11-25" })).status, 503);
@@ -50,6 +55,8 @@ export async function exerciseRemote({ directory, request, okay, admin, editor, 
   const integratedInvite = await okay(await request("/api/auth", { action: "team_invite", name: "邀请工具成员", email: "invited-tool@example.invalid", role: "editor", project_ids: [matter], remote_allowed: true }, admin));
   let roster = await okay(await request("/api/auth", { action: "team_list" }, admin));
   assert.equal(roster.remote_enabled, false);
+  assert.equal(roster.users.find(member => member.id === admin.user.id).remote_allowed, true);
+  for (const ordinary of [editor, viewer]) assert.equal(roster.users.find(member => member.id === ordinary.user.id).remote_allowed, false);
   const invited = roster.users.find(member => member.email === "invited-tool@example.invalid");
   assert.equal(invited.remote_allowed, true); assert.equal(invited.status, "invited");
   assert.equal((await status()).tokens.filter(token => token.owner === invited.id).length, 0);
@@ -79,7 +86,20 @@ export async function exerciseRemote({ directory, request, okay, admin, editor, 
   assert.equal((await web("issue", { label: "Unapproved", canDraft: true }, editor)).status, 403);
   assert.equal(await pendingCount(editor), 0);
   assert.equal(await pendingCount(toolViewer), 0);
-  for (const member of [admin, editor, viewer]) await okay(await web("grant", { memberId: member.user.id, allowed: true }));
+  // A newly invited admin also connects without a grant, but demotion revokes the session, token and draft.
+  const adminInvite = await okay(await request("/api/auth", { action: "team_invite", name: "工具管理员", email: "tool-admin@example.invalid", role: "admin" }, admin));
+  const toolAdmin = await join(adminInvite.token), roleToken = await issue(toolAdmin);
+  const roleDraft = await newDraft(roleToken.token);
+  assert.equal(await pendingCount(toolAdmin), 1);
+  const roleMember = (await okay(await request("/api/auth", { action: "team_list" }, admin))).users.find(member => member.id === toolAdmin.user.id);
+  await okay(await request("/api/auth", { action: "team_update", ...roleMember, active: true, role: "editor", all_projects: false, project_ids: [matter], remote_allowed: false, remote_allowed_before: true }, admin));
+  assert.equal((await rpc("tools/list", {}, roleToken.token)).status, 401);
+  assert.equal((await request("/api/remote?action=pending", null, toolAdmin)).status, 401);
+  assert.equal((await status()).members.find(member => member.id === toolAdmin.user.id).granted, false);
+  const roleDB = new DatabaseSync(path.join(directory, ".bd-auth/accounts.sqlite3"));
+  assert.equal(roleDB.prepare("SELECT COUNT(*) n FROM remote_drafts WHERE id=?").get(roleDraft.draft.draftId).n, 0);
+  roleDB.close();
+  for (const member of [editor, viewer]) await okay(await web("grant", { memberId: member.user.id, allowed: true }));
   assert.equal((await web("issue", { label: "Too long", days: 31 }, editor)).status, 422);
   assert.equal((await web("issue", { label: "Viewer writer", canDraft: true }, viewer)).status, 422);
   const writable = await issue(editor), readonly = await issue(viewer, false), adminToken = await issue(admin);

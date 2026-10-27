@@ -62,7 +62,7 @@ class RemoteAccess:
 
     def grant(self, actor):
         self.enabled()
-        if not self.db.execute("SELECT 1 FROM remote_grants WHERE owner=?", (actor["id"],)).fetchone():
+        if not self.accounts.remote_allowed(actor["id"]):
             raise AuthError("管理员尚未授权此账号使用远程接入。")
 
     def invalidate(self, clause="1=1", values=()):
@@ -95,14 +95,14 @@ class RemoteAccess:
             raise AuthError("工作区资料需要管理员检查。", "unavailable")
 
     def status(self, actor, manage=False):
-        result = self.settings() | {"granted": bool(self.db.execute("SELECT 1 FROM remote_grants WHERE owner=?", (actor["id"],)).fetchone())}
+        result = self.settings() | {"granted": self.accounts.remote_allowed(actor["id"])}
         result["tokens"] = [dict(row) for row in self.db.execute(
             "SELECT id,owner,label,can_draft,expires,created FROM remote_tokens WHERE " + ("1=1" if manage else "owner=?") + " ORDER BY created DESC",
             () if manage else (actor["id"],))]
         if manage:
             result["members"] = [{"id": row["id"], "name": row["name"], "role": row["role"], "active": bool(row["active"]),
-                                  "granted": bool(row["granted"])} for row in self.db.execute(
-                "SELECT u.*,g.owner AS granted FROM users u LEFT JOIN remote_grants g ON g.owner=u.id ORDER BY u.name")]
+                                  "granted": self.accounts.remote_allowed(row["id"])} for row in self.db.execute(
+                "SELECT * FROM users ORDER BY name")]
         return result
 
     def browser(self, request, actor):
@@ -125,8 +125,11 @@ class RemoteAccess:
         if op == "grant":
             self.accounts.require_admin(actor)
             identity = text(request.get("memberId"))
-            if type(request.get("allowed")) is not bool or not self.db.execute("SELECT 1 FROM users WHERE id=?", (identity,)).fetchone():
+            member = self.db.execute("SELECT role FROM users WHERE id=?", (identity,)).fetchone()
+            if type(request.get("allowed")) is not bool or not member:
                 raise AuthError("成员或授权设置无效。", "invalid")
+            if member["role"] == "admin":
+                raise AuthError("管理员默认具备外部 AI 工具权限，无需单独授权；可在全局设置关闭接入或撤销个人凭据。", "invalid")
             with self.db:
                 self.accounts.set_remote_allowed(identity, request["allowed"])
             self.accounts.audit(actor, "remote.grant" if request["allowed"] else "remote.ungrant", identity)

@@ -32,6 +32,69 @@ OSS = {'BD_OSS_REGION':'cn-hangzhou','BD_OSS_BUCKET':'test-private-bucket','BD_O
 
 
 class AccountTests(unittest.TestCase):
+    def test_admin_remote_eligibility_follows_persisted_role(self):
+        with tempfile.TemporaryDirectory() as temp:
+            content=Path(temp)/'content';content.mkdir()
+            accounts=Accounts(content)
+            invitation=accounts.invite({'name':'管理员','email':'admin@example.invalid','role':'admin'},None,set(),bootstrap=True)
+            identity=accounts.invitation(invitation['token'])['user_id']
+            def member():
+                return accounts.member_info(accounts.db.execute('SELECT * FROM users WHERE id=?',(identity,)).fetchone())
+            actor=member()
+            remote=RemoteAccess(None,accounts)
+            self.assertTrue(actor['remote_allowed'])
+            self.assertTrue(remote.status(actor,True)['members'][0]['granted'])
+            self.assertEqual(remote.status(actor)['tokens'],[])
+            self.assertFalse(remote.settings()['enabled'])
+            self.assertEqual(accounts.db.execute('SELECT COUNT(*) FROM remote_grants').fetchone()[0],0)
+            with self.assertRaisesRegex(AuthError,'尚未开启'):
+                remote.browser({'operation':'issue','label':'No automatic access'},actor)
+            for allowed in (True,False):
+                with self.assertRaisesRegex(AuthError,'管理员默认'):
+                    remote.browser({'operation':'grant','memberId':identity,'allowed':allowed},actor)
+            # Existing administrators also gain eligibility on read, without a stored grant or credential.
+            accounts.close();accounts=Accounts(content);remote=RemoteAccess(None,accounts)
+            self.assertTrue(accounts.remote_allowed(identity))
+            self.assertFalse(accounts.remote_allowed('unknown'))
+            for role in ('editor','viewer'):
+                invitation=accounts.invite({'name':role,'role':role},actor,set())
+                other=accounts.invitation(invitation['token'])['user_id']
+                self.assertFalse(accounts.remote_allowed(other))
+                remote.browser({'operation':'configure','enabled':True,'revision':remote.settings()['revision']},actor)
+                # A caller-supplied role cannot grant eligibility to an ordinary member.
+                with self.assertRaisesRegex(AuthError,'尚未授权'):
+                    remote.grant({'id':other,'role':'admin'})
+            self.assertEqual(remote.status(actor)['tokens'],[])
+            accounts.close()
+
+    def test_admin_demotion_does_not_inherit_implicit_or_older_explicit_access(self):
+        for older_grant in (False,True):
+            with self.subTest(older_grant=older_grant),tempfile.TemporaryDirectory() as temp:
+                content=Path(temp)/'content';content.mkdir()
+                accounts=Accounts(content)
+                actor={'id':'admin','name':'管理员','role':'admin'}
+                invitation=accounts.invite({'name':'待激活管理员','role':'admin','remote_allowed':False},actor,set())
+                identity=accounts.invitation(invitation['token'])['user_id']
+                def member():
+                    return accounts.member_info(accounts.db.execute('SELECT * FROM users WHERE id=?',(identity,)).fetchone())
+                self.assertTrue(member()['remote_allowed'])
+                if older_grant:
+                    with accounts.db:accounts.db.execute('INSERT INTO remote_grants VALUES(?)',(identity,))
+                # A client omitting the separate permission must not carry the admin's access into a new role.
+                values={k:v for k,v in member().items() if k!='remote_allowed'}
+                accounts.update({**values,'role':'editor','active':False},actor,set())
+                self.assertFalse(member()['remote_allowed'])
+                self.assertEqual(accounts.db.execute('SELECT COUNT(*) FROM remote_grants').fetchone()[0],0)
+                # A deliberate ordinary-member grant remains supported, and promotion consumes no persistent grant.
+                accounts.update({**member(),'active':False,'remote_allowed':True,'remote_allowed_before':False},actor,set())
+                self.assertTrue(member()['remote_allowed'])
+                accounts.update({**member(),'role':'admin','active':False,'remote_allowed_before':True},actor,set())
+                self.assertEqual(accounts.db.execute('SELECT COUNT(*) FROM remote_grants').fetchone()[0],0)
+                accounts.update({**member(),'role':'viewer','active':False,'remote_allowed':True,'remote_allowed_before':True},actor,set())
+                self.assertTrue(member()['remote_allowed'])
+                self.assertEqual(accounts.invitation(invitation['token'])['user_id'],identity)
+                accounts.close()
+
     def test_member_invites_and_edits_keep_remote_permissions_atomic(self):
         with tempfile.TemporaryDirectory() as temp:
             content=Path(temp)/'content';content.mkdir()

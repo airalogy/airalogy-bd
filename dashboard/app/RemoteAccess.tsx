@@ -65,11 +65,11 @@ export default function RemoteAccess({ user, mode, endpoint = "" }: { user: Team
     {error && <p className="admin-alert" role="alert">{error}</p>}
     {notice && <p className="admin-notice" role="status">{notice}</p>}
     {!status ? <p>正在读取接入状态…</p> : <>
-      {mode !== "drafts" && <div className="remote-state"><div><SettingsStatus tone={status.enabled?"success":"neutral"}>{status.enabled?"工作区已开启":"工作区未开启"}</SettingsStatus><p className="admin-help">{manage?"成员权限统一在“成员与权限”中分配。":status.granted?"你的账号已获授权，访问范围与事项权限一致。":"你的账号尚未获授权，请联系管理员调整成员权限。"}</p></div>{manage&&<button className="admin-button" disabled={busy} onClick={()=>{if(status.enabled&&!window.confirm("关闭外部 AI 工具接入？全部个人凭据和待确认草稿将失效，成员授权设置保留。"))return;void act("configure",{enabled:!status.enabled,revision:status.revision},status.enabled?"已关闭，旧凭据和草稿已失效。":"已开启，已获授权的成员可自行连接工具。");}}>{status.enabled?"关闭外部工具接入":"开启外部工具接入"}</button>}</div>}
-      {manage && <p className="admin-help">在 <Link href="/admin?section=members">成员与权限</Link> 邀请或编辑成员时分配权限。关闭全局开关会撤销全部凭据和草稿，保留成员授权；重新开启后，由成员生成新凭据。</p>}
+      {mode !== "drafts" && <div className="remote-state"><div><SettingsStatus tone={status.enabled?"success":"neutral"}>{status.enabled?"工作区已开启":"工作区未开启"}</SettingsStatus><p className="admin-help">{manage?"管理员默认具备接入权限，普通成员在“成员与权限”中单独授权。":user.role==="admin"&&status.granted?"管理员默认具备接入权限，无需为自己单独授权；连接仍需本人生成凭据。":status.granted?"你的账号已获授权，访问范围与事项权限一致。":"你的账号尚未获授权，请联系管理员调整成员权限。"}</p></div>{manage&&<button className="admin-button" disabled={busy} onClick={()=>{if(status.enabled&&!window.confirm("关闭外部 AI 工具接入？全部个人凭据和待确认草稿将失效，成员授权设置保留。"))return;void act("configure",{enabled:!status.enabled,revision:status.revision},status.enabled?"已关闭，旧凭据和草稿已失效。":"已开启，已获授权的成员可自行连接工具。");}}>{status.enabled?"关闭外部工具接入":"开启外部工具接入"}</button>}</div>}
+      {manage && <p className="admin-help">在 <Link href="/admin?section=members">成员与权限</Link> 邀请或编辑普通成员时分配权限，管理员无需单独授权。关闭全局开关会撤销全部凭据和草稿，保留成员授权；重新开启后，由成员生成新凭据。</p>}
       {mode === "connection" && <>
         <p className="admin-help">返回给外部工具的业务资料会进入你所使用的模型上下文，请按公司要求选择模型。这里不自动读取附件和联系方式，模型费用由对应工具账号承担。</p>
-        {!status.enabled || !status.granted ? <p className="settings-empty">{!status.enabled?"工作区尚未开启外部工具接入。":"请联系管理员允许你的账号连接外部 AI 工具。"}</p> : <>
+        {!status.enabled || !status.granted ? <p className="settings-empty">{!status.enabled?<>工作区尚未开启外部工具接入。{user.role==="admin"&&<>请前往 <Link href="/admin?section=ai#external-ai">AI 设置</Link> 开启，再回来生成个人凭据。</>}</>:"请联系管理员允许你的账号连接外部 AI 工具。"}</p> : <>
           <form onSubmit={event => { event.preventDefault(); void act("issue", { label, days, canDraft }, "凭据已生成，仅显示这一次。请保存在自己的电脑中。"); }}>
             <div className="remote-form"><label>凭据名称<input required maxLength={80} value={label} onChange={e => setLabel(e.target.value)} /></label>
               <label>有效天数<input type="number" min={1} max={30} required value={days} onChange={e => setDays(Number(e.target.value))} /></label>

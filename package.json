@@ -1,6 +1,6 @@
 {
   "name": "@airalogy/airalogy-bd",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "description": "Business development workspace for local use and team collaboration.",
   "publishConfig": {
     "access": "public",

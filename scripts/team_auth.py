@@ -178,7 +178,9 @@ class Accounts:
         return role, all_projects, sorted(set(projects)) if not all_projects else []
 
     def remote_allowed(self, identity):
-        return bool(self.db.execute("SELECT 1 FROM remote_grants WHERE owner=?", (identity,)).fetchone())
+        # Role-derived eligibility is separate from activation, the global switch and credentials.
+        return bool(self.db.execute("""SELECT 1 FROM users u WHERE u.id=? AND
+            (u.role='admin' OR EXISTS (SELECT 1 FROM remote_grants g WHERE g.owner=u.id))""", (identity,)).fetchone())
 
     def remote_enabled(self):
         if not self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='remote_settings'").fetchone():
@@ -195,10 +197,13 @@ class Accounts:
 
     def set_remote_allowed(self, identity, allowed):
         # Called inside the account transaction; never creates a personal credential.
-        if allowed:
+        administrator = bool(self.db.execute("SELECT 1 FROM users WHERE id=? AND role='admin'", (identity,)).fetchone())
+        if allowed and not administrator:
             self.db.execute("INSERT OR IGNORE INTO remote_grants VALUES(?)", (identity,))
         else:
+            # Never persist an administrator's implicit access as an ordinary member grant.
             self.db.execute("DELETE FROM remote_grants WHERE owner=?", (identity,))
+        if not allowed and not administrator:
             for table in ("remote_tokens", "remote_drafts"):
                 if self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone():
                     self.db.execute("DELETE FROM " + table + " WHERE owner=?", (identity,))
@@ -214,6 +219,7 @@ class Accounts:
             raise AuthError("请填写成员姓名（不超过 100 个字符）。", "invalid")
         role, all_projects, projects = self.permissions(payload, known)
         remote_allowed = self.remote_permission(payload)
+        remote_allowed = role == "admin" or remote_allowed
         with self.db:
             if bootstrap and self.db.execute("SELECT 1 FROM users LIMIT 1").fetchone():
                 raise AuthError("管理员已初始化，请通过成员管理邀请其他账号。", "conflict")
@@ -266,7 +272,9 @@ class Accounts:
             if not row or payload.get("revision") != row["revision"]:
                 raise AuthError("成员信息已变化，请刷新后重试。", "conflict")
             was_allowed = self.remote_allowed(row["id"])
-            remote_allowed = self.remote_permission(payload, was_allowed)
+            # Demotion requires a deliberate grant; even an older explicit admin grant must not carry over.
+            remote_allowed = self.remote_permission(payload, was_allowed if row["role"] != "admin" else False)
+            remote_allowed = role == "admin" or remote_allowed
             if "remote_allowed" in payload and (type(payload.get("remote_allowed_before")) is not bool or payload["remote_allowed_before"] != was_allowed):
                 raise AuthError("外部 AI 工具权限已变化，请刷新后重试。", "conflict")
             if payload["active"] and not row["active"] and not self.enrolled(row["id"]):
