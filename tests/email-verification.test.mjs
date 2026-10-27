@@ -80,7 +80,7 @@ test("optional email verification preserves offline login and enforces ownership
     assert.equal((await workspace(admin)).status,200);
     const remoteStatus=await okay(await fetch(base+"/api/remote?action=settings",{headers:{Host:new URL(origin).host,Cookie:admin.cookie}}));
     await okay(await request({operation:"configure",enabled:true,revision:remoteStatus.revision},admin,{},"/api/remote"));
-    await okay(await request({operation:"grant",memberId:admin.user.id,allowed:true},admin,{},"/api/remote"));
+    assert.equal(remoteStatus.granted,true,"Administrator eligibility requires no separate grant");
     const remote=await okay(await request({operation:"issue",label:"Email policy test",canDraft:false,days:1},admin,{},"/api/remote"));
     const remoteCall=()=>request({jsonrpc:"2.0",id:1,method:"tools/list"},null,{Authorization:`Bearer ${remote.token}`,Accept:"application/json, text/event-stream","MCP-Protocol-Version":"2025-11-25"},"/api/mcp");
     assert.equal((await remoteCall()).status,200);
