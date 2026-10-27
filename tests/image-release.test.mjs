@@ -54,6 +54,9 @@ test('deployment bundle locks the release digest and never enables source builds
   assert.ok(!files['compose.yaml'].includes('build:'));
   assert.ok(!files['.env.example'].includes('RELEASE_VERSION'));
   assert.equal(JSON.parse(files['image.json']).version, version);
+  assert.match(files['bdctl'], /check_network/);
+  assert.match(files['network_preflight.py'], /def live_inventory/);
+  assert.match(files['README.md'], /\.\/bdctl preflight/);
   assert.throws(() => deploymentFiles(fileURLToPath(new URL('..', import.meta.url)), { ...record, version: '0.0.0' }));
   assert.equal(verifyExistingAsset(undefined, 'b'.repeat(64)), false);
   assert.equal(verifyExistingAsset({ digest: hash }, 'b'.repeat(64)), true);
@@ -74,6 +77,9 @@ test('release archives are reproducible, extractable and protect npm artifact in
     const bundle = path.join(directory, `airalogy-bd-${version}-deploy.tar.gz`);
     const first = readFileSync(bundle);
     assert.ok(assets.includes('SHA256SUMS'));
+    assert.equal(execFileSync('tar', ['-xOf', bundle, 'bdctl'], { encoding: 'utf8' }), readFileSync(path.join(root, 'deploy/bdctl'), 'utf8'));
+    assert.match(execFileSync('tar', ['-tvf', bundle, 'bdctl'], { encoding: 'utf8' }), /^-rwxr-xr-x/);
+    assert.equal(execFileSync('tar', ['-xOf', bundle, 'network_preflight.py'], { encoding: 'utf8' }), readFileSync(path.join(root, 'deploy/network_preflight.py'), 'utf8'));
     assert.match(execFileSync('tar', ['-xOf', bundle, '.env.example'], { encoding: 'utf8' }), new RegExp(`^BD_IMAGE=${repository}@${hash}$`, 'm'));
     prepareReleaseAssets(root, directory, record);
     assert.deepEqual(readFileSync(bundle), first);
