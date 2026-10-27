@@ -7,7 +7,7 @@ const source = await readFile(new URL("../dashboard/app/lib/investments.ts", imp
 const { outputText } = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
 });
-const { filterInvestments, externalContacts, needsContactInfo, csvCell } = await import(
+const { filterInvestments, externalContacts, needsContactInfo, csvCell, bpSendings } = await import(
   "data:text/javascript;base64," + Buffer.from(outputText).toString("base64")
 );
 const defaults = { query: "", followUp: "all", priority: "all", stage: "all", missingContact: false, sort: "follow_up" };
@@ -67,4 +67,34 @@ test("generated shared profile channels propagate to every project without losin
     assert.equal(contact.email, person.email);
   }
   assert.equal(externalContacts(data.projects.find(project => project.id === "project-demo-investment")).length, 3);
+});
+
+const bpFile = {
+  id: "bp-a", title: "示例 BP", category: "bp", archived: false, project_ids: ["active", "closed"], current_version: "v2-id",
+  versions: [{id:"v1-id",filename:"BP-第一版.pdf"},{id:"v2-id",filename:"BP-第二版.pdf"}],
+  records: [
+    {id:"show",kind:"meeting",date:"2026-01-11",project_id:"active",version_id:"v2-id"},
+    {id:"sent-a",kind:"sent",date:"2026-01-10",project_id:"active",version_id:"v1-id",people:["甲"],channel:"微信"},
+    {id:"other",kind:"sent",date:"2026-01-12",project_id:"closed",version_id:"v2-id"},
+    {id:"received",kind:"received",date:"2026-01-13",project_id:"active",version_id:"v2-id"},
+  ],
+};
+test("BP status requires an actual send to this matter and keeps the version sent", () => {
+  const before=structuredClone(bpFile);
+  const rows=bpSendings("active",[bpFile,{...bpFile,id:"nda",category:"agreement"}]);
+  assert.equal(rows.length,1);assert.equal(rows[0].versionLabel,"v1");assert.equal(rows[0].filename,"BP-第一版.pdf");
+  assert.deepEqual(bpFile,before);
+  assert.deepEqual(bpSendings("proactive",[bpFile]),[]);
+  assert.deepEqual(bpSendings("active",[{...bpFile,records:bpFile.records.filter(r=>r.kind!=="sent")}]),[]);
+});
+test("multiple sends stay dated and moving a BP to trash does not erase its sending history", () => {
+  const rows=bpSendings("active",[{...bpFile,archived:true,records:[...bpFile.records,{...bpFile.records[1],id:"sent-new",date:"2026-02-01",version_id:"v2-id"}]}]);
+  assert.deepEqual(rows.map(r=>r.versionLabel),["v2","v1"]);assert.equal(rows[0].archived,true);
+  assert.equal(bpSendings("active",[{...bpFile,versions:[]}])[0].versionLabel,"版本信息缺失");
+});
+test("BP sending filters respect authorized files and combine with other investment filters", () => {
+  assert.deepEqual(filterInvestments(projects,{...defaults,bpStatus:"sent"},[bpFile]).map(p=>p.id),["active","closed"]);
+  assert.deepEqual(filterInvestments(projects,{...defaults,bpStatus:"unrecorded"},[bpFile]).map(p=>p.id),["proactive"]);
+  assert.deepEqual(filterInvestments(projects,{...defaults,bpStatus:"sent"},[]),[]);
+  assert.deepEqual(filterInvestments(projects,{...defaults,bpStatus:"sent",followUp:"closed"},[bpFile]).map(p=>p.id),["closed"]);
 });

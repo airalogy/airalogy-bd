@@ -7,7 +7,7 @@ import type { DashboardData } from "./lib/types";
 import type { RecordTarget, SavedResponse } from "./lib/workspace-types";
 import { agreementTypes, fileCategories, fileStatuses, fileUses, fileRequest, fileUrl, fileTypeLabel, matchesFileFilter, type AgreementType, type FileFilter, type FileListing, type LibraryFile, type FileUsage, type FileVersion } from "./lib/file-library";
 
-export type FileTarget = { projectId?: string; eventId?: string; counterpartyId?: string; agreementType?: AgreementType };
+export type FileTarget = { projectId?: string; eventId?: string; counterpartyId?: string; agreementType?: AgreementType; category?: LibraryFile["category"]; usageKind?: FileUsage["kind"]; fileId?: string };
 type EditMode = "view" | "import" | "version" | "metadata" | "usage";
 const accept = ".pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.txt,.md,.csv,.zip";
 const sizeLabel = (size: number) => size >= 1024 * 1024 ? `${(size / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.ceil(size / 1024))} KB`;
@@ -18,7 +18,7 @@ function FileForm({ data, file, mode, target, busy, onDirty, onSave, onCancel }:
 }) {
   const project = data.projects.find(item => item.id === target.projectId);
   const [title, setTitle] = useState(file?.title || "");
-  const [category, setCategory] = useState<LibraryFile["category"]>(file?.category || (target.agreementType ? "agreement" : "other"));
+  const [category, setCategory] = useState<LibraryFile["category"]>(file?.category || target.category || (target.agreementType ? "agreement" : "other"));
   const [agreementType, setAgreementType] = useState<keyof typeof agreementTypes>(file?.agreement_type || (!file ? target.agreementType || "unspecified" : "unspecified"));
   const [projects, setProjects] = useState<string[]>(file?.project_ids || (project ? [project.id] : data.counterparties.find(item => item.id === target.counterpartyId)?.matter_ids.length === 1 ? data.counterparties.find(item => item.id === target.counterpartyId)!.matter_ids : []));
   const [homeParty, setHomeParty] = useState(file?.home_counterparty_id || target.counterpartyId || project?.primary_counterparty_id || "");
@@ -63,7 +63,7 @@ function UsageForm({ data, file, target, original, busy, onDirty, onSave, onCanc
 }) {
   const initialProject = original?.project_id || target.projectId || file.project_ids[0];
   const initialEvent = data.projects.find(item => item.id === initialProject)?.events.find(item => item.id === target.eventId);
-  const [draft, setDraft] = useState({ version_id: original?.version_id || file.current_version, kind: original?.kind || "meeting", date: original?.date || initialEvent?.date || "", project_id: initialProject, event_id: original?.event_id || target.eventId || "", people: original?.people || [] as string[], channel: original?.channel || "", note: original?.note || "" });
+  const [draft, setDraft] = useState({ version_id: original?.version_id || file.current_version, kind: original?.kind || target.usageKind || "meeting", date: original?.date || initialEvent?.date || "", project_id: initialProject, event_id: original?.event_id || target.eventId || "", people: original?.people || [] as string[], channel: original?.channel || "", note: original?.note || "" });
   const project = data.projects.find(item => item.id === draft.project_id);
   const change = (value: Partial<typeof draft>) => { setDraft({...draft,...value});onDirty(); };
   return <form className="files-form" onSubmit={event => {event.preventDefault();void onSave({...draft, ...(original ? {record_id:original.id} : {})});}}>
@@ -90,10 +90,10 @@ export default function FileLibraryDialog({ data, target, onClose, onChanged, on
   const canAdmin=!data.access || data.access.role==="admin";
   const local=!data.access?.server;
   const [listing, setListing] = useState<FileListing>();
-  const [selected, setSelected] = useState("");
+  const [selected, setSelected] = useState(target.fileId || "");
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<FileFilter>(target.agreementType || "all");
-  const [trash, setTrash] = useState(false);
+  const [filter, setFilter] = useState<FileFilter>(target.agreementType || target.category || "all");
+  const [trash, setTrash] = useState(Boolean(data.files?.find(item => item.id === target.fileId)?.archived));
   const [eventOnly, setEventOnly] = useState(true);
   const [mode, setMode] = useState<EditMode>("view");
   const [usageId, setUsageId] = useState("");
@@ -124,7 +124,7 @@ export default function FileLibraryDialog({ data, target, onClose, onChanged, on
       const next = await refresh();await onChanged();setSelected(result.id);setDirty(false);setNotice(result.message);
       const saved = next.files.find(item => item.id === result.id);
       if (saved && !matchesFileFilter(saved,filter,query)) {setFilter("all");setQuery("");}
-      setMode(mode === "import" && target.eventId ? "usage" : "view");setUsageId("");
+      setMode(mode === "import" && (target.eventId || target.usageKind) ? "usage" : "view");setUsageId("");
       if(operation === "archive" || operation === "unarchive") setTrash(operation === "archive");
       if(operation === "usage" && target.eventId) setEventOnly(true);
     } catch(err) {setError(err instanceof Error ? err.message : "保存未完成。");} finally {setBusy(false);}
@@ -153,6 +153,7 @@ export default function FileLibraryDialog({ data, target, onClose, onChanged, on
     {pending && <section className="admin-confirm" role="alertdialog" aria-label="放弃资料草稿"><h3>放弃本次未保存的输入？</h3><div className="admin-actions"><button className="admin-button" onClick={() => setPending(null)}>继续填写</button><button className="admin-button" onClick={() => {const action=pending;setPending(null);setDirty(false);action();}}>放弃草稿并继续</button></div></section>}
     {confirmation && <section className="admin-confirm" role="alertdialog" aria-label={confirmation.title}><h3>{confirmation.title}</h3><p>{confirmation.detail}</p><div className="admin-actions"><button className="admin-button" onClick={() => setConfirmation(null)}>取消操作</button><button className="admin-button admin-primary" onClick={() => {const action=confirmation.action;setConfirmation(null);action();}}>确认操作</button></div></section>}
     <div className="files-toolbar"><div className="admin-actions">{canEdit && <button type="button" className="admin-button admin-primary" disabled={busy || !listing} onClick={() => navigate(() => {setSelected("");changeMode("import");})}>导入资料</button>}<button type="button" className="admin-button" disabled={busy} onClick={() => navigate(() => {changeMode("view");void refresh().catch(err => setError(err.message));})}>刷新</button></div>{canAdmin && <button type="button" className="admin-button" disabled={busy || dirty} onClick={() => void backup()}>备份全部资料</button>}</div>
+    {target.category === "bp" && <p className="admin-help">BP 发送状态按本事项的“实际发送”记录汇总。导入或选择 BP 后，点击“记录使用 / 发送”，选择当时发送的版本并填写日期、收件人和渠道。仅导入文件或会议展示不算已发送。</p>}
     {error && <div role="alert" className="admin-alert">{error}</div>}{notice && <div role="status" className="admin-notice">{notice}</div>}
     <div className="files-layout"><aside className="files-sidebar"><input aria-label="搜索事项资料" type="search" placeholder="文件、名称、机构" value={query} onChange={event => setQuery(event.target.value)} /><div className="files-scope"><button aria-pressed={!trash} onClick={() => navigate(() => {setTrash(false);setSelected("");changeMode("view");})}>在用资料</button><button aria-pressed={trash} onClick={() => navigate(() => {setTrash(true);setSelected("");changeMode("view");})}>回收站</button></div>
       <label className="files-event-scope">文件类型<select aria-label="按文件类型筛选" value={filter} onChange={event => navigate(() => {setFilter(event.target.value as FileFilter);setSelected("");changeMode("view");setNotice("");})}><option value="all">全部类型</option>{Object.entries(agreementTypes).filter(([value]) => value !== "unspecified").map(([value,label]) => <option key={value} value={value}>{label}</option>)}{Object.entries(fileCategories).map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label>

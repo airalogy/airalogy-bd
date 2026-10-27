@@ -4,7 +4,7 @@ import type {DashboardData} from "./lib/types";
 import type {FileTarget} from "./FileLibrary";
 import {fileTypeLabel,fileStatuses,fileUses} from "./lib/file-library";
 export default function HistoricalFiles({data,target,version,onClose}:{data:DashboardData;target:FileTarget;version:string;onClose:()=>void}) {
-  const files=(data.files || []).filter(item=>!item.archived && (!target.agreementType || item.agreement_type === target.agreementType) && (!target.projectId || item.project_ids.includes(target.projectId)) && (!target.counterpartyId || item.home_counterparty_id===target.counterpartyId) && (!target.eventId || item.records.some(record=>record.event_id===target.eventId)));
+  const files=(data.files || []).filter(item=>(!item.archived || item.id === target.fileId) && (!target.fileId || item.id === target.fileId) && (!target.category || item.category === target.category) && (!target.agreementType || item.agreement_type === target.agreementType) && (!target.projectId || item.project_ids.includes(target.projectId)) && (!target.counterpartyId || item.home_counterparty_id===target.counterpartyId) && (!target.eventId || item.records.some(record=>record.event_id===target.eventId)));
   return <Dialog.Root open onOpenChange={open=>{if(!open)onClose();}}><Dialog.Portal><Dialog.Overlay className="drawer-layer"/><Dialog.Content className="project-drawer" aria-describedby="historical-files-description">
     <div className="drawer-head"><Dialog.Title>历史资料</Dialog.Title><Dialog.Close className="close-button" aria-label="关闭历史资料">×</Dialog.Close></div>
     <Dialog.Description id="historical-files-description">只显示此版本中已归档的文件和使用记录。附件仍需保留在本机才能打开。</Dialog.Description>

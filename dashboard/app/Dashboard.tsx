@@ -18,6 +18,7 @@ import ToolbarActions from "./ToolbarActions";
 import FileLibraryDialog, { type FileTarget } from "./FileLibrary";
 import CompanyActivity from "./CompanyActivity";
 import InvestmentOverview from "./InvestmentOverview";
+import BpStatus from "./BpStatus";
 import ContactChannels from "./ContactChannels";
 import CounterpartyContext from "./CounterpartyContext";
 import WorkspaceAdmin from "./WorkspaceAdmin";
@@ -785,6 +786,7 @@ function ProjectDrawer({
   data, onSelectProject, onCounterpartyFiles, readOnly, onAi,
   onFiles,
   fileCount,
+  onBpFiles,
   onEdit,
   onHistory,
   project,
@@ -810,6 +812,7 @@ function ProjectDrawer({
   onCounterpartyFiles: (identity:string) => void;
   onFiles: (eventId?:string) => void;
   fileCount: number;
+  onBpFiles: (fileId?: string) => void;
   readOnly: boolean;
   onEdit: (target: RecordTarget) => void;
   onHistory: (target: RecordTarget) => void;
@@ -864,6 +867,7 @@ function ProjectDrawer({
               {!readOnly && (!data.access || data.access.role==="admin") && <button type="button" className="admin-button" onClick={() => onHistory({kind:"project",id:project.id})}>修改历史</button>}
             </div>
             <CounterpartyContext readOnly={readOnly || (!!data.access && data.access.role!=="admin")} project={project} data={data} onSelectProject={onSelectProject} onEdit={onEdit} onFiles={onCounterpartyFiles} />
+            {project.record_type === "investment" && <section className="drawer-bp"><h3>BP 发送与版本</h3><BpStatus projectId={project.id} files={data.files || []} people={data.people} onOpen={onBpFiles} /><p className="admin-help">以实际发送记录为准，版本更新不会改变此前发给对方的版本。</p></section>}
             <div className="drawer-badges">
               <RecordTypeBadge
                 project={project}
@@ -1390,7 +1394,7 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
       {!readOnly && canAdmin && page === "admin" && <WorkspaceAdmin data={data} onEdit={setEditTarget} onHistory={openHistory} onFiles={openFiles} onNdaFiles={() => setFilesTarget({agreementType:"nda"})} />}
       {!readOnly && canAdmin && page === "history" && <VersionHistory onBrowse={onBrowseHistory} initialVersion={historyTarget ? null : initialHistoryVersion} key={historyTarget ? `${historyTarget.kind}:${historyTarget.id}` : "all"} data={data} initialTarget={historyTarget} onRestored={saved} />}
       <div hidden={page !== "investments"}>
-        <InvestmentOverview projects={data.projects} onOpenProject={setSelectedProject} />
+        <InvestmentOverview projects={data.projects} files={data.files || []} people={data.people} onOpenProject={setSelectedProject} onOpenBp={(projectId,fileId) => setFilesTarget({projectId,fileId,category:"bp",usageKind:"sent"})} />
       </div>
       <div hidden={page !== "company"}>
         <CompanyActivity events={data.company_events} timezone={data.workspace.timezone} renderEvent={(event) => (
@@ -1947,6 +1951,7 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
 
       {selectedProject && (
         <ProjectDrawer readOnly={readOnly || !canEdit}
+          onBpFiles={fileId => setFilesTarget({projectId:selectedProject.id,fileId,category:"bp",usageKind:"sent"})}
           onAi={readOnly ? undefined : () => {setAiScope(selectedProject.id);setSelectedProject(null);setPage("ai");}}
           data={data} onSelectProject={setSelectedProject} onCounterpartyFiles={identity => openFiles(undefined,undefined,identity)}
           onEdit={setEditTarget}

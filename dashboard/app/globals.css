@@ -39,16 +39,16 @@
 .investment-toolbar > label { display: flex; align-items: center; gap: 6px; }
 .investment-table-scroll { overflow: auto; border: 1px solid var(--line); border-radius: 10px; }
 .investment-table-scroll:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
-.investment-table { width: 100%; min-width: 960px; border-collapse: collapse; table-layout: fixed; font-size:var(--text-body); }
+.investment-table { width: 100%; min-width: 1220px; border-collapse: collapse; table-layout: fixed; font-size:var(--text-body); }
 .investment-table > caption { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .investment-table th, .investment-table td { padding: 16px 12px; vertical-align: top; text-align: left; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
 .investment-table thead { background: var(--canvas); color: var(--muted); font-size:var(--text-small); }
-.investment-table > thead th:nth-child(1) { width: 17%; }
-.investment-table > thead th:nth-child(2) { width: 16%; }
-.investment-table > thead th:nth-child(3) { width: 13%; }
-.investment-table > thead th:nth-child(4) { width: 27%; }
+.investment-table > thead th:nth-child(1) { width: 15%; }
+.investment-table > thead th:nth-child(2) { width: 14%; }
+.investment-table > thead th:nth-child(3) { width: 12%; }
+.investment-table > thead th:nth-child(4) { width: 18%; }
 .investment-table > thead th:nth-child(5) { width: 20%; }
-.investment-table > thead th:nth-child(6) { width: 7%; }
+.investment-table > thead th:nth-child(6) { width: 14%; }
 .investment-table p { margin: 5px 0; line-height:var(--leading-body); font-weight: 400; }
 .investment-table small { display: block; margin-top: 5px; color: var(--muted); font-size:var(--text-small); font-weight: 400; }
 .investment-table time { font-size:var(--text-small); color: var(--muted); white-space: nowrap; }
@@ -3148,3 +3148,18 @@ select,
 @media(max-width:760px) {
   .workspace-filters .control-field input,.workspace-filters .control-field select { font-size:var(--text-subheading); }
 }
+
+.investment-table > thead th:nth-child(7) { width:7%; }
+
+.bp-status { display:grid; gap:6px; min-width:0; font-size:var(--text-small); }
+.bp-status p,.bp-status small { margin:0; overflow-wrap:anywhere; }
+.bp-status .bp-sent { color:#226a49; }
+.bp-status .bp-unrecorded { color:var(--muted); font-weight:500; }
+.bp-status details { min-width:0; }
+.bp-status summary { cursor:pointer; color:var(--blue); }
+.bp-status ol { padding:0; margin:8px 0; list-style:none; max-height:260px; overflow:auto; }
+.bp-status li { padding:10px 0; border-bottom:1px solid var(--line); }
+.bp-status button { justify-self:start; text-align:left; }
+.drawer-bp { margin:18px 0; padding:16px; border:1px solid var(--line); border-radius:10px; }
+.drawer-bp h3 { margin:0 0 12px; font-size:var(--text-subheading); }
+.investment-toolbar select { min-width:130px; min-height:38px; padding:6px 28px 6px 10px; font-size:var(--text-small); }

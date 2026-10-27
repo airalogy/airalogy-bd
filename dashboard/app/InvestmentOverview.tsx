@@ -3,19 +3,24 @@
 import { Fragment, useState } from "react";
 import type { Project } from "./lib/types";
 import { followUpStatusLabels, priorityLabels, roleLabels, stageLabels } from "./lib/labels";
-import { csvCell, externalContacts, filterInvestments, hasContactChannel, needsContactInfo, type InvestmentFilters } from "./lib/investments";
+import { bpSendings, csvCell, externalContacts, filterInvestments, hasContactChannel, needsContactInfo, type InvestmentFilters } from "./lib/investments";
+import type { LibraryFile } from "./lib/file-library";
+import BpStatus from "./BpStatus";
 
-const defaults: InvestmentFilters = { query: "", followUp: "all", priority: "all", stage: "all", missingContact: false, sort: "follow_up" };
+const defaults: InvestmentFilters = { query: "", followUp: "all", priority: "all", stage: "all", bpStatus: "all", missingContact: false, sort: "follow_up" };
 
-export default function InvestmentOverview({ projects, onOpenProject }: {
+export default function InvestmentOverview({ projects, files, people, onOpenProject, onOpenBp }: {
   projects: Project[];
+  files: LibraryFile[];
+  people: {id:string;name:string}[];
+  onOpenBp: (projectId: string, fileId?: string) => void;
   onOpenProject: (project: Project) => void;
 }) {
   const [filters, setFilters] = useState<InvestmentFilters>(defaults);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const investments = projects.filter((project) => project.record_type === "investment");
-  const visible = filterInvestments(investments, filters);
-  const people = new Set(investments.flatMap((project) => externalContacts(project).map((contact) => contact.person_id)));
+  const visible = filterInvestments(investments, filters, files);
+  const contactIds = new Set(investments.flatMap((project) => externalContacts(project).map((contact) => contact.person_id)));
   const allExpanded = visible.length > 0 && visible.every((project) => expanded.has(project.id));
   const update = (patch: Partial<InvestmentFilters>) => setFilters((current) => ({ ...current, ...patch }));
   const toggle = (id: string) => setExpanded((current) => {
@@ -24,13 +29,15 @@ export default function InvestmentOverview({ projects, onOpenProject }: {
     return next;
   });
   const exportCsv = () => {
-    const rows = [["事项", "投资机构或个人", "阶段", "跟进状态", "优先级", "最近进展日期", "管理摘要", "下一步", "下一步期限", "负责人", "联系人", "关系", "单位及职位", "角色", "电话", "微信", "邮箱", "最近参与日期", "联系备注"]];
+    const rows = [["事项", "投资机构或个人", "阶段", "跟进状态", "优先级", "BP 发送状态", "BP 发送版本与记录", "最近进展日期", "管理摘要", "下一步", "下一步期限", "负责人", "联系人", "关系", "单位及职位", "角色", "电话", "微信", "邮箱", "最近参与日期", "联系备注"]];
     for (const project of visible) {
       const contacts = externalContacts(project);
+      const bp = bpSendings(project.id, files);
       for (const contact of contacts.length ? contacts : [null]) {
         rows.push([
           project.name, project.counterparties.join("、"), stageLabels[project.stage] ?? project.stage,
-          followUpStatusLabels[project.follow_up_status], priorityLabels[project.priority], project.last_activity,
+          followUpStatusLabels[project.follow_up_status], priorityLabels[project.priority],
+          bp.length ? "已发送" : "暂无发送记录", bp.map(record => `${record.date} · ${record.title} · ${record.versionLabel} · ${record.filename} · ${record.people.map(id => people.find(person => person.id === id)?.name || id).join("、")} · ${record.channel}`).join("\n"), project.last_activity,
           project.summary, project.next_action, project.next_action_due ?? "", project.owner,
           contact?.name ?? "", contact ? (contact.side === "advisor" ? "引荐 / 顾问" : "机构 / 对方") : "",
           contact?.affiliation ?? "", contact?.project_roles.map((role) => roleLabels[role] ?? role).join("、") ?? "",
@@ -54,7 +61,7 @@ export default function InvestmentOverview({ projects, onOpenProject }: {
       </div>
       <div className="investment-stats">
         <div><strong>{investments.length}</strong><span>投资对接事项</span></div>
-        <div><strong>{people.size}</strong><span>对外联系人（去重）</span></div>
+        <div><strong>{contactIds.size}</strong><span>对外联系人（去重）</span></div>
         <div><strong>{investments.filter((project) => project.follow_up_status === "proactive_contact").length}</strong><span>可主动跟进</span></div>
         <div><strong>{investments.filter(needsContactInfo).length}</strong><span>联系方式待补充的事项</span></div>
       </div>
@@ -75,6 +82,7 @@ export default function InvestmentOverview({ projects, onOpenProject }: {
         </select></label>
       </div>
       <div className="investment-toolbar">
+        <label>BP 发送<select aria-label="筛选 BP 发送状态" value={filters.bpStatus} onChange={event => update({bpStatus:event.target.value as InvestmentFilters["bpStatus"]})}><option value="all">全部</option><option value="sent">已发送</option><option value="unrecorded">暂无发送记录</option></select></label>
         <label><input type="checkbox" checked={filters.missingContact} onChange={(e) => update({ missingContact: e.target.checked })} /> 仅看联系方式待补充</label>
         <span className="investment-help">无对外联系人，或有联系人三项联系方式均未填写</span>
         <button className="history-trigger" type="button" onClick={() => setFilters(defaults)}>重置筛选</button>
@@ -86,7 +94,7 @@ export default function InvestmentOverview({ projects, onOpenProject }: {
       {visible.length > 0 ? <div className="investment-table-scroll" role="region" aria-label="投资对接表格，可横向滚动" tabIndex={0}>
         <table className="investment-table">
           <caption className="sr-only">投资机构及个人对接总览</caption>
-          <thead><tr><th scope="col">机构 / 个人</th><th scope="col">联系人</th><th scope="col">阶段 / 跟进</th><th scope="col">最近进展</th><th scope="col">下一步</th><th scope="col">负责人</th></tr></thead>
+          <thead><tr><th scope="col">机构 / 个人</th><th scope="col">联系人</th><th scope="col">阶段 / 跟进</th><th scope="col">BP 发送 / 版本</th><th scope="col">最近进展</th><th scope="col">下一步</th><th scope="col">负责人</th></tr></thead>
           <tbody>{visible.map((project) => {
             const contacts = externalContacts(project);
             const direct = contacts.filter((contact) => contact.side === "counterparty");
@@ -104,12 +112,13 @@ export default function InvestmentOverview({ projects, onOpenProject }: {
                   <button className="investment-expand" type="button" aria-expanded={open} aria-controls={"investment-contacts-" + project.id} onClick={() => toggle(project.id)}>{open ? "收起" : "展开"} {contacts.length} 位联系人</button>
                 </td>
                 <td><div>{stageLabels[project.stage] ?? project.stage}</div><span className={"investment-followup followup-" + project.follow_up_status}>{followUpStatusLabels[project.follow_up_status]}</span></td>
+                <td><BpStatus projectId={project.id} files={files} people={people} onOpen={fileId => onOpenBp(project.id, fileId)} /></td>
                 <td><time>{project.last_activity}</time><p>{latest?.summary || project.summary || "暂无进展摘要"}</p>
                   <button className="history-trigger" type="button" onClick={() => onOpenProject(project)}>查看完整进展</button></td>
                 <td><p>{project.next_action || "未记录"}</p>{project.next_action_due && <small>期限：{project.next_action_due}</small>}</td>
                 <td>{project.owner || "未记录"}</td>
               </tr>
-              <tr id={"investment-contacts-" + project.id} hidden={!open} className="investment-contact-row"><td colSpan={6}>
+              <tr id={"investment-contacts-" + project.id} hidden={!open} className="investment-contact-row"><td colSpan={7}>
                 {contacts.length > 0 ? <table className="investment-contacts">
                   <caption>{displayName} · 对外联系人</caption>
                   <thead><tr><th scope="col">姓名 / 关系</th><th scope="col">单位及职位 / 角色</th><th scope="col">电话</th><th scope="col">微信</th><th scope="col">邮箱</th><th scope="col">最近参与 / 备注</th></tr></thead>
