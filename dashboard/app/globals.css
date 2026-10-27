@@ -840,9 +840,15 @@ select:focus-visible {
   scroll-margin-top: 20px;
 }
 
+.events-panel .section-heading {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
 .event-panel-actions {
   align-items: center;
   display: flex;
+  flex-wrap: wrap;
   gap: 9px;
 }
 
@@ -867,6 +873,12 @@ select:focus-visible {
 .history-trigger:hover {
   background: #e3edf4;
   color: var(--navy);
+}
+
+.event-key-filter[aria-pressed="true"] {
+  background: var(--navy);
+  border-color: var(--navy);
+  color: #fff;
 }
 
 .event-list {
@@ -937,6 +949,15 @@ select:focus-visible {
   border-radius: 999px;
   color: #52677b;
   padding: 2px 7px;
+}
+
+.event-importance {
+  background: #fff3d6;
+  border: 1px solid #eed49b;
+  border-radius: 999px;
+  color: #82510d;
+  font-weight: 700;
+  padding: 1px 7px;
 }
 
 .event-agreement {
@@ -1299,8 +1320,15 @@ select:focus-visible {
 
 .markdown-record ul,
 .markdown-record ol {
+  list-style-position: outside;
   padding-left: 1.7em;
 }
+
+.markdown-record ul { list-style-type: disc; }
+.markdown-record ol { list-style-type: decimal; }
+.markdown-record ul ul { list-style-type: circle; }
+.markdown-record ul ul ul { list-style-type: square; }
+.markdown-record li.task-list-item { list-style-type: none; }
 
 .markdown-record li + li {
   margin-top: 5px;

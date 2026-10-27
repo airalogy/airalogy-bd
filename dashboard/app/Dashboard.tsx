@@ -519,6 +519,7 @@ function EventItem({
         <div className="event-meta">
           <time dateTime={event.date}>{formatDate(event.date, workspace)}</time>
           {sourceLabel && <span>{sourceLabel}</span>}
+          {event.importance === "key" && <span className="event-importance">重要</span>}
           <span className={`event-type event-${event.type}`}>
             {eventTypeLabels[event.type] ?? event.type}
           </span>
@@ -1027,6 +1028,7 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
   const [selectedProjectValue, setSelectedProject] = useState<Project | null>(null);
   const selectedProject = data.projects.find(project => project.id === selectedProjectValue?.id) || null;
   const [selectedRecord, setSelectedRecord] = useState<RecordSelection | null>(null);
+  const [keyEventsOnly, setKeyEventsOnly] = useState(false);
   const [keyPeopleOnly, setKeyPeopleOnly] = useState(true);
   const [peopleSort, setPeopleSort] = useState<PeopleSort>("recent");
 
@@ -1044,6 +1046,7 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
     clearFacetFilters();
     setProjectSort("recent");
     setPeopleSort("recent");
+    setKeyEventsOnly(false);
     setSelectedProject(null);
   };
 
@@ -1228,7 +1231,9 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
     : [];
   const allEvents = [...projectEvents, ...companyEvents].sort(eventSort);
 
-  const keyEvents = allEvents.filter((event) => event.importance === "key").slice(0, 6);
+  const recentEvents = (keyEventsOnly
+    ? allEvents.filter((event) => event.importance === "key")
+    : allEvents).slice(0, 6);
 
   const scopedProjectIds = new Set(filteredProjects.map((project) => project.id));
   const scopedPeople = data.people
@@ -1497,10 +1502,19 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
           <div className="section-heading">
             <div>
               <div className="eyebrow">最近事件</div>
-              <h2 id="events-title">关键进展</h2>
+              <h2 id="events-title">最近进展</h2>
             </div>
             <div className="event-panel-actions">
-              <span>最近 {keyEvents.length} 条</span>
+              <span role="status">最近 {recentEvents.length} 条</span>
+              <button
+                type="button"
+                className="history-trigger event-key-filter"
+                aria-pressed={keyEventsOnly}
+                aria-controls="recent-progress-list"
+                onClick={() => setKeyEventsOnly((current) => !current)}
+              >
+                仅看关键
+              </button>
               <EventHistoryDialog
                 events={allEvents}
                 workspace={data.workspace}
@@ -1512,9 +1526,9 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
               />
             </div>
           </div>
-          <div className="event-list">
-            {keyEvents.length > 0 ? (
-              keyEvents.map((event) => (
+          <div className="event-list" id="recent-progress-list">
+            {recentEvents.length > 0 ? (
+              recentEvents.map((event) => (
                 <EventItem
                   key={`${event.scopeType}-${event.sourceLabel}-${event.id}`}
                   event={event}
@@ -1526,7 +1540,7 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
                 />
               ))
             ) : (
-              <div className="panel-empty-state">当前筛选下暂无关键事件。</div>
+              <div className="panel-empty-state">{keyEventsOnly ? "当前筛选下暂无关键进展，可关闭“仅看关键”查看普通进展。" : "当前筛选下暂无进展。"}</div>
             )}
           </div>
         </section>

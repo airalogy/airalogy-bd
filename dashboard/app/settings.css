@@ -235,6 +235,15 @@
 .auth-setup { padding:16px; background:#f3f6fa; border:1px solid var(--line); border-radius:9px; }
 .auth-setup p { margin:10px 0; font-size:var(--text-small); line-height:var(--leading-reading); }
 .auth-setup code { display:block; overflow-wrap:anywhere; user-select:all; font-size:var(--text-body); padding:10px; background:white; border-radius:6px; }
+.auth-setup-steps { list-style:decimal outside; padding-left:1.5em; margin:12px 0; font-size:var(--text-small); line-height:var(--leading-reading); }
+.auth-setup-steps li + li { margin-top:8px; }
+.auth-setup-guide { margin:14px 0; font-size:var(--text-small); }
+.auth-setup-guide summary { color:var(--blue); cursor:pointer; }
+.auth-setup-guide p { margin:8px 0; }
+.auth-setup h3 { margin:16px 0 8px; font-size:var(--text-small); font-weight:600; }
+.auth-setup > .admin-help { color:var(--muted); font-size:var(--text-caption); }
+.auth-setup > :last-child { margin-bottom:0; }
+
 .auth-card a { color:var(--blue); font-size:var(--text-small); }
 
 @media(max-width:1050px) {
