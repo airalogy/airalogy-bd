@@ -28,7 +28,9 @@ export function verifyExistingAsset(existing, digest) {
   assert.equal(existing.digest, `sha256:${digest}`, 'Existing GitHub Release asset differs; refusing overwrite');
   return true;
 }
-export function prepareReleaseAssets(root, directory, record) {
+const digestFile = (directory, file, algorithm = 'sha256', encoding = 'hex') => createHash(algorithm).update(readFileSync(path.join(directory, file))).digest(encoding);
+
+export function prepareDeploymentAssets(root, directory, record) {
   const files = deploymentFiles(root, record);
   const staging = path.join(directory, 'deploy'); mkdirSync(staging, { recursive: true });
   for (const [name, data] of Object.entries(files)) writeFileSync(path.join(staging, name), data);
@@ -40,20 +42,41 @@ with open(sys.argv[2],'wb') as target, gzip.GzipFile(filename='',mode='wb',fileo
  for name in sorted(['README.md','compose.yaml','.env.example','image.json']):
   p=root/name; data=p.read_bytes(); info=tarfile.TarInfo(p.name); info.size=len(data); info.mode=0o644; info.mtime=0; archive.addfile(info,io.BytesIO(data))
 `, staging, path.join(directory, bundle)]);
+  const digest = file => digestFile(directory, file);
+  const assets = [bundle, 'image.json'];
+  writeFileSync(path.join(directory, 'DEPLOY-SHA256SUMS'), assets.map(file => `${digest(file)}  ${file}\n`).join(''));
+  writeFileSync(path.join(directory, 'deployment-ready.json'), JSON.stringify({
+    schema_version: 1, status: 'deployment-ready', version: record.version, revision: record.revision,
+    image: record.image, sha256: Object.fromEntries(assets.map(file => [file, digest(file)])),
+  }, null, 2) + '\n');
+  // The readiness receipt is uploaded last, after all deployment assets exist.
+  return [...assets, 'DEPLOY-SHA256SUMS', 'deployment-ready.json'];
+}
+export function prepareReleaseAssets(root, directory, record) {
+  const deployment = prepareDeploymentAssets(root, directory, record);
   const npmFile = `airalogy-airalogy-bd-${record.version}.tgz`;
-  const digest = file => createHash('sha256').update(readFileSync(path.join(directory, file))).digest('hex');
+  const digest = file => digestFile(directory, file);
   assert.equal(readFileSync(path.join(directory, npmFile + '.sha256'), 'utf8').trim(), `${digest(npmFile)}  ${npmFile}`);
-  const assets = [npmFile, npmFile + '.sha256', bundle, 'image.json'];
+  const assets = [...deployment, npmFile, npmFile + '.sha256'];
   writeFileSync(path.join(directory, 'SHA256SUMS'), assets.map(file => `${digest(file)}  ${file}\n`).join(''));
   assets.push('SHA256SUMS');
-  return assets;
+  writeFileSync(path.join(directory, 'publication.json'), JSON.stringify({
+    schema_version: 1, status: 'complete', version: record.version, revision: record.revision,
+    image: record.image, npm: { name: '@airalogy/airalogy-bd', version: record.version,
+      integrity: 'sha512-' + digestFile(directory, npmFile, 'sha512', 'base64') },
+    sha256: Object.fromEntries(assets.map(file => [file, digest(file)])),
+  }, null, 2) + '\n');
+  // Only the final job (after npm and public image verification) calls this path.
+  return [...assets, 'publication.json'];
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const directory = path.resolve(process.argv[2]);
   const root = fileURLToPath(new URL('../..', import.meta.url));
   const record = JSON.parse(readFileSync(path.join(directory, 'image.json')));
   assert.equal(record.revision, process.env.GITHUB_SHA);
-  const assets = prepareReleaseAssets(root, directory, record);
+  assert.ok(process.argv.length === 3 || (process.argv.length === 4 && process.argv[3] === '--deployment-only'));
+  const assets = process.argv[3] === '--deployment-only'
+    ? prepareDeploymentAssets(root, directory, record) : prepareReleaseAssets(root, directory, record);
   const digest = file => createHash('sha256').update(readFileSync(path.join(directory, file))).digest('hex');
   const release = JSON.parse(execFileSync('gh', ['api', `repos/airalogy/airalogy-bd/releases/tags/v${record.version}`], { encoding: 'utf8' }));
   assert.equal(release.tag_name, `v${record.version}`);

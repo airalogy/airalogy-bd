@@ -23,9 +23,9 @@
 
 ### 推荐：使用预构建镜像
 
-需要 Docker Engine 和 Compose v2。选择附带 `airalogy-bd-X.Y.Z-deploy.tar.gz`、且 **Release packages** 工作流成功的 GitHub Release。npm 上存在某个版本不代表该版本的容器镜像已经发布。
+需要 Docker Engine 和 Compose v2。选择附带 `airalogy-bd-X.Y.Z-deploy.tar.gz` 的 GitHub Release。1.3.5 起可在同次 **Release packages** 工作流的 `deployment-assets` 任务成功、且 `deployment-ready.json` 已上传后部署，无需等待 npm 分发；核对其中版本、提交和文件摘要。`publication.json` 代表全部渠道已完成。较早版本仍须等待整个工作流成功。npm 上存在某个版本不代表容器镜像可用。
 
-下载并解压部署包到独立目录，无需下载源码或在服务器构建。部署包包含 `compose.yaml`、`.env.example`、`image.json` 和使用说明。镜像名为 `ghcr.io/airalogy/airalogy-bd:X.Y.Z`，支持 Linux amd64 / arm64；生成的配置进一步锁定该版本的镜像摘要，Docker 自动选择匹配的架构。核对 Release 的 `SHA256SUMS` 后，在解压目录执行：
+下载并解压部署包到独立目录，无需下载源码或在服务器构建。部署包包含 `compose.yaml`、`.env.example`、`image.json` 和使用说明。镜像名为 `ghcr.io/airalogy/airalogy-bd:X.Y.Z`，支持 Linux amd64 / arm64；生成的配置进一步锁定该版本的镜像摘要，Docker 自动选择匹配的架构。核对 Release 的 `DEPLOY-SHA256SUMS`（较早版本为 `SHA256SUMS`）后，在解压目录执行：
 
 ```sh
 cp .env.example .env

@@ -39,7 +39,7 @@
 
 ## 部署时替换品牌
 
-默认图标为 `dashboard/public/airalogy-logo.svg`，来自 Airalogy Platform 的 `packages/shared/src/assets/icons/logo-icon.svg`，保留原始图形。登录页和管理中心默认名称为 Airalogy BD；工作台顶部继续显示工作区名称。
+默认图标为 `dashboard/public/airalogy-logo.svg`，来自 Airalogy Platform 的 `packages/shared/src/assets/icons/logo-icon.svg`，保留原始图形。页面 Logo 和浏览器标签页图标共用品牌配置，自定义图标不可用时回退到默认图标。登录页和管理中心默认名称为 Airalogy BD；工作台顶部继续显示工作区名称。
 
 其他公司无需修改源码，可设置：
 

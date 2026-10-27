@@ -40,8 +40,8 @@ npm 接收发布后会扫描安装包，通常需等待数分钟才可按包名�
 1. 修改版本号与更新记录，完成审阅后将源码提交、推送到 `main`。
 2. 如需提前检查，在 GitHub Actions → Release packages → Run workflow 中选择 `main`。手动运行检查安装包及两种架构的镜像，不取得 npm 或 GHCR 发布权限。
 3. 为已准备好的提交创建 `vX.Y.Z` 标签，在 GitHub 正式发布对应的 Release。标签必须匹配 `package.json` 的 `x.y.z`，指向 `main` 历史中的提交；发布后不移动标签或覆盖版本。
-4. 工作流先执行完整测试，再打包并在独立工作区验证安装、初始化、启动器、Logo、资料保留和生产构建。测试任务只有源码读取权限，不具有 OIDC 发布权限。
-5. 两个原生架构 runner 分别构建并实际测试 Linux amd64 / arm64 镜像，按架构复用 GitHub Actions 构建缓存，覆盖邀请、登录、备份、重启和恢复。两者通过后才开始发布 npm。
+4. 工作流先检查版本与提交来源，随后并行执行完整源码测试、安装包验证、双架构镜像构建。安装包在独立工作区验证安装、初始化、启动器、Logo、资料保留和生产构建；构建与测试任务只有源码读取权限。
+5. 两个原生架构 runner 分别构建并实际测试 Linux amd64 / arm64 镜像，覆盖邀请、登录、备份、重启和恢复。Docker 的依赖下载按锁文件缓存，Python 依赖使用独立构建阶段缓存。源码测试与安装包验证通过后发布 npm；源码测试与镜像测试通过后发布镜像，两条分发路径互不等待。
 6. 独立发布任务进入 `npm` 环境，下载本次测试的同一份归档并核对 SHA-256、包名、版本及来源。该任务不检出业务程序、不安装程序依赖、不运行安装包脚本；通过 OIDC 临时身份向 npm 发布，并等待公开注册表中的 SHA-512 完整性校验通过。
 
 GitHub Release 创建成功不表示 npm 已成功发布，须等待整个 **Release packages** 工作流完成；镜像发布、匿名拉取验证和 Release 附件均为独立步骤。npm 扫描或网络验证超时后，先检查注册表是否已存在该版本；不能盲目重发。工作流会拒绝覆盖已有版本。验证归档保存在该次 Actions 的 Artifacts 中，保留 14 天，测试镜像归档保留 7 天。失败时优先选择 GitHub 的 **Re-run failed jobs**，复用同一批已验证归档；不要移动标签或重新构建后覆盖已发布版本。服务器部署和业务工作区依赖更新仍需另外执行。
@@ -56,8 +56,16 @@ GHCR 使用该次 GitHub Actions 的 `GITHUB_TOKEN`，不需要保存个人访�
 
 **首次 GHCR 发布后**，包管理员需要在 GitHub Packages 的 `airalogy-bd` 设置中将 Visibility 设为 **Public**。GHCR 新包默认私有，不能根据源码仓库公开就假定镜像也已公开。工作流在全新任务中清空 Docker 登录配置，分别验证两种架构可匿名拉取；如果首次发布停在此处，设置公开后重跑失败任务。组织须允许该仓库创建和发布容器包。
 
-镜像验证完成后，Release 自动附上 npm 的同一 `.tgz` 及其校验文件、锁定镜像摘要的 `airalogy-bd-X.Y.Z-deploy.tar.gz`、`image.json` 与 `SHA256SUMS`。部署包不含账号、密钥或业务资料。普通提交和手动检查不创建这些正式发布附件，也不部署服务器。
+镜像匿名拉取验证完成后，`deployment-assets` 任务先上传锁定摘要的 `airalogy-bd-X.Y.Z-deploy.tar.gz`、`image.json`、`DEPLOY-SHA256SUMS`，最后上传 `deployment-ready.json`。该记录包含版本、源码提交及文件摘要；维护人员核对任务成功和文件校验后即可部署，无需等待 npm 扫描。部署包不含账号、密钥或业务资料。
 
-不同注册表不能提供跨平台的原子发布：若 npm 已成功而镜像步骤失败，该 Release 尚未完整交付。按失败步骤重试，不更换已发布包。相同镜像摘要或 Release 附件可以安全重试；检测到同版本下不同内容时会拒绝覆盖。镜像归档过期后需人工检查发布状态，不能用新构建直接替换已有版本。
+npm 的公开完整性验证也通过后，`release-assets` 任务附上同一 `.tgz` 及其校验文件、完整 `SHA256SUMS`，最后上传 `publication.json`，标记两个分发渠道全部完成。提前提供的部署包与最终发布的包完全相同。普通提交和手动检查不创建正式附件；工作流不持有生产服务器凭据，也不自动部署。
+
+不同注册表不能提供跨平台的原子发布：任一渠道失败，该 Release 尚未完整交付，不会产生完成记录。部署就绪记录只代表容器渠道可用，不代表 npm 已完成。按失败步骤重试，不更换已发布包。相同镜像摘要或 Release 附件可以安全重试；检测到同版本下不同内容时会拒绝覆盖。镜像归档过期后需人工检查发布状态，不能用新构建直接替换已有版本。
 
 参考：[GitHub Container Registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)、[npm 公开组织包](https://docs.npmjs.com/creating-and-publishing-scoped-public-packages/)、[npm Trusted Publishing](https://docs.npmjs.com/trusted-publishers/)、[npm trust 命令](https://docs.npmjs.com/cli/v11/commands/npm-trust/)。
+
+## 开发与上线节奏
+
+日常修改用 `pnpm dev` 的框架热更新预览，不为每次修改构建 Docker 或发布版本。合并一组可交付改动后运行发布检查；正式部署始终使用测试通过的固定镜像，不在生产服务器重新构建。运维优先拉取镜像摘要以复用已有层；网络受限时可转运同一次工作流导出的已测试镜像，核对归档校验值和镜像 ID，不能改用新构建。
+
+部署前保留旧镜像与配置、备份并验证恢复；切换后检查健康、版本、资料及账号权限。代码回退与数据恢复分别处理。镜像准备和备份可在分发任务运行时提前进行，服务切换必须等到部署就绪门槛通过。

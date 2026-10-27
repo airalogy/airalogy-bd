@@ -13,13 +13,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  verify:
+  source:
     if: github.repository == 'airalogy/airalogy-bd' && (github.event_name == 'release' || github.ref == 'refs/heads/main')
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 5
     outputs:
       version: ${{ steps.source.outputs.version }}
-      artifact-id: ${{ steps.artifact.outputs.artifact-id }}
     env:
       NEXT_TELEMETRY_DISABLED: '1'
     steps:
@@ -37,6 +36,20 @@ jobs:
           RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
         run: |
           node .github/scripts/check-release.mjs
+
+  verify:
+    needs: source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.23.2
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
         with:
           version: 0.12.4
@@ -50,6 +63,31 @@ jobs:
         run: pnpm test
       - name: Test native development refresh
         run: pnpm test:dev
+
+  package:
+    needs: source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    outputs:
+      artifact-id: ${{ steps.artifact.outputs.artifact-id }}
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.23.2
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: 0.12.4
+          python-version: '3.12'
+          enable-cache: false
+      - name: Install pinned package managers and dependencies
+        run: |
+          npm install --global pnpm@11.20.0 npm@12.2.1 --ignore-scripts
+          pnpm install --frozen-lockfile
       - name: Test the actual installation package
         run: pnpm test:package --output-dir "$RUNNER_TEMP/npm-artifacts"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -62,7 +100,7 @@ jobs:
 
   image:
     name: Test image (${{ matrix.arch }})
-    needs: verify
+    needs: source
     strategy:
       fail-fast: false
       matrix:
@@ -74,12 +112,12 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     env:
-      RELEASE_VERSION: ${{ needs.verify.outputs.version }}
+      RELEASE_VERSION: ${{ needs.source.outputs.version }}
       RELEASE_REVISION: ${{ github.sha }}
       IMAGE_ARCH: ${{ matrix.arch }}
       BD_TEST_IMAGE: airalogy-bd:test-${{ matrix.arch }}
       BD_TEST_PLATFORM: linux/${{ matrix.arch }}
-      BD_TEST_VERSION: ${{ needs.verify.outputs.version }}
+      BD_TEST_VERSION: ${{ needs.source.outputs.version }}
       BD_TEST_REVISION: ${{ github.sha }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -103,7 +141,7 @@ jobs:
           platforms: linux/${{ matrix.arch }}
           tags: ${{ env.BD_TEST_IMAGE }}
           build-args: |
-            BD_VERSION=${{ needs.verify.outputs.version }}
+            BD_VERSION=${{ needs.source.outputs.version }}
             BD_REVISION=${{ github.sha }}
           cache-from: type=gha,scope=airalogy-bd-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=airalogy-bd-${{ matrix.arch }},ignore-error=true
@@ -121,7 +159,7 @@ jobs:
 
   publish:
     if: github.event_name == 'release'
-    needs: [verify, image]
+    needs: [source, verify, package]
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     environment: npm
@@ -136,13 +174,13 @@ jobs:
       - run: npm install --global npm@12.2.1 --ignore-scripts
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
-          artifact-ids: ${{ needs.verify.outputs.artifact-id }}
+          artifact-ids: ${{ needs.package.outputs.artifact-id }}
           path: artifact
           merge-multiple: true
       - name: Verify and publish tested archive with OIDC
         working-directory: artifact
         env:
-          RELEASE_VERSION: ${{ needs.verify.outputs.version }}
+          RELEASE_VERSION: ${{ needs.source.outputs.version }}
           NPM_CONFIG_USERCONFIG: ${{ runner.temp }}/publish.npmrc
           NODE_AUTH_TOKEN: ''
           NPM_TOKEN: ''
@@ -170,7 +208,7 @@ jobs:
       - name: Verify public registry integrity after npm scanning
         working-directory: artifact
         env:
-          RELEASE_VERSION: ${{ needs.verify.outputs.version }}
+          RELEASE_VERSION: ${{ needs.source.outputs.version }}
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
@@ -197,7 +235,7 @@ jobs:
   publish-image:
     name: Publish image (${{ matrix.arch }})
     if: github.event_name == 'release'
-    needs: [verify, image, publish]
+    needs: [source, verify, image]
     strategy:
       fail-fast: false
       matrix:
@@ -209,7 +247,7 @@ jobs:
       contents: read
       packages: write
     env:
-      RELEASE_VERSION: ${{ needs.verify.outputs.version }}
+      RELEASE_VERSION: ${{ needs.source.outputs.version }}
       RELEASE_REVISION: ${{ github.sha }}
       IMAGE_ARCH: ${{ matrix.arch }}
     steps:
@@ -244,7 +282,7 @@ jobs:
 
   image-manifest:
     if: github.event_name == 'release'
-    needs: [verify, publish-image]
+    needs: [source, publish-image]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: npm
@@ -254,7 +292,7 @@ jobs:
     outputs:
       image: ${{ steps.manifest.outputs.image }}
     env:
-      RELEASE_VERSION: ${{ needs.verify.outputs.version }}
+      RELEASE_VERSION: ${{ needs.source.outputs.version }}
       RELEASE_REVISION: ${{ github.sha }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -288,7 +326,7 @@ jobs:
 
   public-image:
     name: Verify public pull (${{ matrix.arch }})
-    needs: [verify, image-manifest]
+    needs: [source, image-manifest]
     strategy:
       fail-fast: false
       matrix:
@@ -302,7 +340,7 @@ jobs:
     env:
       IMAGE: ${{ needs.image-manifest.outputs.image }}
       PLATFORM: linux/${{ matrix.arch }}
-      RELEASE_VERSION: ${{ needs.verify.outputs.version }}
+      RELEASE_VERSION: ${{ needs.source.outputs.version }}
       RELEASE_REVISION: ${{ github.sha }}
     steps:
       - name: Verify anonymous installation of the published image
@@ -319,9 +357,33 @@ jobs:
           test "$(docker image inspect "$IMAGE" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "$RELEASE_REVISION"
           test "$(docker run --rm --network none --platform "$PLATFORM" --entrypoint node "$IMAGE" -p "require('/opt/bd/package.json').version")" = "$RELEASE_VERSION"
 
+  deployment-assets:
+    if: github.event_name == 'release'
+    needs: [source, verify, image-manifest, public-image]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: npm
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.23.2
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: release-image
+          path: ${{ runner.temp }}/release
+      - name: Publish deployment-ready bundle without waiting for npm
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/scripts/release-assets.mjs "$RUNNER_TEMP/release" --deployment-only
+
   release-assets:
     if: github.event_name == 'release'
-    needs: [verify, publish, image-manifest, public-image]
+    needs: [source, package, publish, deployment-assets]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: npm
@@ -342,7 +404,7 @@ jobs:
         with:
           name: release-image
           path: ${{ runner.temp }}/release
-      - name: Attach the npm package, deployment bundle and image digests
+      - name: Complete the release after both distribution channels are verified
         env:
           GH_TOKEN: ${{ github.token }}
         run: node .github/scripts/release-assets.mjs "$RUNNER_TEMP/release"

@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { readFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { identity, checkImage, checkRecord, checkIndex, descriptorFromResult, isMissingPackage, repository } from '../.github/scripts/image-release.mjs';
-import { deploymentFiles, prepareReleaseAssets, verifyExistingAsset } from '../.github/scripts/release-assets.mjs';
+import { deploymentFiles, prepareDeploymentAssets, prepareReleaseAssets, verifyExistingAsset } from '../.github/scripts/release-assets.mjs';
 
 const revision = 'a'.repeat(40), hash = 'sha256:' + 'b'.repeat(64);
 const version = JSON.parse(readFileSync(new URL('../package.json', import.meta.url))).version;
@@ -64,6 +64,17 @@ test('release archives are reproducible, extractable and protect npm artifact in
   const directory = mkdtempSync(path.join(tmpdir(), 'bd-release-assets-'));
   const record = { version, revision, repository, tag: `${repository}:${version}`, digest: hash, image: `${repository}@${hash}`, platforms };
   try {
+    writeFileSync(path.join(directory, 'image.json'), JSON.stringify(record));
+    const deployment = prepareDeploymentAssets(root, directory, record);
+    assert.equal(deployment.at(-1), 'deployment-ready.json');
+    assert.equal(existsSync(path.join(directory, 'publication.json')), false);
+    const ready = JSON.parse(readFileSync(path.join(directory, 'deployment-ready.json')));
+    assert.equal(ready.status, 'deployment-ready');
+    assert.equal(ready.revision, revision);
+    for (const [file, digest] of Object.entries(ready.sha256)) {
+      assert.equal(createHash('sha256').update(readFileSync(path.join(directory, file))).digest('hex'), digest);
+    }
+    const earlyBundle = readFileSync(path.join(directory, `airalogy-bd-${version}-deploy.tar.gz`));
     const npmFile = `airalogy-airalogy-bd-${version}.tgz`;
     const data = Buffer.from('synthetic package artifact');
     const digest = createHash('sha256').update(data).digest('hex');
@@ -74,6 +85,15 @@ test('release archives are reproducible, extractable and protect npm artifact in
     const bundle = path.join(directory, `airalogy-bd-${version}-deploy.tar.gz`);
     const first = readFileSync(bundle);
     assert.ok(assets.includes('SHA256SUMS'));
+    assert.equal(assets.at(-1), 'publication.json');
+    assert.deepEqual(first, earlyBundle, 'Early deployment and final release must use identical bundles');
+    const complete = JSON.parse(readFileSync(path.join(directory, 'publication.json')));
+    assert.equal(complete.status, 'complete');
+    assert.equal(complete.image, record.image);
+    assert.equal(complete.npm.integrity, 'sha512-' + createHash('sha512').update(data).digest('base64'));
+    for (const [file, digest] of Object.entries(complete.sha256)) {
+      assert.equal(createHash('sha256').update(readFileSync(path.join(directory, file))).digest('hex'), digest);
+    }
     assert.match(execFileSync('tar', ['-xOf', bundle, '.env.example'], { encoding: 'utf8' }), new RegExp(`^BD_IMAGE=${repository}@${hash}$`, 'm'));
     prepareReleaseAssets(root, directory, record);
     assert.deepEqual(readFileSync(bundle), first);

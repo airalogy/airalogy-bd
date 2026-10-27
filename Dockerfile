@@ -1,22 +1,30 @@
 FROM ghcr.io/astral-sh/uv:0.12.4@sha256:d0a6eca6c669dc7e9c51218707b8438a3d30402733d739dcc00adb3e213e8f5c AS uv
-FROM node:22.22.1-bookworm-slim@sha256:4f77a690f2f8946ab16fe1e791a3ac0667ae1c3575c3e4d0d4589e9ed5bfaf3d AS build
+FROM node:22.22.1-bookworm-slim@sha256:4f77a690f2f8946ab16fe1e791a3ac0667ae1c3575c3e4d0d4589e9ed5bfaf3d AS build-base
 COPY --from=uv /uv /usr/local/bin/uv
 RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-dev build-essential git ca-certificates && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@11.20.0 --activate
 ENV NEXT_TELEMETRY_DISABLED=1 UV_PYTHON_DOWNLOADS=never BD_CACHE_DIR=/opt/bd/.uv-cache BD_RUNTIME_DIRECTORY=/opt/bd/runtime
 WORKDIR /opt/bd
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+
+FROM build-base AS python-deps
+COPY scripts ./scripts
+RUN uv sync --script scripts/workspace_service.py --cache-dir /opt/bd/.uv-cache --locked && uv sync --script scripts/validate.py --cache-dir /opt/bd/.uv-cache --locked && uv sync --script scripts/generate_dashboard_data.py --cache-dir /opt/bd/.uv-cache --locked && uv sync --script scripts/oss_backup.py --cache-dir /opt/bd/.uv-cache --locked
+
+FROM build-base AS build
+COPY pnpm-lock.yaml pnpm-workspace.yaml ./
+ARG NPM_REGISTRY=https://registry.npmjs.org
+RUN pnpm fetch --registry="$NPM_REGISTRY" --fetch-timeout=300000
+COPY package.json ./
+RUN pnpm install --offline --frozen-lockfile
 COPY LICENSE NOTICE THIRD_PARTY_NOTICES.md ./
 COPY docs/licensing.md docs/dependency-licenses.json ./docs/
-ARG NPM_REGISTRY=https://registry.npmjs.org
-RUN pnpm install --frozen-lockfile --registry="$NPM_REGISTRY" --fetch-timeout=300000
 COPY bin ./bin
 COPY scripts ./scripts
 COPY dashboard ./dashboard
 COPY fixtures/demo/content ./fixtures/demo/content
 ARG BD_VERSION
 RUN node -e "const v=require('./package.json').version;if(process.env.BD_VERSION && process.env.BD_VERSION!==v)throw new Error('Image version differs from package.json')"
-RUN uv sync --script scripts/workspace_service.py --cache-dir /opt/bd/.uv-cache --locked && uv sync --script scripts/validate.py --cache-dir /opt/bd/.uv-cache --locked && uv sync --script scripts/generate_dashboard_data.py --cache-dir /opt/bd/.uv-cache --locked && uv sync --script scripts/oss_backup.py --cache-dir /opt/bd/.uv-cache --locked
+COPY --from=python-deps /opt/bd/.uv-cache /opt/bd/.uv-cache
 RUN node bin/bd.mjs build --content fixtures/demo/content
 
 FROM node:22.22.1-bookworm-slim@sha256:4f77a690f2f8946ab16fe1e791a3ac0667ae1c3575c3e4d0d4589e9ed5bfaf3d AS runtime

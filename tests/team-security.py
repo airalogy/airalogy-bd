@@ -17,6 +17,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 import zipfile
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
@@ -29,6 +30,39 @@ from file_backup import create_backup, backup_download, restore_backup, checksum
 from oss_backup import settings, upload
 
 OSS = {'BD_OSS_REGION':'cn-hangzhou','BD_OSS_BUCKET':'test-private-bucket','BD_OSS_ENDPOINT':'https://oss-cn-hangzhou.aliyuncs.com','BD_OSS_PREFIX':'bd-backups'}
+
+
+class ReleaseWorkflowTests(unittest.TestCase):
+    def test_parallel_release_preserves_security_gates(self):
+        workflow = yaml.safe_load((ROOT / '.github/workflows/publish.yml').read_text())
+        jobs = workflow['jobs']
+        def predecessors(name, visiting=()):
+            self.assertNotIn(name, visiting, 'Release graph must be acyclic')
+            needs = jobs[name].get('needs', [])
+            needs = [needs] if isinstance(needs, str) else needs
+            result = set(needs)
+            for parent in needs:
+                result.update(predecessors(parent, (*visiting, name)))
+            return result
+        for job in ('verify', 'package', 'image'):
+            self.assertEqual(predecessors(job), {'source'})
+            self.assertNotIn('permissions', jobs[job], 'Build jobs must remain read-only')
+        self.assertTrue({'source', 'verify', 'package'} <= predecessors('publish'))
+        self.assertNotIn('image', predecessors('publish'))
+        self.assertTrue({'source', 'verify', 'image'} <= predecessors('publish-image'))
+        self.assertNotIn('publish', predecessors('publish-image'))
+        self.assertTrue({'verify', 'image', 'public-image'} <= predecessors('deployment-assets'))
+        self.assertNotIn('publish', predecessors('deployment-assets'))
+        self.assertTrue({'publish', 'package', 'deployment-assets'} <= predecessors('release-assets'))
+        self.assertEqual(workflow['permissions'], {'contents': 'read'})
+        for name, job in jobs.items():
+            if 'write' in job.get('permissions', {}).values():
+                self.assertEqual(job['environment'], 'npm')
+                self.assertEqual(job['if'], "github.event_name == 'release'")
+        final = jobs['release-assets']['steps'][-1]['run']
+        early = jobs['deployment-assets']['steps'][-1]['run']
+        self.assertIn('--deployment-only', early)
+        self.assertNotIn('--deployment-only', final)
 
 
 class AccountTests(unittest.TestCase):
