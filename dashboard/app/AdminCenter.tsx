@@ -6,28 +6,33 @@ import AiUsage from "./AiUsage";
 import BackupSettings from "./BackupSettings";
 import TeamManagement from "./TeamManagement";
 import RemoteAccess from "./RemoteAccess";
-import { BrandIdentity } from "./Branding";
-import type { TeamUser } from "./lib/team-client";
-import type { Project } from "./lib/types";
+import {BrandIdentity} from "./Branding";
+import {SettingsIcon,SettingsPanelHeader} from "./SettingsUI";
+import type {TeamUser} from "./lib/team-client";
+import type {Project} from "./lib/types";
 
-const sections = { members: "成员与权限", ai: "AI 设置", usage: "用量与费用", remote: "远程接入", backup: "备份" };
-type Section = keyof typeof sections;
-export default function AdminCenter({ user, projects, timezone, unavailable, initialSection, dates }: {
-  user: TeamUser | null; projects: Pick<Project, "id" | "name">[]; timezone: string; unavailable: boolean; initialSection?: string; dates: { from: string; to: string };
+const sections={members:{title:"成员与权限",description:"邀请成员 · 分配访问范围"},ai:{title:"AI 设置",description:"模型服务 · 密钥与限额"},usage:{title:"用量与费用",description:"请求统计 · 费用估算"},remote:{title:"远程接入",description:"成员授权 · 接入凭据"},backup:{title:"备份",description:"自动备份 · 数据保护"}};
+type Section=keyof typeof sections;
+export default function AdminCenter({user,projects,timezone,unavailable,initialSection,dates}:{
+  user:TeamUser|null;projects:Pick<Project,"id"|"name">[];timezone:string;unavailable:boolean;initialSection?:string;dates:{from:string;to:string};
 }) {
-  const section: Section = initialSection && Object.hasOwn(sections, initialSection) ? initialSection as Section : user ? "members" : "ai";
+  const section:Section=initialSection&&Object.hasOwn(sections,initialSection)?initialSection as Section:user?"members":"ai";
   return <>
-    {user ? <AccountBar user={user} management /> : <div className="team-bar"><span>本机使用者 · 管理权限</span><Link className="admin-button" href="/">返回工作台</Link></div>}
+    {user?<AccountBar user={user} management/>:<div className="team-bar"><span>本机使用者 · 管理权限</span><Link className="admin-button" href="/">返回工作台</Link></div>}
     <main className="page-shell admin-center">
-      <header><BrandIdentity /><div className="eyebrow">仅管理员可访问</div><h1>管理中心</h1><p>管理成员访问权限、AI 服务、使用预算与备份。</p></header>
-      {!user && <p className="admin-notice">当前为本机单人模式，由本机使用者管理设置。团队模式启用后，仅管理员账号可以进入本页面。</p>}
-      {unavailable && <p className="admin-alert" role="alert">工作区资料暂时不可用，事项列表未能加载，请先检查工作区。</p>}
-      <nav className="admin-center-nav" aria-label="管理中心功能">{Object.entries(sections).map(([key, label]) => <Link key={key} href={`/admin?section=${key}`} aria-current={section === key ? "page" : undefined}>{label}</Link>)}</nav>
-      {section === "members" && (user ? <TeamManagement user={user} projects={projects} timezone={timezone} /> : <section className="panel admin-center-panel"><h2>成员与权限</h2><p>成员邀请、停用账号和事项授权在团队模式中提供。本机单人模式无需创建账号。</p></section>)}
-      {section === "ai" && <AiSettings />}
-      {section === "usage" && <section className="panel admin-center-panel"><h2>AI 用量与费用</h2><AiUsage initialFrom={dates.from} initialTo={dates.to} /></section>}
-      {section === "backup" && <BackupSettings timezone={timezone} onChanged={() => {}} />}
-      {section === "remote" && (user ? <RemoteAccess user={user} manage /> : <section className="panel admin-center-panel"><h2>Codex 远程接入</h2><p>远程接入仅在配置了账号和 HTTPS 的团队模式中提供。</p></section>)}
+      <header className="settings-page-head"><div><BrandIdentity/><h1>管理中心</h1><p>管理团队访问、AI 服务与数据备份。</p></div><span className="settings-access-label"><SettingsIcon name="lock"/>仅管理员可访问</span></header>
+      {!user&&<p className="admin-notice">当前为本机单人模式。成员邀请和权限管理在团队模式中提供。</p>}
+      {unavailable&&<p className="admin-alert" role="alert">工作区资料暂时不可用，事项列表未能加载，请先检查工作区。</p>}
+      <div className="settings-layout">
+        <nav className="admin-center-nav" aria-label="管理中心功能">{Object.entries(sections).map(([key,item])=><Link key={key} href={`/admin?section=${key}`} aria-current={section===key?"page":undefined}><SettingsIcon name={key as Section}/><span><strong>{item.title}</strong><small>{item.description}</small></span></Link>)}</nav>
+        <div className="settings-content" key={section}>
+          {section==="members"&&(user?<TeamManagement user={user} projects={projects} timezone={timezone}/>:<section className="panel admin-center-panel"><SettingsPanelHeader title="成员与权限" description="本机单人模式无需创建账号。"/><p>部署为团队模式后，可在这里邀请成员、停用账号并分配事项权限。</p></section>)}
+          {section==="ai"&&<AiSettings/>}
+          {section==="usage"&&<section className="panel admin-center-panel"><SettingsPanelHeader title="用量与费用" description="查看团队 AI 请求、Token 用量和费用估算。"/><AiUsage initialFrom={dates.from} initialTo={dates.to}/></section>}
+          {section==="backup"&&<BackupSettings timezone={timezone} onChanged={()=>{}}/>}
+          {section==="remote"&&(user?<RemoteAccess user={user} manage/>:<section className="panel admin-center-panel"><SettingsPanelHeader title="远程接入" description="在团队模式中按账号授权。"/><p>配置账号和 HTTPS 后，可开启远程查询与修改草稿。</p></section>)}
+        </div>
+      </div>
     </main>
   </>;
 }

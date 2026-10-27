@@ -63,7 +63,7 @@ export default function BackupSettings({timezone,onChanged}: {timezone:string;on
 
   return <section className="panel backup-settings" aria-labelledby="backup-title">
     <header className="backup-header">
-      <div><h1 id="backup-title">备份</h1><p>为业务资料、附件、账号权限和操作历史保留独立副本。</p></div>
+      <div><h2 id="backup-title">备份</h2><p>为业务资料、附件、账号权限和操作历史保留独立副本。</p></div>
       <button type="button" className="admin-button admin-primary backup-now" disabled={!status || changed || busy || status.in_progress} onClick={() => void backup()} title={changed ? "请先保存或取消设置修改" : undefined}>
         {pending === "backup" ? <span className="backup-spinner" aria-hidden="true"/> : <BackupIcon kind="archive"/>}
         {pending === "backup" ? "正在备份…" : "立即备份"}
@@ -101,10 +101,10 @@ export default function BackupSettings({timezone,onChanged}: {timezone:string;on
             <label className="edit-field"><span>备份文件夹</span><div className="backup-directory-input"><BackupIcon kind="folder"/><input required readOnly={status.server} value={directory} onChange={event => setDirectory(event.target.value)} placeholder="填写完整文件夹路径" autoComplete="off" spellCheck={false}/></div></label>
             <label className="edit-field"><span>备份频率</span><select value={interval} onChange={event => setIntervalMinutes(Number(event.target.value))}><option value={60}>每小时一次</option><option value={1440}>每 24 小时一次</option></select></label>
           </div>
-          <label className="team-check"><input type="checkbox" checked={oss} disabled={!status.oss_configured&&!oss} onChange={e=>setOss(e.target.checked)}/>同步到私有 OSS</label>
-          {!status.oss_configured&&<p>服务器维护人员配置 OSS 后即可启用。访问凭据不会在页面中保存或显示。</p>}
+          <div className="backup-extra-options"><label className="team-check"><input type="checkbox" checked={oss} disabled={!status.oss_configured&&!oss} onChange={e=>setOss(e.target.checked)}/>同步到私有 OSS</label>
+          {!status.oss_configured&&<p className="admin-help">服务器维护人员配置 OSS 后即可启用。访问凭据不会在页面中保存或显示。</p>}
           <label className="edit-field"><span>本地副本保留期</span><select value={retention} onChange={e=>setRetention(Number(e.target.value))}>{[0,7,30,90,365].map(days=><option key={days} value={days}>{days?`${days} 天`:"不自动清理"}</option>)}</select></label>
-          <p className="backup-schedule-note">{status.server?"服务器持续运行期间自动检查；资料变化后按设置频率备份。服务器目录由部署配置管理。":"关闭工作台期间暂停，重新打开后检查补做。"} OSS 保留期由存储空间生命周期规则管理。</p>
+          </div><p className="backup-schedule-note">{status.server?"服务器持续运行期间自动检查；资料变化后按设置频率备份。服务器目录由部署配置管理。":"关闭工作台期间暂停，重新打开后检查补做。"} OSS 保留期由存储空间生命周期规则管理。</p>
           {changed && <div className="backup-save-bar"><span>设置尚未保存</span><div className="admin-actions"><button type="button" className="admin-button" onClick={cancel}>取消修改</button><button type="submit" className="admin-button admin-primary">{pending === "save" ? "正在保存…" : "保存设置"}</button></div></div>}
         </fieldset>
       </form>

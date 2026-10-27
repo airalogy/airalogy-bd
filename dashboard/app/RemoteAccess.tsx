@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import {SettingsPanelHeader,SettingsStatus} from "./SettingsUI";
 import type { TeamUser } from "./lib/team-client";
 import { stageLabels, followUpStatusLabels } from "./lib/labels";
 
@@ -52,15 +53,13 @@ export default function RemoteAccess({ user, manage = false, endpoint = "" }: { 
     finally { setBusy(false); }
   }
   return <section className="panel admin-center-panel remote-access">
-    <h2>{manage ? "Codex 远程接入" : "我的远程接入"}</h2>
-    <p>远程助手可查询获授权事项和提交修改草稿。草稿由本人在本页面核对并确认后保存。</p>
+    <SettingsPanelHeader title={manage?"远程接入":"我的远程接入"} description="远程助手可查询获授权事项并提交草稿，核对确认后才会正式保存。"/>
     {error && <p className="admin-alert" role="alert">{error}</p>}
     {notice && <p className="admin-notice" role="status">{notice}</p>}
     {!status ? <p>正在读取接入状态…</p> : <>
-      <p>当前状态：<strong>{status.enabled ? "已开启" : "已关闭"}</strong></p>
+      <div className="remote-state"><div><SettingsStatus tone={status.enabled?"success":"neutral"}>{status.enabled?"已开启":"已关闭"}</SettingsStatus><p className="admin-help">{manage?"按账号授权，成员使用自己生成的接入凭据。":"接入权限与账号的事项访问范围保持一致。"}</p></div>{manage&&<button className="admin-button" disabled={busy} onClick={()=>void act("configure",{enabled:!status.enabled,revision:status.revision},status.enabled?"已关闭，旧凭据和草稿已失效。":"已开启。请为需要使用的成员授权。")}>{status.enabled?"关闭远程接入并撤销凭据":"开启远程接入"}</button>}</div>
       {manage ? <>
         <p className="admin-help">按账号授权。关闭接入将撤销全部凭据和待确认草稿；重新开启后需重新生成凭据。</p>
-        <button className="admin-button" disabled={busy} onClick={() => void act("configure", { enabled: !status.enabled, revision: status.revision }, status.enabled ? "已关闭，旧凭据和草稿已失效。" : "已开启。请为需要使用的成员授权。")}>{status.enabled ? "关闭远程接入并撤销凭据" : "开启远程接入"}</button>
         <h3>成员授权</h3>
         <ul className="remote-items">{status.members?.map(member => <li key={member.id}><span>{member.name} · {{ admin: "管理员", editor: "编辑成员", viewer: "只读成员" }[member.role]}{!member.active && " · 未启用"}</span>
           <button className="admin-button" disabled={busy || (!member.active && !member.granted)} onClick={() => void act("grant", { memberId: member.id, allowed: !member.granted }, member.granted ? "已取消授权，该成员的凭据与草稿已失效。" : "成员可登录后自行生成凭据。")}>{member.granted ? "取消远程授权" : "允许远程接入"}</button></li>)}</ul>
@@ -85,7 +84,7 @@ export default function RemoteAccess({ user, manage = false, endpoint = "" }: { 
         </>}
       </>}
       <h3>{manage ? "全部个人凭据" : "我的凭据"}</h3>
-      {!status.tokens.length && <p>暂无凭据。</p>}
+      {!status.tokens.length && <p className="settings-empty">暂无凭据。</p>}
       <ul className="remote-items">{status.tokens.map(token => <li key={token.id}><div><strong>{token.label}</strong>{manage && <span> · {status.members?.find(member => member.id === token.owner)?.name || "成员"}</span>}<p>{token.can_draft ? "查询和提交草稿" : "仅查询"} · {when(token.expires)} 到期</p></div>
         <button className="admin-button" disabled={busy} onClick={() => void act("revoke", { tokenId: token.id }, "凭据及其待确认草稿已撤销。")}>撤销</button></li>)}</ul>
       {!manage && <>

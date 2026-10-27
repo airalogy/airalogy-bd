@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "./admin.css";
 @import "./files.css";
+@import "./settings.css";
 
 .weekly-trigger { white-space: nowrap; }
 .weekly-navigation { display: grid; grid-template-columns: 1fr auto 1fr; gap: 4px; margin-top: 8px; padding: 4px; border: 1px solid var(--line); border-radius: 11px; background: #f3f7fa; }
@@ -2825,14 +2826,7 @@ select,
   }
 
   .dashboard-grid {
-    display: flex;
-    overflow-x: auto;
-    scroll-snap-type: x mandatory;
-  }
-
-  .dashboard-grid > .panel {
-    flex: 0 0 calc(100vw - 42px);
-    scroll-snap-align: start;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .pipeline {
@@ -3040,55 +3034,3 @@ select,
     transition: none !important;
   }
 }
-
-/* Team deployment: authentication and membership management. */
-.auth-page{min-height:calc(100dvh - 80px);display:grid;place-items:center;padding:24px;background:#f5f7fa}
-.auth-card{width:min(100%,460px);padding:32px;border:1px solid #dfe5ed;border-radius:16px;background:white;box-shadow:0 12px 40px #152a4610}
-.auth-card h1{margin:0 0 12px}.auth-card form,.team-form fieldset{display:grid;gap:18px}
-.auth-card label,.team-form label,.team-management>label{display:grid;gap:8px;font-weight:600}
-.auth-card input,.team-form input:not([type=checkbox]):not([type=radio]),.team-form select,.team-management>label input{width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:8px;background:white;color:#152a46}
-.auth-setup{padding:14px;background:#f1f5f9;border-radius:8px}.auth-setup h2{font-size:16px}.auth-setup code{overflow-wrap:anywhere;user-select:all}
-.team-bar{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:10px max(20px,calc((100vw - 1440px)/2));border-bottom:1px solid #e2e8f0;background:white}.team-bar>div{display:flex;gap:8px}
-.team-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin:24px 0}.team-management .panel{padding:24px}.team-member{display:grid;gap:8px;padding:16px 0;border-bottom:1px solid #e2e8f0}.team-member>div{display:flex;gap:8px;flex-wrap:wrap}.team-form fieldset{border:0;padding:0}.team-form label.team-check{display:flex;align-items:center;font-weight:400}.team-form input[type=checkbox]{width:18px;height:18px}.team-audit{overflow-wrap:anywhere;font-size:13px}
-@media(max-width:760px){.team-grid{grid-template-columns:1fr}.team-bar{flex-wrap:wrap}.auth-card{padding:22px}}
-
-.site-brand-identity { display: inline-flex; align-items: center; gap: 12px; font-weight: 700; }
-.site-brand-logo { display: block; width: auto; height: 36px; max-width: 144px; object-fit: contain; flex-shrink: 0; }
-.auth-card h1 .site-brand-logo { height: 44px; max-width: 176px; }
-.auth-card label .admin-help { display: block; font-weight: 400; }
-.account-settings { max-width: 800px; }
-.team-grid > .panel { min-width: 0; align-self: start; }
-.team-invitation-expired { color: #b45309; font-weight: 600; }
-.team-member-scope { font-size: 13px; color: #475569; }
-.team-form .admin-help { font-weight: 400; margin: 0; }
-.team-form legend { padding: 0; margin-bottom: 10px; font-weight: 600; }
-.team-form .team-scope-options { gap: 10px; }
-.team-form label.team-scope-option { display: flex; align-items: flex-start; gap: 10px; padding: 14px; border: 1px solid #cbd5e1; border-radius: 10px; cursor: pointer; }
-.team-form label.team-scope-option.is-selected { background: #eff6ff; border-color: #2563eb; }
-.team-scope-option input[type=radio] { flex: 0 0 auto; width: 18px; height: 18px; margin-top: 2px; accent-color: #2563eb; }
-.team-scope-option > span { display: grid; gap: 4px; }
-.team-scope-option > span > span { font-size: 13px; line-height: 1.5; color: #475569; font-weight: 400; }
-.team-scope-option:focus-within { outline: 2px solid #2563eb; outline-offset: 2px; }
-.team-form .team-project-picker { gap: 12px; }
-.team-selection-toolbar, .team-selection-toolbar > div { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.team-selection-toolbar { justify-content: space-between; font-size: 13px; }
-.team-project-list { display: grid; gap: 10px; max-height: 260px; overflow-y: auto; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; }
-.team-project-list label { overflow-wrap: anywhere; }
-.team-project-list input[type=checkbox] { flex: 0 0 auto; }
-.team-permission-summary { padding: 16px; border: 1px solid #dbe4ee; border-radius: 10px; background: #f8fafc; }
-.team-permission-summary h3 { margin: 0 0 12px; font-size: 15px; }
-.team-permission-summary dl { display: grid; gap: 10px; margin: 0; }
-.team-permission-summary dl > div { display: grid; grid-template-columns: 7em minmax(0, 1fr); gap: 12px; font-size: 13px; }
-.team-permission-summary dt { color: #64748b; }
-.team-permission-summary dd { margin: 0; }
-.team-permission-summary .admin-help { margin-top: 12px; }
-.account-settings .team-form input[readonly] {
-  background: #f1f5f9;
-  color: #475569;
-  border-color: #cbd5e1;
-  cursor: default;
-  caret-color: transparent;
-}
-.invitation-result { padding: 16px; margin: 16px 0; border: 1px solid var(--line); border-radius: 12px; }
-.invitation-result label { display: grid; gap: 8px; margin-bottom: 12px; }
-.invitation-result input { width: 100%; padding: 10px; }
