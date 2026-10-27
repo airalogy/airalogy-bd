@@ -1,0 +1,33 @@
+name: Network Preflight
+on:
+  push:
+    paths:
+      - "deploy/**"
+      - "tests/deployment-network.test.mjs"
+      - "tests/image-release.test.mjs"
+      - ".github/scripts/release-assets.mjs"
+      - ".github/workflows/network-preflight.yml"
+  pull_request:
+    paths:
+      - "deploy/**"
+      - "tests/deployment-network.test.mjs"
+      - "tests/image-release.test.mjs"
+      - ".github/scripts/release-assets.mjs"
+      - ".github/workflows/network-preflight.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22.23.2"
+      - name: Network and deployment regression
+        run: node --test tests/deployment-network.test.mjs tests/image-release.test.mjs

@@ -23,20 +23,21 @@
 
 ### 推荐：使用预构建镜像
 
-需要 Docker Engine 和 Compose v2。选择附带 `airalogy-bd-X.Y.Z-deploy.tar.gz` 的 GitHub Release。1.3.5 起可在同次 **Release packages** 工作流的 `deployment-assets` 任务成功、且 `deployment-ready.json` 已上传后部署，无需等待 npm 分发；核对其中版本、提交和文件摘要。`publication.json` 代表全部渠道已完成。较早版本仍须等待整个工作流成功。npm 上存在某个版本不代表容器镜像可用。
+需要 Docker Engine、Compose v2、Python 3.10+ 和 iproute2。选择附带 `airalogy-bd-X.Y.Z-deploy.tar.gz` 的 GitHub Release。1.3.5 起可在同次 **Release packages** 工作流的 `deployment-assets` 任务成功、且 `deployment-ready.json` 已上传后部署，无需等待 npm 分发；核对其中版本、提交和文件摘要。`publication.json` 代表全部渠道已完成。较早版本仍须等待整个工作流成功。npm 上存在某个版本不代表容器镜像可用。
 
-下载并解压部署包到独立目录，无需下载源码或在服务器构建。部署包包含 `compose.yaml`、`.env.example`、`image.json` 和使用说明。镜像名为 `ghcr.io/airalogy/airalogy-bd:X.Y.Z`，支持 Linux amd64 / arm64；生成的配置进一步锁定该版本的镜像摘要，Docker 自动选择匹配的架构。核对 Release 的 `DEPLOY-SHA256SUMS`（较早版本为 `SHA256SUMS`）后，在解压目录执行：
+下载并解压部署包到独立目录，无需下载源码或在服务器构建。部署包包含 `compose.yaml`、`.env.example`、`image.json`、`bdctl`、`network_preflight.py` 和使用说明。镜像名为 `ghcr.io/airalogy/airalogy-bd:X.Y.Z`，支持 Linux amd64 / arm64；生成的配置进一步锁定该版本的镜像摘要，Docker 自动选择匹配的架构。核对 Release 的 `DEPLOY-SHA256SUMS`（较早版本为 `SHA256SUMS`）。以下步骤适用于包含网段检查工具的新部署包；旧包需先升级运维入口，不修改已发布产物。在解压目录执行：
 
 ```sh
 cp .env.example .env
 chmod 600 .env
 # 生成认证密钥，将输出填入 .env 的 BETTER_AUTH_SECRET，并独立妥善保管。
 openssl rand -hex 32
-# 编辑 .env，至少设置 BD_PUBLIC_URL 和 BETTER_AUTH_SECRET。
-docker compose pull
-docker compose run --rm bd init --id company-id --name 公司名称
-docker compose run --rm bd account-init --email admin@example.com --name 管理员姓名
-docker compose up -d
+# 编辑 .env，设置 BD_PUBLIC_URL、BETTER_AUTH_SECRET 和经核对的网络配置。
+./bdctl preflight
+./bdctl pull
+./bdctl run --rm bd init --id company-id --name 公司名称
+./bdctl run --rm bd account-init --email admin@example.com --name 管理员姓名
+./bdctl up -d
 ```
 
 安装过程不需要 Node.js、pnpm 或 uv，运行依赖已在镜像内。公开 GHCR 镜像支持匿名拉取。连接 GHCR 受限时，可由维护人员将同一镜像同步到公司镜像仓库并核对摘要，再设置 `BD_IMAGE`；不要改用不明来源的镜像。
@@ -46,27 +47,27 @@ docker compose up -d
 仓库中的 `deploy/compose.yaml` 同样只拉取镜像。复制 `deploy/.env.example` 为 `deploy/.env`，填写已发布的 `BD_IMAGE` 版本或摘要及必要配置；使用下列命令使 Compose 同时读取镜像选择和运行环境：
 
 ```sh
-docker compose --env-file deploy/.env -f deploy/compose.yaml pull
-docker compose --env-file deploy/.env -f deploy/compose.yaml run --rm bd init --id company-id --name 公司名称
-docker compose --env-file deploy/.env -f deploy/compose.yaml run --rm bd account-init --email admin@example.com --name 管理员姓名
-docker compose --env-file deploy/.env -f deploy/compose.yaml up -d
+./deploy/bdctl pull
+./deploy/bdctl run --rm bd init --id company-id --name 公司名称
+./deploy/bdctl run --rm bd account-init --email admin@example.com --name 管理员姓名
+./deploy/bdctl up -d
 ```
 
 需要修改源码时，将 `deploy/.env` 的 `BD_IMAGE` 明确设为 `airalogy-bd:local`，增加源码构建配置：
 
 ```sh
-docker compose --env-file deploy/.env -f deploy/compose.yaml -f deploy/compose.build.yaml build
-docker compose --env-file deploy/.env -f deploy/compose.yaml -f deploy/compose.build.yaml up -d
+BD_COMPOSE_OVERRIDE=deploy/compose.build.yaml ./deploy/bdctl build
+BD_COMPOSE_OVERRIDE=deploy/compose.build.yaml ./deploy/bdctl up -d
 ```
 
 官方 npm 下载不稳定时，可仅在源码构建命令后添加 `--build-arg NPM_REGISTRY=https://registry.npmmirror.com`。它只影响构建依赖下载，仍按锁文件校验完整性。
 
-下文的仓库命令均显式指定 `deploy/.env` 和 Compose 文件。使用下载的部署包时，在解压目录改为 `docker compose` 即可。
+下文的仓库命令均显式指定 `deploy/.env` 和 Compose 文件。使用下载的部署包时，在解压目录改为 `./bdctl` 即可。
 
 复制终端的一次性链接，由管理员本人打开设置登录。不要把该链接贴入公共日志或工单。初始化已存在管理员时会拒绝重复创建；丢失验证器或管理员账号无法登录时，由持有服务器权限的维护人员执行：
 
 ```sh
-docker compose --env-file deploy/.env -f deploy/compose.yaml run --rm bd account-recover --email admin@example.com
+./deploy/bdctl run --rm bd account-recover --email admin@example.com
 ```
 
 恢复命令立即注销该账号旧会话、密码和验证器，发出新的单次邀请。不会改变原有角色或事项授权。邀请过期也可重新签发。
@@ -80,6 +81,20 @@ docker compose --env-file deploy/.env -f deploy/compose.yaml run --rm bd account
 在原工作区创建完整 ZIP 备份，停止该工作区的写入，再把备份交给服务器维护人员。通过下节恢复到空的新目录/卷，并切换服务；不要把真实资料加入本代码仓库或镜像构建上下文。不要同时在本地和服务器上维护两个正式副本。原工作区可保留为只读恢复来源。
 
 如不用 Docker，可安装 Node.js 22.13+、pnpm 11、uv、Python 3.10+、Git，在引擎目录安装依赖。工作区中设置 `BD_MODE=server`、`BD_PUBLIC_URL=https://你的域名` 及 `BETTER_AUTH_SECRET` 后，执行本仓库 `bin/bd.mjs account-init`、`build`、`start --hostname 127.0.0.1 --port 3100`，由 systemd 等进程管理器托管并接入 HTTPS 代理。`BD_RUNTIME_DIRECTORY` 可指定预构建运行目录，`BD_CACHE_DIR` 可指定依赖缓存。服务器模式拒绝开发服务器和缺失 HTTPS 地址；未设置服务器模式时仍仅允许本机绑定。
+
+### 部署前网络门槛
+
+生产启动、重启、初始化和维护容器使用 `./deploy/bdctl`，它在 `up/run/create/start/restart/build` 前运行只读网络检查；`./deploy/bdctl preflight` 可单独检查。失败不会执行后续容器命令，不会自行删除网络、改路由或移除数据卷。直接调用 Docker 可以绕过此入口，因此服务器运维和发布步骤都应统一使用它。
+
+示例网段只是候选，不能视为普遍安全。新实例配置 `BD_DOCKER_SUBNET`；已有实例先查看实际网络，保留已验证安全的网段。配置与现有网络不一致时会中止，需要安排单独的网络迁移，不能把重新部署当成自动迁移。
+
+- ECS 使用 `NETWORK_PREFLIGHT_CLOUD=aliyun`，通过 IMDS 安全模式读取 VPC 主网段，失败即阻止部署，不读取云账号凭据。VPC 对等连接、VPN、办公网等额外网段填写 `NETWORK_PREFLIGHT_PROTECTED_CIDRS`（逗号分隔）。
+- 非 ECS 主机使用 `NETWORK_PREFLIGHT_CLOUD=none`，明确填写受保护网段；确认没有额外网段才写字面值 `none`。空值不视为已检查。
+- 检查还覆盖所有 IPv4 路由表、网卡、现有 Docker 网络及外部依赖 DNS。`NETWORK_PREFLIGHT_ENDPOINTS` 可列出该主机其他应用依赖的数据库等地址；不会打印完整连接串或密码。现有同名网络必须确属本部署且网段完全相符，才允许复用。
+- `./deploy/bdctl preflight --config-only` 只供离线/CI 检查结构，不证明目标主机安全；常规部署入口仍强制运行现场检查。构建可以在独立 CI 完成，但现场检查不能移到开发机代替。
+
+检查器与 Platform 的 `deploy/single-lab/scripts/network_preflight.py` 同源分发；更新时同步整个脚本并运行部署回归测试。仅有网络配置修复不需要提升 BD 产品版本；保留私有配置备份、部署记录和两个服务的恢复验证。实际服务器网段、凭据与故障日志不要提交到本仓库。
+
 
 ## 私有 OSS 自动备份
 
@@ -113,8 +128,9 @@ docker compose --env-file deploy/.env -f deploy/compose.yaml run --rm bd account
 从 OSS 控制台下载 ZIP（维护人员身份）或选择本地 ZIP。保持原工作区不动，先恢复到尚不存在的新目录，例如在维护用容器中：
 
 ```sh
-docker compose --env-file deploy/.env -f deploy/compose.yaml stop bd
-docker compose --env-file deploy/.env -f deploy/compose.yaml run --rm bd restore-backup --archive /backups/备份文件.zip --destination /workspace/restored
+./deploy/bdctl preflight
+./deploy/bdctl stop bd
+./deploy/bdctl run --rm bd restore-backup --archive /backups/备份文件.zip --destination /workspace/restored
 ```
 
 此时数据在 `/workspace/restored/content`，账号在 `/workspace/restored/.bd-auth`。将部署服务的 `command` 设置为 `["start", "--content", "/workspace/restored/content", "--hostname", "0.0.0.0", "--port", "3000"]` 后启动；账号恢复等维护命令也传同一 `--content`。应用会重新校验全部文件及关联、重建显示数据；恢复原 `BETTER_AUTH_SECRET` 后，已绑定成员重新登录，未完成激活的成员可重新签发邀请。重新配置并验证备份。确认事项、附件下载、权限和历史完整后，才处理恢复前的工作区目录。勿执行 `docker compose down -v`，它会删除持久卷。

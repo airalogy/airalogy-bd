@@ -32,3 +32,9 @@ volumes:
   workspace:
   backups:
   python-cache:
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${BD_DOCKER_SUBNET:?Set BD_DOCKER_SUBNET after reviewing the host and VPC networks}
