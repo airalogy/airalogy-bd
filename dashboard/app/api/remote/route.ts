@@ -8,7 +8,7 @@ export async function GET(request: Request) {
   const access = await authorizedRequest(request);
   if (access instanceof Response) return access;
   const operation = new URL(request.url).searchParams.get("action") || "status";
-  if (!["status", "settings", "drafts"].includes(operation)) return denied();
+  if (!["status", "settings", "drafts", "pending"].includes(operation)) return denied();
   return serviceResponse(await invokeWorkspace({ action: "remote_browser", operation }, access.session));
 }
 export async function POST(request: Request) {

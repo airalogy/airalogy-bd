@@ -18,6 +18,13 @@ export async function exerciseRemote({ directory, request, okay, admin, editor, 
     return JSON.parse(result.content[0].text);
   };
   const status = async () => okay(await request("/api/remote?action=settings", null, admin));
+  const pendingCount = async member => {
+    const response = await request("/api/remote?action=pending", null, member);
+    assert.match(response.headers.get("cache-control"), /no-store/);
+    const result = await okay(response);
+    assert.deepEqual(Object.keys(result), ["count"], "The header receives a count, never draft contents or credentials");
+    return result.count;
+  };
   const configure = async enabled => okay(await web("configure", { enabled, revision: (await status()).revision }));
   const issue = async (member, canDraft = true) => okay(await web("issue", { label: "Test Codex", canDraft, days: 7 }, member));
   const record = async member => okay(await request(`/api/workspace?action=record&kind=project&id=${matter}`, null, member));
@@ -28,6 +35,8 @@ export async function exerciseRemote({ directory, request, okay, admin, editor, 
     return { args, draft: await call("submit_draft", args, token) };
   };
   assert.equal((await status()).enabled, false);
+  assert.equal((await request("/api/remote?action=pending")).status, 401);
+  for (const member of [admin, editor, viewer]) assert.equal(await pendingCount(member), 0);
   assert.equal((await rpc("initialize", { protocolVersion: "2025-11-25" })).status, 503);
   assert.equal((await request("/api/mcp", { jsonrpc: "2.0", id: 1, method: "tools/list" }, admin)).status, 401);
   assert.equal((await request("/api/remote?action=status")).status, 401);
@@ -52,11 +61,13 @@ export async function exerciseRemote({ directory, request, okay, admin, editor, 
   const integratedToken = await issue(invitedMember);
   assert.deepEqual((await call("search_matters", {}, integratedToken.token)).matters.map(m => m.id), [matter]);
   const integratedDraft = await newDraft(integratedToken.token);
+  assert.equal(await pendingCount(invitedMember), 1);
   roster = await okay(await request("/api/auth", { action: "team_list" }, admin));
   const integratedCurrent = roster.users.find(member => member.id === invited.id);
   await okay(await request("/api/auth", { action: "team_update", ...integratedCurrent, active: true, remote_allowed: false, remote_allowed_before: true }, admin));
   assert.equal((await rpc("tools/list", {}, integratedToken.token)).status, 401);
   assert.equal((await request("/api/workspace?action=workspace", null, invitedMember)).status, 401);
+  assert.equal((await request("/api/remote?action=pending", null, invitedMember)).status, 401);
   const integratedDB = new DatabaseSync(path.join(directory, ".bd-auth/accounts.sqlite3"));
   assert.equal(integratedDB.prepare("SELECT COUNT(*) n FROM remote_drafts WHERE id=?").get(integratedDraft.draft.draftId).n, 0);
   integratedDB.close();
@@ -66,6 +77,8 @@ export async function exerciseRemote({ directory, request, okay, admin, editor, 
   const toolViewerToken = await issue(toolViewer, false);
   assert.deepEqual((await (await rpc("tools/list", {}, toolViewerToken.token)).json()).result.tools.map(t => t.name), ["search_matters", "read_matter", "read_progress"]);
   assert.equal((await web("issue", { label: "Unapproved", canDraft: true }, editor)).status, 403);
+  assert.equal(await pendingCount(editor), 0);
+  assert.equal(await pendingCount(toolViewer), 0);
   for (const member of [admin, editor, viewer]) await okay(await web("grant", { memberId: member.user.id, allowed: true }));
   assert.equal((await web("issue", { label: "Too long", days: 31 }, editor)).status, 422);
   assert.equal((await web("issue", { label: "Viewer writer", canDraft: true }, viewer)).status, 422);
@@ -97,6 +110,15 @@ export async function exerciseRemote({ directory, request, okay, admin, editor, 
 
   const before = await record(editor);
   const pending = await newDraft(writable.token);
+  assert.equal(await pendingCount(editor), 1);
+  assert.equal(await pendingCount(admin), 0);
+  assert.equal(await pendingCount(viewer), 0);
+  assert.deepEqual(await okay(await request(`/api/remote?action=pending&owner=${editor.user.id}`, null, admin)), {count:0});
+  assert.equal((await request("/api/remote?action=pending", null, null, {Authorization:`Bearer ${writable.token}`})).status, 401);
+  const second = await newDraft(writable.token);
+  assert.equal(await pendingCount(editor), 2);
+  await okay(await web("reject", {draftId:second.draft.draftId}, editor));
+  assert.equal(await pendingCount(editor), 1);
   assert.equal(pending.draft.status, "pending");
   assert.deepEqual(await record(editor), before, "Submitting a draft must not change business files");
   assert.equal((await call("submit_draft", pending.args, writable.token)).draftId, pending.draft.draftId);
@@ -112,6 +134,7 @@ export async function exerciseRemote({ directory, request, okay, admin, editor, 
   const concurrent = await Promise.all([web("confirm", confirmation, editor), web("confirm", confirmation, editor)]);
   assert.deepEqual(concurrent.map(r => r.status).sort(), [200, 409]);
   for (const response of concurrent) await response.arrayBuffer();
+  assert.equal(await pendingCount(editor), 0);
   const after = await record(editor);
   assert.equal(after.record.events.length, before.record.events.length + 1);
   assert.doesNotMatch(JSON.stringify(after), /malicious tamper/);
@@ -152,21 +175,28 @@ export async function exerciseRemote({ directory, request, okay, admin, editor, 
   assert.match((await record(editor)).record.body, /同事的新修改/);
   const rejected = await newDraft(writable.token);
   await okay(await web("reject", { draftId: rejected.draft.draftId }, editor));
+  assert.equal(await pendingCount(editor), 0);
   assert.equal((await web("confirm", { draftId: rejected.draft.draftId, confirmed: true }, editor)).status, 409);
   const revoked = await newDraft(writable.token);
   await okay(await web("revoke", { tokenId: writable.id }, editor));
+  assert.equal(await pendingCount(editor), 0);
   assert.equal((await rpc("tools/list", {}, writable.token)).status, 401);
   assert.equal((await web("confirm", { draftId: revoked.draft.draftId, confirmed: true }, editor)).status, 409);
   clearRate();
   const next = await issue(editor);
   const expiring = await newDraft(next.token);
   db.prepare("UPDATE remote_drafts SET expires=0 WHERE id=?").run(expiring.draft.draftId);
+  assert.equal(await pendingCount(editor), 0);
   assert.equal((await web("confirm", { draftId: expiring.draft.draftId, confirmed: true }, editor)).status, 409);
+  await newDraft(next.token);
+  assert.equal(await pendingCount(editor), 1);
   db.prepare("UPDATE remote_tokens SET expires=0 WHERE id=?").run(next.id);
+  assert.equal(await pendingCount(editor), 0);
   assert.equal((await rpc("tools/list", {}, next.token)).status, 401);
   const disabled = await issue(editor);
   const disabledDraft = await newDraft(disabled.token);
   await configure(false);
+  assert.equal(await pendingCount(editor), 0);
   assert.equal((await rpc("tools/list", {}, disabled.token)).status, 503);
   assert.equal((await web("confirm", { draftId: disabledDraft.draft.draftId, confirmed: true }, editor)).status, 503);
   await configure(true);
@@ -185,6 +215,7 @@ export async function exerciseRemote({ directory, request, okay, admin, editor, 
   const limited = await issue(editor);
   const blocked = await newDraft(limited.token);
   await okay(await web("grant", { memberId: editor.user.id, allowed: false }));
+  assert.equal(await pendingCount(editor), 0);
   assert.equal((await rpc("tools/list", {}, limited.token)).status, 401);
   assert.equal((await web("confirm", { draftId: blocked.draft.draftId, confirmed: true }, editor)).status, 403);
   await okay(await web("grant", { memberId: editor.user.id, allowed: true }));

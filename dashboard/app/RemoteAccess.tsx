@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { notifyRemoteDraftsChanged } from "./lib/remote-events";
 import {SettingsPanelHeader,SettingsStatus} from "./SettingsUI";
 import type { TeamUser } from "./lib/team-client";
 import { stageLabels, followUpStatusLabels } from "./lib/labels";
@@ -53,6 +54,7 @@ export default function RemoteAccess({ user, mode, endpoint = "" }: { user: Team
     setBusy(true); setError(""); setNotice("");
     try {
       const result = await request<{ token?: string }>(action, input);
+      notifyRemoteDraftsChanged();
       if (result.token) setSecret(result.token);
       setNotice(message); await reload();
     } catch (err) { setError((err as Error).message); }

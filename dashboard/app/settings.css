@@ -321,3 +321,27 @@
   .auth-page { padding:24px 16px; }
   .auth-card { padding:26px 22px; }
 }
+
+/* Pending reviews are account actions, separate from the main navigation. */
+.app-account-actions { display:flex; align-items:center; gap:14px; margin-left:auto; flex-shrink:0; }
+.app-account-actions .app-account { margin-left:0; }
+.app-pending { display:inline-flex; align-items:center; gap:6px; min-height:38px; padding:8px 10px; border:1px solid transparent; border-radius:8px; color:var(--muted); font-size:var(--text-small); line-height:var(--leading-compact); text-decoration:none; white-space:nowrap; }
+.app-pending .settings-icon { width:17px; height:17px; }
+.app-pending:hover,.app-pending[aria-current=page] { background:var(--canvas); color:var(--navy); }
+.app-pending.has-pending { color:var(--blue); background:var(--blue-soft); }
+.app-pending.has-pending:hover,.app-pending.has-pending[aria-current=page] { border-color:#cbddeb; }
+.app-pending-count { display:inline-flex; align-items:center; justify-content:center; min-width:20px; height:20px; padding:0 5px; border-radius:10px; background:var(--blue); color:white; font-size:var(--text-caption); font-weight:600; font-variant-numeric:tabular-nums; }
+@media(max-width:760px) {
+  .app-account-actions { order:1; gap:8px; }
+  .app-account-actions .app-account { order:0; }
+}
+@media(max-width:520px) {
+  .app-header-inner { padding-left:14px; padding-right:14px; gap:10px; }
+  .app-account-actions { gap:4px; }
+  .app-account summary { padding:5px; gap:4px; }
+  .app-account-name,.app-account-chevron { display:none; }
+  .app-pending { padding:7px; gap:5px; }
+  .app-pending .settings-icon { display:none; }
+  .app-brand > span:not(.site-brand-identity) { min-width:0; }
+  .app-brand strong,.app-brand small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+}

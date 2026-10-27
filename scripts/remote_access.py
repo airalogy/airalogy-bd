@@ -108,6 +108,10 @@ class RemoteAccess:
     def browser(self, request, actor):
         op = request.get("operation")
         if op == "status": return self.status(actor)
+        if op == "pending":
+            if not self.settings()["enabled"] or not self.accounts.remote_allowed(actor["id"]) or actor["role"] == "viewer":
+                return {"count": 0}
+            return {"count": sum(1 for _ in self.pending_drafts(actor))}
         if op in {"settings", "configure"}:
             self.accounts.require_admin(actor)
             if op == "configure":
@@ -152,13 +156,8 @@ class RemoteAccess:
             return {"revoked": True}
         if op == "drafts":
             self.grant(actor)
-            policy, drafts = Policy(self.workspace, actor), []
-            for row in self.db.execute("SELECT * FROM remote_drafts WHERE owner=? AND state='pending' ORDER BY created DESC", (actor["id"],)):
-                try:
-                    self.check_draft(row, actor, policy)
-                    drafts.append({"id": row["id"], "created": row["created"], "expires": row["expires"], **json.loads(row["value"])["review"]})
-                except AuthError: continue
-            return {"drafts": drafts}
+            return {"drafts": [{"id": row["id"], "created": row["created"], "expires": row["expires"],
+                                **json.loads(row["value"])["review"]} for row in self.pending_drafts(actor)]}
         if op in {"confirm", "reject"}:
             self.grant(actor)
             row = self.db.execute("SELECT * FROM remote_drafts WHERE id=?", (text(request.get("draftId")),)).fetchone()
@@ -188,6 +187,16 @@ class RemoteAccess:
             self.accounts.audit(actor, "remote.confirm", row["id"], "success")
             return result
         raise AuthError("未知的远程管理操作。", "invalid")
+
+    def pending_drafts(self, actor):
+        # The badge and review page use the same ownership, expiry and permission checks.
+        policy = Policy(self.workspace, actor)
+        for row in self.db.execute("SELECT * FROM remote_drafts WHERE owner=? AND state='pending' ORDER BY created DESC", (actor["id"],)):
+            try:
+                self.check_draft(row, actor, policy)
+            except AuthError:
+                continue
+            yield row
 
     def check_draft(self, row, actor, policy):
         if not row or row["owner"] != actor["id"] or row["binding"] != actor["revision"] or row["expires"] <= int(time.time()) or row["state"] != "pending":
