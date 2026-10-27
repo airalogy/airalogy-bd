@@ -1,8 +1,8 @@
 {
-  "reviewed_on": "2026-10-26",
-  "scope": "Declared npm and Python locked packages, including optional platforms. Metadata review; not a complete inventory of embedded native libraries, bundled framework code or container operating-system packages. 2026-10-26 update: reviewed the two added Nodemailer packages; all other locked package versions are unchanged.",
+  "reviewed_on": "2026-10-27",
+  "scope": "Declared npm and Python locked packages, including optional platforms. Metadata review; not a complete inventory of embedded native libraries, bundled framework code or container operating-system packages. 2026-10-27 update: reviewed react-activity-calendar and its seven added transitive packages; all other locked package versions are unchanged.",
   "lock_sha256": {
-    "pnpm-lock.yaml": "250e84fb3d38ff8fbce9e404353bc5d9f1a7f930dd86bbaff0c1034aaa3c5ca0",
+    "pnpm-lock.yaml": "f0941a82f3bca60885574586639c75b51a3c51c2161b2feba48ee643e7fd312e",
     "scripts/generate_dashboard_data.py.lock": "e56196a8de04123f7065acb41ae9e3c7cf89920e56e24791d1145e9d11ad1d27",
     "scripts/oss_backup.py.lock": "511c468ad7c286474ba7b15dbb2687c5ca6cd7dcc6378e17ba04d4e220fe72c6",
     "scripts/validate.py.lock": "1317fe8e93e990c287105fe019de4606bef3e16cfa5363c6d450dee4935dd8d8",
@@ -229,6 +229,36 @@
       "name": "@eslint/plugin-kit",
       "version": "0.4.1",
       "license": "Apache-2.0",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@floating-ui/core",
+      "version": "1.8.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@floating-ui/dom",
+      "version": "1.8.0",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@floating-ui/react",
+      "version": "0.27.20",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@floating-ui/react-dom",
+      "version": "2.1.9",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "@floating-ui/utils",
+      "version": "0.2.12",
+      "license": "MIT",
       "evidence": "installed package metadata"
     },
     {
@@ -1272,6 +1302,12 @@
     {
       "name": "data-view-byte-offset",
       "version": "1.0.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "date-fns",
+      "version": "4.4.0",
       "license": "MIT",
       "evidence": "installed package metadata"
     },
@@ -2974,6 +3010,12 @@
       "evidence": "installed package metadata"
     },
     {
+      "name": "react-activity-calendar",
+      "version": "3.2.1",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
       "name": "react-dom",
       "version": "19.2.6",
       "license": "MIT",
@@ -3342,6 +3384,12 @@
     {
       "name": "synckit",
       "version": "0.8.4",
+      "license": "MIT",
+      "evidence": "installed package metadata"
+    },
+    {
+      "name": "tabbable",
+      "version": "6.5.1",
       "license": "MIT",
       "evidence": "installed package metadata"
     },

@@ -28,3 +28,20 @@ export function filterCompanyEvents(
       && terms.every((term) => text.includes(term));
   }).sort((a, b) => b.date.localeCompare(a.date) || a.id.localeCompare(b.id));
 }
+
+export function companyActivityYears(events: CompanyEvent[]) {
+  return [...new Set(events.map(event => Number(event.date.slice(0, 4))))]
+    .filter(year => Number.isInteger(year) && year >= 1000 && year <= 9999)
+    .sort((a, b) => b - a);
+}
+
+export function companyActivityCalendar(events: CompanyEvent[], year: number) {
+  if (!Number.isInteger(year) || year < 1000 || year > 9999) throw new RangeError("Invalid calendar year");
+  const counts = new Map<string, number>([[`${year}-01-01`, 0], [`${year}-12-31`, 0]]);
+  for (const event of events) {
+    if (event.date.startsWith(`${year}-`)) counts.set(event.date, (counts.get(event.date) ?? 0) + 1);
+  }
+  // The calendar component fills missing dates and handles week alignment/leap years.
+  return [...counts].sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, count]) => ({ date, count, level: Math.min(count, 4) }));
+}

@@ -4,10 +4,8 @@
 .admin-primary { color:white; background:var(--navy); border-color:var(--navy); }
 .admin-primary:hover { background:var(--blue); }
 .admin-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-.workspace-admin h1,.version-history h1 { margin:0; font-size:var(--text-title); }
 .workspace-admin h2,.version-history h2 { font-size:var(--text-section); margin:0 0 12px; }
 .workspace-admin h3,.version-history h3 { font-size:var(--text-subheading); margin:18px 0 10px; }
-.workspace-admin .section-heading p,.version-history .section-heading p { font-size:var(--text-body); color:var(--muted); margin:8px 0 0; }
 .admin-help { font-size:var(--text-small); line-height:var(--leading-reading); color:var(--muted); }
 .admin-tabs { display:flex; gap:8px; margin:22px 0 16px; }
 .admin-tabs button { border:1px solid var(--line); padding:8px 20px; border-radius:8px; font-size:var(--text-body); cursor:pointer; }

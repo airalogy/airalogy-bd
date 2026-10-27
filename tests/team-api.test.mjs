@@ -130,6 +130,7 @@ test("server HTTP enforces invitations, scope, roles, CSRF, concurrent saves, do
     const invite=async(role,email)=>okay(await request("/api/auth",{action:"team_invite",email,name:role,role,all_projects:false,project_ids:[project]},admin));
     const viewer=await join((await invite("viewer","viewer@example.invalid")).token);
     const editor=await join((await invite("editor","editor@example.invalid")).token);
+    assert.equal((await request("/api/auth",{action:"team_audit",scope:"members"},viewer)).status,403);
     // Administrators need only a name and grants; email is supplied by the invited member.
     let selfInvite=await okay(await request("/api/auth",{action:"team_invite",name:"自行填写邮箱",role:"viewer",project_ids:[project]},admin));
     const otherInvite=await okay(await request("/api/auth",{action:"team_invite",name:"自行填写邮箱",email:"  ",role:"viewer",project_ids:[]},admin));
@@ -280,6 +281,17 @@ test("server HTTP enforces invitations, scope, roles, CSRF, concurrent saves, do
     const snapshotBytes=readFileSync(path.join(restored,".bd-auth/accounts.sqlite3"));
     for(const token of transferTokens) assert.equal(snapshotBytes.includes(Buffer.from(token)),false);
     assert.ok(unfinished.token);
+    const memberAudit=await okay(await request("/api/auth",{action:"team_audit",scope:"members"},admin));
+    assert.ok(memberAudit.entries.length);
+    assert.ok(memberAudit.entries.every(e=>["account.invite","account.permissions","account.reset","remote.grant","remote.ungrant"].includes(e.action)));
+    const auditedInvitation=memberAudit.entries.find(e=>e.action==="account.invite"&&e.subject?.name==="备份待激活成员");
+    assert.ok(auditedInvitation);assert.equal(auditedInvitation.actor_id,admin.user.id);
+    assert.equal(auditedInvitation.subject.source,"recorded");
+    assert.equal(auditedInvitation.changes.find(c=>c.field==="scope").after.projects[0].id,project);
+    assert.notEqual(auditedInvitation.changes.find(c=>c.field==="scope").after.projects[0].name,project,"Scope stores the actual matter name, not just its ID");
+    assert.equal((await request("/api/auth",{action:"team_audit",scope:"members"},recovered)).status,403);
+    assert.equal((await request("/api/auth",{action:"team_audit",scope:"members"},viewer)).status,401);
+    assert.equal((await request("/api/auth",{action:"team_audit",scope:"unknown"},admin)).status,422);
     const audit=await okay(await request("/api/auth",{action:"team_audit"},admin));
     assert.ok(audit.entries.some(e=>e.action==="save"&&e.actor_id===editor.user.id&&e.outcome==="success"));
     for(let attempt=0;attempt<21;attempt++){

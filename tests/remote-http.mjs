@@ -89,11 +89,13 @@ export async function exerciseRemote({ directory, request, okay, admin, editor, 
   // A newly invited admin also connects without a grant, but demotion revokes the session, token and draft.
   const adminInvite = await okay(await request("/api/auth", { action: "team_invite", name: "工具管理员", email: "tool-admin@example.invalid", role: "admin" }, admin));
   const toolAdmin = await join(adminInvite.token), roleToken = await issue(toolAdmin);
+  const roleDirect = await okay(await web("issue", {label:"Admin direct before demotion",accessMode:"direct"}, toolAdmin));
   const roleDraft = await newDraft(roleToken.token);
   assert.equal(await pendingCount(toolAdmin), 1);
   const roleMember = (await okay(await request("/api/auth", { action: "team_list" }, admin))).users.find(member => member.id === toolAdmin.user.id);
   await okay(await request("/api/auth", { action: "team_update", ...roleMember, active: true, role: "editor", all_projects: false, project_ids: [matter], remote_allowed: false, remote_allowed_before: true }, admin));
   assert.equal((await rpc("tools/list", {}, roleToken.token)).status, 401);
+  assert.equal((await rpc("tools/list", {}, roleDirect.token)).status, 401);
   assert.equal((await request("/api/remote?action=pending", null, toolAdmin)).status, 401);
   assert.equal((await status()).members.find(member => member.id === toolAdmin.user.id).granted, false);
   const roleDB = new DatabaseSync(path.join(directory, ".bd-auth/accounts.sqlite3"));
@@ -243,9 +245,87 @@ export async function exerciseRemote({ directory, request, okay, admin, editor, 
   for (let index = 0; index < 60; index++) db.prepare("INSERT INTO remote_attempts VALUES(?,?)").run(editor.user.id, Math.floor(Date.now() / 1000));
   assert.equal((await rpc("tools/list", {}, rateToken.token)).status, 429);
   clearRate();
-  db.close();
   const audit = await okay(await request("/api/auth", { action: "team_audit" }, admin));
   assert.ok(audit.entries.some(e => e.action === "remote.confirm" && e.outcome === "success"));
   assert.doesNotMatch(JSON.stringify(audit), new RegExp(rateToken.token));
+  // Direct writes require an explicit administrator connection, never a role alone.
+  const defaultToken = await okay(await web("issue", {label:"Default AI client"}));
+  assert.equal(defaultToken.accessMode, "draft");
+  const direct = await okay(await web("issue", {label:"Explicit direct save", accessMode:"direct", days:7}));
+  assert.equal(direct.accessMode, "direct");
+  for (const member of [editor, viewer]) {
+    assert.equal((await web("issue", {label:"Escalation", accessMode:"direct"}, member)).status, 403);
+  }
+  for (const fields of [{accessMode:"invalid"}, {accessMode:"direct",canDraft:true}, {canDraft:"true"}, {days:0}, {days:true}]) {
+    assert.equal((await web("issue", {label:"Invalid", ...fields})).status, 422);
+  }
+  assert.ok((await (await rpc("tools/call", {name:"save_progress",arguments:{}}, defaultToken.token)).json()).error);
+  assert.ok((await (await rpc("tools/call", {name:"save_progress",arguments:{}}, rateToken.token)).json()).error);
+  assert.deepEqual((await (await rpc("tools/list", {}, direct.token)).json()).result.tools.map(t=>t.name), ["search_matters","read_matter","read_progress","submit_draft","save_progress"]);
+  const directInit = (await (await rpc("initialize", {protocolVersion:"2025-11-25"}, direct.token)).json()).result;
+  assert.match(directInit.instructions, /formally save progress/);
+  const currentDirect = await call("read_matter", {matter_id:matter}, direct.token);
+  const directArgs = {matter_id:matter, revision:currentDirect.revision, request_id:randomUUID(), operation:"add_progress", changes:{date:"2026-10-27",title:"管理员外部工具正式录入",summary:"仅沟通，尚未签署。",body:"用户明确提供的交流记录。"}};
+  const countBefore = (await record(admin)).record.events.length, pendingBefore = await pendingCount(admin);
+  const [saved, repeated] = await Promise.all([call("save_progress", directArgs, direct.token),call("save_progress", directArgs, direct.token)]);
+  assert.deepEqual(repeated, saved);
+  assert.equal(saved.status, "saved");
+  assert.equal(saved.request_id, directArgs.request_id);
+  assert.equal((await record(admin)).record.events.length, countBefore + 1);
+  assert.equal(await pendingCount(admin), pendingBefore);
+  assert.doesNotMatch(JSON.stringify(saved), /\/Users\/|\.bd-history|\.sqlite|bdr_/);
+  assert.equal((await call("save_progress", {...directArgs,changes:{...directArgs.changes,summary:"different"}}, direct.token, true)).code, "conflict");
+  assert.equal((await call("submit_draft", directArgs, direct.token, true)).code, "conflict");
+  assert.equal((await call("save_progress", {...directArgs,request_id:randomUUID()}, direct.token, true)).code, "conflict");
+  clearRate();
+  for (const invalid of [
+    {operation:"update_matter",changes:{next_action:"Do not save"}}, {operation:"delete"},
+    {operation:"add_matter"}, {changes:{contacts:[]}}, {changes:{stage:"signed"}},
+    {changes:{date:"invalid",title:"Bad date"}}, {changes:{participants:["unknown-person"]}},
+    {progress_id:"nonexistent"},
+  ]) {
+    const current = await call("read_matter", {matter_id:matter}, direct.token);
+    assert.equal((await call("save_progress", {...directArgs,revision:current.revision,request_id:randomUUID(),...invalid}, direct.token, true)).code, "invalid");
+  }
+  assert.equal((await call("save_progress", {...directArgs,request_id:randomUUID(),matter_id:"nonexistent"}, direct.token, true)).code, "forbidden");
+  assert.equal((await record(admin)).record.events.length, countBefore + 1);
+  clearRate();
+  const openedProgress = await call("read_progress", {matter_id:matter,progress_id:saved.progress_id}, direct.token);
+  const updated = await call("save_progress", {matter_id:matter,progress_id:saved.progress_id,revision:openedProgress.revision,request_id:randomUUID(),operation:"update_progress",changes:{summary:"对方将继续内部讨论，尚未签署。"}}, direct.token);
+  assert.equal(updated.progress_id, saved.progress_id);
+  assert.equal((await call("read_progress", {matter_id:matter,progress_id:saved.progress_id}, direct.token)).fields.summary, "对方将继续内部讨论，尚未签署。");
+  const directHistory = await okay(await request(`/api/workspace?action=history&kind=project&id=${matter}`, null, admin));
+  assert.equal(directHistory.versions[0].actor.id, admin.user.id);
+  assert.equal(directHistory.versions[0].version, updated.history_version);
+  // A direct connection can still propose, and proposals never change business data.
+  const draftBefore = await record(admin);
+  const directDraft = await newDraft(direct.token, {operation:"update_matter",changes:{next_action:"Direct connection still requires matter review"}});
+  assert.deepEqual(await record(admin), draftBefore);
+  assert.equal(directDraft.draft.status, "pending");
+  assert.equal((await call("save_progress", directDraft.args, direct.token, true)).code, "conflict");
+  await okay(await web("confirm", {draftId:directDraft.draft.draftId,confirmed:true}));
+  // Restore only the changed progress, preserving the later matter update.
+  const diff = await okay(await request(`/api/workspace?${new URLSearchParams({action:"compare",kind:"progress",id:saved.progress_id,project_id:matter,version:saved.history_version})}`, null, admin));
+  assert.equal(diff.can_restore, true);
+  await okay(await request("/api/workspace", {action:"restore",kind:"progress",id:saved.progress_id,project_id:matter,version:saved.history_version,revision:diff.revision}, admin));
+  const afterRestore = await record(admin);
+  assert.equal(afterRestore.record.events.find(e=>e.id===saved.progress_id).summary, "仅沟通，尚未签署。");
+  assert.equal(afterRestore.record.metadata.next_action, "Direct connection still requires matter review");
+  // A receipt reports the original save, never reapplies it after a later restore.
+  assert.deepEqual(await call("save_progress", directArgs, direct.token), saved);
+  assert.deepEqual(await record(admin), afterRestore);
+  const directAudit = await okay(await request("/api/auth", {action:"team_audit"}, admin));
+  assert.ok(directAudit.entries.some(e=>e.action==="remote.issue_direct"));
+  assert.ok(directAudit.entries.some(e=>e.action==="remote.save_progress" && e.outcome==="success"));
+  assert.doesNotMatch(JSON.stringify(directAudit), new RegExp(direct.token));
+  await okay(await web("revoke", {tokenId:direct.id}));
+  assert.equal((await rpc("tools/list", {}, direct.token)).status, 401);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM remote_writes WHERE token_id=?").get(direct.id).n, 0);
+  const closing = await okay(await web("issue", {label:"Close feature",accessMode:"direct"}));
+  const closingMatter = await call("read_matter", {matter_id:matter}, closing.token);
+  await call("save_progress", {...directArgs,revision:closingMatter.revision,request_id:randomUUID()}, closing.token);
   await configure(false);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM remote_writes").get().n, 0);
+  assert.equal((await rpc("tools/list", {}, closing.token)).status, 503);
+  db.close();
 }

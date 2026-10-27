@@ -1393,7 +1393,7 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
         <InvestmentOverview projects={data.projects} onOpenProject={setSelectedProject} />
       </div>
       <div hidden={page !== "company"}>
-        <CompanyActivity events={data.company_events} renderEvent={(event) => (
+        <CompanyActivity events={data.company_events} timezone={data.workspace.timezone} renderEvent={(event) => (
           <EventItem event={event} workspace={data.workspace}
             sourceLabel={companyCategoryLabel(event.category)}
             onOpenRecord={() => setSelectedRecord({ event, sourceLabel: "公司动态" })}

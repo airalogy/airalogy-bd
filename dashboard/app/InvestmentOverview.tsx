@@ -47,7 +47,7 @@ export default function InvestmentOverview({ projects, onOpenProject }: {
 
   return (
     <section className="panel investment-overview" aria-labelledby="investment-title">
-      <div className="section-heading">
+      <div className="section-heading page-heading">
         <div><div className="eyebrow">机构 · 联系人 · 跟进</div><h1 id="investment-title">投资总览</h1>
           <p>按投资对接事项汇总机构与个人，展开查看全部对外联系人及联系方式。</p></div>
         <button className="history-trigger" type="button" onClick={exportCsv} disabled={!visible.length}>导出当前表格</button>
@@ -58,7 +58,7 @@ export default function InvestmentOverview({ projects, onOpenProject }: {
         <div><strong>{investments.filter((project) => project.follow_up_status === "proactive_contact").length}</strong><span>可主动跟进</span></div>
         <div><strong>{investments.filter(needsContactInfo).length}</strong><span>联系方式待补充的事项</span></div>
       </div>
-      <div className="investment-filters">
+      <div className="investment-filters workspace-filters">
         <label className="control-field investment-search"><span>关键词</span>
           <input type="search" aria-label="搜索投资对接" placeholder="机构、姓名、联系方式或进展" value={filters.query} onChange={(e) => update({ query: e.target.value })} /></label>
         <label className="control-field"><span>跟进状态</span><select value={filters.followUp} onChange={(e) => update({ followUp: e.target.value })}>

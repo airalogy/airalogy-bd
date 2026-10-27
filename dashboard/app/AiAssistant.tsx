@@ -58,7 +58,7 @@ export default function AiAssistant({ data, onSaved, onSource, initialScope = ""
     finally { setBusy(false); }
   }
   return <section className="panel ai-assistant" aria-labelledby="ai-title">
-    <div className="section-heading"><div><div className="eyebrow">AI 助手</div><h1 id="ai-title">对话录入与进展总结</h1><p>整理实际进展，核对后保存；总结可以追溯到原始记录。</p></div></div>
+    <div className="section-heading page-heading"><div><div className="eyebrow">AI 助手</div><h1 id="ai-title">对话录入与进展总结</h1><p>整理实际进展，核对后保存；总结可以追溯到原始记录。</p></div></div>
     {error && <p className="admin-alert" role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
     {!status && !error && <p>正在读取 AI 状态…</p>}
     {status?.canManage && <p className="admin-help"><Link href="/admin?section=ai">前往管理中心配置 AI</Link></p>}

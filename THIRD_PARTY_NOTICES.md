@@ -19,7 +19,7 @@ The declared dependency inventory is recorded in [docs/dependency-licenses.json]
 
 ## Inventory coverage
 
-The inventory covers metadata for 604 locked npm package/version pairs (551 installed manifests and 53 official registry manifests for optional/platform packages), plus 17 locked Python package/version pairs. Its inspection date and lockfile hashes are recorded in the inventory. Each entry includes a declared license. Most dependencies use permissive licenses; the exceptions above must not be treated as Apache-2.0.
+The inventory covers metadata for 612 locked npm package/version pairs (559 installed manifests and 53 official registry manifests for optional/platform packages), plus 17 locked Python package/version pairs. Its inspection date and lockfile hashes are recorded in the inventory. Each entry includes a declared license. Most dependencies use permissive licenses; the exceptions above must not be treated as Apache-2.0.
 
 The source repository does not vendor the installed dependencies. Package metadata does not exhaustively describe every library, font or dataset embedded inside a native binary or framework bundle. The inventory is therefore not a completed binary/image distribution compliance report. Before distributing an installer, browser bundle or container, inspect the exact artifact, include its required notices and source access, and account for Node.js, Python, uv, Git, system libraries and the base image's terms. Artifact publication requires a separate distribution review.
 

@@ -1,6 +1,7 @@
 """Optional, user-bound remote tools. All entry points run under the workspace lock.
 
-External credentials can query or propose; only an MFA browser session can confirm.
+External credentials can query or propose; administrators may explicitly issue
+progress-write credentials. Browser confirmation remains separate from direct saves.
 Keep transient access in the private account database, excluded from account backups.
 """
 import hashlib
@@ -45,11 +46,19 @@ class RemoteAccess:
                 value TEXT NOT NULL, state TEXT NOT NULL, created INTEGER NOT NULL, expires INTEGER NOT NULL,
                 UNIQUE(token_id,request_id));
             CREATE TABLE IF NOT EXISTS remote_attempts (owner TEXT NOT NULL, at INTEGER NOT NULL);
+            CREATE TABLE IF NOT EXISTS remote_writes (id TEXT PRIMARY KEY, owner TEXT NOT NULL, token_id TEXT NOT NULL,
+                binding TEXT NOT NULL, request_id TEXT NOT NULL, fingerprint TEXT NOT NULL, matter TEXT NOT NULL,
+                state TEXT NOT NULL, result TEXT NOT NULL, created INTEGER NOT NULL, expires INTEGER NOT NULL,
+                UNIQUE(token_id,request_id));
         """)
+        if "can_save" not in {row["name"] for row in self.db.execute("PRAGMA table_info(remote_tokens)")}:
+            self.db.execute("ALTER TABLE remote_tokens ADD COLUMN can_save INTEGER NOT NULL DEFAULT 0")
         with self.db:
             self.db.execute("DELETE FROM remote_attempts WHERE at<?", (int(time.time()) - 60,))
             # Keep consumed request IDs until expiry for replay protection, but clear their contents.
             self.db.execute("DELETE FROM remote_drafts WHERE expires<=?", (int(time.time()),))
+            # Direct-save receipts outlive drafts and remain until their credential expires.
+            self.db.execute("DELETE FROM remote_writes WHERE expires<=?", (int(time.time()),))
             self.db.execute("DELETE FROM remote_tokens WHERE expires<=?", (int(time.time()),))
 
     def settings(self):
@@ -69,6 +78,7 @@ class RemoteAccess:
         # Delete token hashes and proposed business text when access is revoked.
         self.db.execute(f"DELETE FROM remote_tokens WHERE {clause}", values)
         self.db.execute(f"DELETE FROM remote_drafts WHERE {clause}", values)
+        self.db.execute(f"DELETE FROM remote_writes WHERE {clause}", values)
 
     def authenticate(self, token):
         self.enabled()
@@ -97,7 +107,7 @@ class RemoteAccess:
     def status(self, actor, manage=False):
         result = self.settings() | {"granted": self.accounts.remote_allowed(actor["id"])}
         result["tokens"] = [dict(row) for row in self.db.execute(
-            "SELECT id,owner,label,can_draft,expires,created FROM remote_tokens WHERE " + ("1=1" if manage else "owner=?") + " ORDER BY created DESC",
+            "SELECT id,owner,label,can_draft,can_save,expires,created FROM remote_tokens WHERE " + ("1=1" if manage else "owner=?") + " ORDER BY created DESC",
             () if manage else (actor["id"],))]
         if manage:
             result["members"] = [{"id": row["id"], "name": row["name"], "role": row["role"], "active": bool(row["active"]),
@@ -125,19 +135,29 @@ class RemoteAccess:
         if op == "grant":
             self.accounts.require_admin(actor)
             identity = text(request.get("memberId"))
-            member = self.db.execute("SELECT role FROM users WHERE id=?", (identity,)).fetchone()
+            member = self.db.execute("SELECT * FROM users WHERE id=?", (identity,)).fetchone()
             if type(request.get("allowed")) is not bool or not member:
                 raise AuthError("成员或授权设置无效。", "invalid")
             if member["role"] == "admin":
                 raise AuthError("管理员默认具备外部 AI 工具权限，无需单独授权；可在全局设置关闭接入或撤销个人凭据。", "invalid")
+            before = {"remote_allowed": "允许" if self.accounts.remote_allowed(identity) else "不允许"}
             with self.db:
                 self.accounts.set_remote_allowed(identity, request["allowed"])
-            self.accounts.audit(actor, "remote.grant" if request["allowed"] else "remote.ungrant", identity)
+                self.accounts.member_audit(actor, "remote.grant" if request["allowed"] else "remote.ungrant", member,
+                                           before, {"remote_allowed": "允许" if request["allowed"] else "不允许"})
             return self.status(actor, True)
         if op == "issue":
             self.grant(actor)
-            days, writable = request.get("days", 7), request.get("canDraft", False)
-            if type(days) is not int or not 1 <= days <= 30 or type(writable) is not bool or (writable and actor["role"] == "viewer"):
+            if "accessMode" in request and "canDraft" in request:
+                raise AuthError("请只指定一种连接权限。", "invalid")
+            if "canDraft" in request and type(request["canDraft"]) is not bool:
+                raise AuthError("连接权限无效。", "invalid")
+            mode = request.get("accessMode", "draft" if request.get("canDraft", actor["role"] != "viewer") else "read")
+            if mode not in ("read", "draft", "direct"):
+                raise AuthError("连接权限无效。", "invalid")
+            if mode == "direct": self.accounts.require_admin(actor)
+            days, writable = request.get("days", 7), mode != "read"
+            if type(days) is not int or not 1 <= days <= 30 or (writable and actor["role"] == "viewer"):
                 raise AuthError("有效期须为 1–30 天；只读成员不能提交草稿。", "invalid")
             now = int(time.time())
             if self.db.execute("SELECT COUNT(*) FROM remote_tokens WHERE owner=? AND expires>?", (actor["id"], now)).fetchone()[0] >= 5:
@@ -145,9 +165,9 @@ class RemoteAccess:
             label = text(request.get("label"), 80)
             token, identity = "bdr_" + secrets.token_urlsafe(32), secrets.token_hex(16)
             with self.db:
-                self.db.execute("INSERT INTO remote_tokens VALUES(?,?,?,?,?,?,?,?)", (identity, fingerprint(token), actor["id"], actor["revision"], label, int(writable), now + days * 86400, now))
-            self.accounts.audit(actor, "remote.issue", identity)
-            return {"id": identity, "token": token, "expires": now + days * 86400}
+                self.db.execute("INSERT INTO remote_tokens(id,digest,owner,binding,label,can_draft,expires,created,can_save) VALUES(?,?,?,?,?,?,?,?,?)", (identity, fingerprint(token), actor["id"], actor["revision"], label, int(writable), now + days * 86400, now, int(mode == "direct")))
+            self.accounts.audit(actor, "remote.issue_direct" if mode == "direct" else "remote.issue", identity)
+            return {"id": identity, "token": token, "expires": now + days * 86400, "accessMode": mode}
         if op == "revoke":
             identity = text(request.get("tokenId"))
             row = self.db.execute("SELECT * FROM remote_tokens WHERE id=?", (identity,)).fetchone()
@@ -155,6 +175,7 @@ class RemoteAccess:
             with self.db:
                 self.db.execute("DELETE FROM remote_tokens WHERE id=?", (identity,))
                 self.db.execute("DELETE FROM remote_drafts WHERE token_id=?", (identity,))
+                self.db.execute("DELETE FROM remote_writes WHERE token_id=?", (identity,))
             self.accounts.audit(actor, "remote.revoke", identity)
             return {"revoked": True}
         if op == "drafts":
@@ -217,8 +238,8 @@ class RemoteAccess:
         if self.db.execute("SELECT COUNT(*) FROM remote_attempts WHERE owner=? AND at>=?", (actor["id"], now - 60)).fetchone()[0] >= 60:
             raise AuthError("远程请求过于频繁，请稍后再试。", "rate_limited")
         with self.db: self.db.execute("INSERT INTO remote_attempts VALUES(?,?)", (actor["id"], now))
-        if op == "access": return {"canDraft": bool(token["can_draft"]) and actor["role"] != "viewer"}
-        if op not in {"search_matters", "read_matter", "read_progress", "submit_draft"}: raise AuthError("远程接口不提供此操作。")
+        if op == "access": return {"canDraft": bool(token["can_draft"]) and actor["role"] != "viewer", "canSave": bool(token["can_save"]) and actor["role"] == "admin"}
+        if op not in {"search_matters", "read_matter", "read_progress", "submit_draft", "save_progress"}: raise AuthError("远程接口不提供此操作。")
         policy = Policy(self.workspace, actor)
         self.ready()
         try:
@@ -267,17 +288,25 @@ class RemoteAccess:
             item = self.workspace.get_record({"kind": "progress", "id": progress_id, "project_id": matter})
             if not item["record"]: raise AuthError("未找到这条进展。", "not_found")
             return {"matter_id": matter, "progress_id": progress_id, "revision": item["revision"], "fields": self.progress_fields(item["record"])}
+        direct = op == "save_progress"
+        if direct and (not token["can_save"] or actor["role"] != "admin"):
+            raise AuthError("直接保存仅限管理员明确开启此权限的连接。")
         if not token["can_draft"] or actor["role"] == "viewer": raise AuthError("此凭据只允许查询。")
         exact(args, {"matter_id", "progress_id", "revision", "operation", "changes", "request_id"}, {"matter_id", "revision", "operation", "changes", "request_id"})
         request_id = text(args["request_id"], 80)
         if not re.fullmatch(r"[A-Za-z0-9_-]{16,80}", request_id): raise AuthError("请提供至少 16 位唯一请求编号。", "invalid")
         signature = hashlib.sha256(json.dumps(args, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
-        existing = self.db.execute("SELECT * FROM remote_drafts WHERE token_id=? AND request_id=?", (token["id"], request_id)).fetchone()
+        table, other = ("remote_writes", "remote_drafts") if direct else ("remote_drafts", "remote_writes")
+        if self.db.execute(f"SELECT 1 FROM {other} WHERE token_id=? AND request_id=?", (token["id"], request_id)).fetchone():
+            raise AuthError("此请求编号已用于其他操作，请先检查原操作结果。", "conflict")
+        existing = self.db.execute(f"SELECT * FROM {table} WHERE token_id=? AND request_id=?", (token["id"], request_id)).fetchone()
         if existing:
             if existing["fingerprint"] != signature: raise AuthError("同一请求编号不能提交不同内容。", "conflict")
-            return self.receipt(existing)
+            return self.write_receipt(existing) if direct else self.receipt(existing)
         operation, changes = args["operation"], args["changes"]
         if operation not in {"add_progress", "update_progress", "update_matter"}: raise AuthError("不支持此类修改。", "invalid")
+        if direct and operation not in {"add_progress", "update_progress"}:
+            raise AuthError("直接保存仅支持新增或修改已有事项的进展；事项信息请提交草稿。", "invalid")
         exact(changes, MATTER_FIELDS if operation == "update_matter" else PROGRESS_FIELDS)
         if not changes: raise AuthError("请提供要修改的内容。", "invalid")
         for key, value in changes.items():
@@ -296,9 +325,11 @@ class RemoteAccess:
             before = self.progress_fields(item) if item else {"date": "", "type": "other", "title": "", "summary": "", "importance": "normal", "participants": [], "body": "", "location": ""}
         save = {"action": "save", **target, "revision": text(args["revision"]), "payload": {**before, **changes}}
         if operation != "add_progress" and all(before.get(key) == value for key, value in changes.items()):
-            raise AuthError("内容没有变化，无需提交草稿。", "invalid")
+            raise AuthError("内容没有变化，无需提交修改。", "invalid")
         policy.authorize(save)
         self.workspace.save(save, preview=True)
+        if direct:
+            return self.save_progress(save, args, actor, token, signature)
         if self.db.execute("SELECT COUNT(*) FROM remote_drafts WHERE owner=? AND state='pending'", (actor["id"],)).fetchone()[0] >= 20 or self.db.execute("SELECT COUNT(*) FROM remote_drafts").fetchone()[0] >= 2000:
             raise AuthError("待处理草稿过多，请先在 BD 中确认或驳回。", "rate_limited")
         identity, created = secrets.token_hex(16), int(time.time())
@@ -313,6 +344,39 @@ class RemoteAccess:
         with self.db:
             self.db.execute("INSERT INTO remote_drafts VALUES(?,?,?,?,?,?,?,?,'pending',?,?)", (identity, actor["id"], token["id"], actor["revision"], request_id, signature, matter, json.dumps({"request": save, "review": review}, ensure_ascii=False), created, expires))
         return self.receipt(self.db.execute("SELECT * FROM remote_drafts WHERE id=?", (identity,)).fetchone())
+
+    def save_progress(self, save, args, actor, token, signature):
+        if self.db.execute("SELECT COUNT(*) FROM remote_writes").fetchone()[0] >= 2000:
+            raise AuthError("保存请求记录已达上限，请撤销不再使用的凭据或等待到期。", "rate_limited")
+        identity, created = secrets.token_hex(16), int(time.time())
+        # Commit the claim before any business write. After an interruption, the same
+        # request must return its receipt, never execute a second time.
+        with self.db:
+            self.db.execute("INSERT INTO remote_writes VALUES(?,?,?,?,?,?,?,'processing','',?,?)",
+                            (identity, actor["id"], token["id"], actor["revision"], args["request_id"], signature, args["matter_id"], created, token["expires"]))
+        self.accounts.audit(actor, "remote.save_progress", identity, "started")
+        self.workspace.actor = {key: actor[key] for key in ("id", "name", "email")}
+        try:
+            result = self.workspace.save(save)
+            opened = self.workspace.get_record({"kind": "progress", "id": result["id"], "project_id": args["matter_id"]})
+            receipt = {"write_id": identity, "request_id": args["request_id"], "status": "saved",
+                       "matter_id": args["matter_id"], "progress_id": result["id"], "revision": opened["revision"],
+                       "history_version": result["status"]["version"],
+                       "message": "进展已正式保存，并留存修改历史；无需网页确认。"}
+            with self.db:
+                self.db.execute("UPDATE remote_writes SET state='saved',result=? WHERE id=?", (json.dumps(receipt, ensure_ascii=False), identity))
+        except Exception as exc:
+            with self.db: self.db.execute("UPDATE remote_writes SET state='uncertain' WHERE id=?", (identity,))
+            self.accounts.audit(actor, "remote.save_progress", identity, "failed")
+            raise AuthError("保存结果需要核对。请保留原请求编号，查询最新进展和修改历史；不要更换编号重复保存。", "uncertain") from exc
+        self.accounts.audit(actor, "remote.save_progress", identity, "success")
+        return receipt
+
+    @staticmethod
+    def write_receipt(row):
+        if row["state"] == "saved": return json.loads(row["result"])
+        return {"write_id": row["id"], "request_id": row["request_id"], "matter_id": row["matter"], "status": "uncertain",
+                "message": "此请求已开始执行，结果需要核对；不会再次执行。请查询最新进展和修改历史，不要更换编号重复保存。"}
 
     @staticmethod
     def progress_fields(record):

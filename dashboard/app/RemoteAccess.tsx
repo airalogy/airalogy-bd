@@ -6,10 +6,11 @@ import {SettingsPanelHeader,SettingsStatus} from "./SettingsUI";
 import type { TeamUser } from "./lib/team-client";
 import { stageLabels, followUpStatusLabels } from "./lib/labels";
 
-type Token = { id: string; owner: string; label: string; can_draft: boolean; expires: number };
+type Token = { id: string; owner: string; label: string; can_draft: boolean; can_save: boolean; expires: number };
 type Member = { id: string; name: string; role: string; active: boolean; granted: boolean };
 type Status = { enabled: boolean; granted: boolean; revision: string; tokens: Token[]; members?: Member[] };
 type Draft = { id: string; matterName: string; counterparty: string; progressTitle: string; progressDate: string; operation: string; expires: number; changes: { field: string; label: string; before: unknown; after: unknown }[] };
+type AccessMode = "read" | "draft" | "direct";
 const operations: Record<string, string> = { add_progress: "新增进展", update_progress: "修改进展", update_matter: "修改事项" };
 function display(field: string, value: unknown) {
   if (value === null || value === undefined || value === "") return "（空）";
@@ -25,7 +26,7 @@ export default function RemoteAccess({ user, mode, endpoint = "" }: { user: Team
   const manage = mode === "settings";
   const [status, setStatus] = useState<Status | null>(null), [drafts, setDrafts] = useState<Draft[]>([]);
   const [error, setError] = useState(""), [notice, setNotice] = useState(""), [busy, setBusy] = useState(false);
-  const [secret, setSecret] = useState(""), [label, setLabel] = useState("我的 Codex"), [days, setDays] = useState(7), [canDraft, setCanDraft] = useState(false);
+  const [secret, setSecret] = useState(""), [label, setLabel] = useState("我的 AI 工具"), [days, setDays] = useState(7), [accessMode, setAccessMode] = useState<AccessMode>(user.role === "viewer" ? "read" : "draft");
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const request = useCallback(async <T,>(action: string, input?: Record<string, unknown>): Promise<T> => {
     const response = await fetch(input ? "/api/remote" : `/api/remote?action=${action}`, {
@@ -61,7 +62,7 @@ export default function RemoteAccess({ user, mode, endpoint = "" }: { user: Team
     finally { setBusy(false); }
   }
   return <section id={manage?"external-ai":mode==="connection"?"ai-tools":undefined} className="panel admin-center-panel remote-access">
-    <SettingsPanelHeader title={manage?"外部 AI 工具":mode==="connection"?"AI 工具连接":"修改草稿"} description={manage?"允许成员通过 Codex 等外部工具访问工作台，与内置 AI 的模型配置和费用独立。":mode==="connection"?"连接自己的 AI 工具，查询获授权事项或提交修改草稿。":"核对外部 AI 工具提交的内容，由你确认后正式保存。"} actions={mode==="connection"?<Link className="admin-button" href="/remote">查看待确认修改</Link>:undefined}/>
+    <SettingsPanelHeader title={manage?"外部 AI 工具":mode==="connection"?"AI 工具连接":"修改草稿"} description={manage?"允许成员通过支持 MCP 的外部 AI 工具访问工作台，与内置 AI 的模型配置和费用独立。":mode==="connection"?"连接自己的 AI 工具，为每个连接设置访问权限和有效期。":"核对外部 AI 工具提交的内容，由你确认后正式保存。"} actions={mode==="connection"?<Link className="admin-button" href="/remote">查看待确认修改</Link>:undefined}/>
     {error && <p className="admin-alert" role="alert">{error}</p>}
     {notice && <p className="admin-notice" role="status">{notice}</p>}
     {!status ? <p>正在读取接入状态…</p> : <>
@@ -70,26 +71,35 @@ export default function RemoteAccess({ user, mode, endpoint = "" }: { user: Team
       {mode === "connection" && <>
         <p className="admin-help">返回给外部工具的业务资料会进入你所使用的模型上下文，请按公司要求选择模型。这里不自动读取附件和联系方式，模型费用由对应工具账号承担。</p>
         {!status.enabled || !status.granted ? <p className="settings-empty">{!status.enabled?<>工作区尚未开启外部工具接入。{user.role==="admin"&&<>请前往 <Link href="/admin?section=ai#external-ai">AI 设置</Link> 开启，再回来生成个人凭据。</>}</>:"请联系管理员允许你的账号连接外部 AI 工具。"}</p> : <>
-          <form onSubmit={event => { event.preventDefault(); void act("issue", { label, days, canDraft }, "凭据已生成，仅显示这一次。请保存在自己的电脑中。"); }}>
+          <form onSubmit={event => { event.preventDefault(); void act("issue", { label, days, accessMode }, "凭据已生成，仅显示这一次。请保存在自己的电脑中。"); }}>
             <div className="remote-form"><label>凭据名称<input required maxLength={80} value={label} onChange={e => setLabel(e.target.value)} /></label>
-              <label>有效天数<input type="number" min={1} max={30} required value={days} onChange={e => setDays(Number(e.target.value))} /></label>
-              {user.role !== "viewer" && <label className="remote-draft-option"><input type="checkbox" checked={canDraft} onChange={e => setCanDraft(e.target.checked)} />允许提交草稿（仍需本人确认）</label>}</div>
+              <label>有效期<select value={days} onChange={e => setDays(Number(e.target.value))}><option value={1}>1 天</option><option value={7}>7 天（默认）</option><option value={14}>14 天</option><option value={30}>30 天</option></select></label>
+              <label className="remote-access-mode">连接权限<select value={accessMode} onChange={e => setAccessMode(e.target.value as AccessMode)} aria-describedby="remote-access-mode-help">
+                <option value="read">仅查询</option>
+                {user.role !== "viewer" && <option value="draft">提交草稿（默认）</option>}
+                {user.role === "admin" && <option value="direct">直接保存进展（仅管理员）</option>}
+              </select><span id="remote-access-mode-help" className="admin-help">{accessMode === "direct" ? "此连接可以直接新增、修改已有事项的进展，无需逐条网页确认；修改事项信息仍须提交草稿，不能新建或删除事项、修改账号权限。每次保存留存历史，可在“修改历史”中恢复单条进展。" : accessMode === "draft" ? "可以查询并提交修改草稿，由你在网页核对后正式保存。" : "只能查询获授权资料，不能提交草稿或保存修改。"}</span></label></div>
             <button className="admin-button" disabled={busy || !!secret}>生成个人凭据</button>
           </form>
           {secret && <div className="admin-notice"><p>仅本次显示，请勿发送到聊天、提交到代码仓库或与他人共用。</p>
             <label>个人凭据<textarea readOnly value={secret} spellCheck={false} autoComplete="off" /></label>
             <button className="admin-button" onClick={() => setSecret("")}>已妥善保存，隐藏凭据</button></div>}
-          <details className="remote-guide"><summary>连接 Codex</summary>
+          <details className="remote-guide"><summary>连接外部 AI 工具</summary>
+            <p>使用支持远程 MCP（Streamable HTTP）和 Bearer 凭据认证的客户端。能否接入取决于工具的连接能力，与使用哪家模型无关。</p>
+            <label>服务地址<input readOnly value={endpoint} aria-label="MCP 服务地址" /></label>
+            <p>在工具的 MCP 设置中填写服务地址，并将个人凭据配置为 Bearer Token；具体入口以所用工具为准。请勿将凭据发到模型对话中。</p>
+            <details><summary>Codex 配置示例</summary>
             <p>在自己的电脑上，将凭据保存到环境变量 AIRALOGY_BD_TOKEN，并让启动 Codex 的进程能够读取它。配置中的变量名不是凭据本身。</p>
             <pre>{`[mcp_servers.airalogy_bd]\nurl = "${endpoint}"\nbearer_token_env_var = "AIRALOGY_BD_TOKEN"`}</pre>
-            <p>在 Codex 的 MCP 设置中添加上述连接并重新连接。接入凭据不能用于网页登录；如需续期，请生成新凭据并撤销旧凭据。</p>
+            <p>在 Codex 的 MCP 设置中添加上述连接并重新连接。</p></details>
+            <p>凭据仅供本人使用，不能用于网页登录；如需续期，请生成新凭据并撤销旧凭据。</p>
           </details>
         </>}
       </>}
       {mode !== "drafts" && <>
       <h3>{manage ? "全部个人凭据" : "我的凭据"}</h3>
       {!status.tokens.length && <p className="settings-empty">暂无凭据。</p>}
-      <ul className="remote-items">{status.tokens.map(token => <li key={token.id}><div><strong>{token.label}</strong>{manage && <span> · {status.members?.find(member => member.id === token.owner)?.name || "成员"}</span>}<p>{token.can_draft ? "查询和提交草稿" : "仅查询"} · {when(token.expires)} 到期</p></div>
+      <ul className="remote-items">{status.tokens.map(token => <li key={token.id}><div><strong>{token.label}</strong>{manage && <span> · {status.members?.find(member => member.id === token.owner)?.name || "成员"}</span>}<p>{token.can_save ? "直接保存进展 · 可查询和提交草稿" : token.can_draft ? "查询和提交草稿" : "仅查询"} · {when(token.expires)} 到期</p></div>
         <button className="admin-button" disabled={busy} onClick={() => void act("revoke", { tokenId: token.id }, "凭据及其待确认草稿已撤销。")}>撤销</button></li>)}</ul>
       </>}
       {mode === "drafts" && <>
@@ -107,7 +117,7 @@ export default function RemoteAccess({ user, mode, endpoint = "" }: { user: Team
           <div className="admin-actions"><button className="admin-button admin-primary" disabled={busy || !checked[draft.id]} onClick={() => void act("confirm", { draftId: draft.id, confirmed: true }, "已保存。工作台已更新，并保留修改记录；需要恢复时请联系管理员。")}>确认并正式保存</button>
             <button className="admin-button" disabled={busy} onClick={() => void act("reject", { draftId: draft.id }, "已驳回草稿，业务资料未更改。")}>驳回草稿</button></div>
         </article>)}
-        <p className="admin-help">如提示记录已变化，请先检查最新内容，再让 Codex 重新读取并提交草稿。如操作中断，请先查看工作台，避免重复录入。</p>
+        <p className="admin-help">如提示记录已变化，请先检查最新内容，再让外部 AI 工具重新读取并提交草稿。如操作中断，请先查看工作台，避免重复录入。</p>
       </>}
     </>}
   </section>;

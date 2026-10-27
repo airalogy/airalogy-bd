@@ -39,6 +39,10 @@ def public_user(row):
     }
 
 
+MEMBER_AUDIT_ACTIONS = ("account.invite", "account.permissions", "account.reset", "remote.grant", "remote.ungrant")
+ROLE_LABELS = {"admin": "管理员", "editor": "编辑成员", "viewer": "只读成员"}
+
+
 class Accounts:
     def __init__(self, content):
         self.directory = Path(content).resolve().parent / ".bd-auth"
@@ -75,6 +79,8 @@ class Accounts:
             if 'username' not in {row[1] for row in self.db.execute('PRAGMA table_info(users)')}:
                 self.db.execute('ALTER TABLE users ADD COLUMN username TEXT')
             self.db.execute('CREATE UNIQUE INDEX IF NOT EXISTS users_username_unique ON users(username COLLATE NOCASE)')
+            if 'details' not in {row[1] for row in self.db.execute('PRAGMA table_info(audit)')}:
+                self.db.execute("ALTER TABLE audit ADD COLUMN details TEXT NOT NULL DEFAULT '{}'")
             # Complete an interrupted provider update before reading or backing up membership.
             if 'username' in {row[1] for row in self.db.execute('PRAGMA table_info(ba_user)')}:
                 for row in self.db.execute('SELECT u.id,b.username FROM users u JOIN ba_user b ON b.memberId=u.id AND b.credentialRevision=u.credential_revision WHERE u.username IS NULL AND b.username IS NOT NULL').fetchall():
@@ -113,10 +119,56 @@ class Accounts:
     def close(self):
         self.db.close()
 
-    def audit(self, actor, action, target="", outcome="success"):
-        self.db.execute("INSERT INTO audit(at,actor_id,actor_name,action,target,outcome) VALUES(?,?,?,?,?,?)",
-                        (int(time.time()), (actor or {}).get("id", "system"), (actor or {}).get("name", "系统"), action, str(target)[:250], outcome))
-        self.db.commit()
+    def audit(self, actor, action, target="", outcome="success", *, details=None, commit=True):
+        self.db.execute("INSERT INTO audit(at,actor_id,actor_name,action,target,outcome,details) VALUES(?,?,?,?,?,?,?)",
+                        (int(time.time()), (actor or {}).get("id", "system"), (actor or {}).get("name", "系统"), action, str(target)[:250], outcome,
+                         json.dumps(details or {}, ensure_ascii=False)))
+        if commit: self.db.commit()
+
+    @staticmethod
+    def audit_subject(row):
+        # Keep identity at operation time; never copy email, credentials or request payloads.
+        return {"id": row["id"], "name": row["name"], "username": row["username"]}
+
+    def permission_snapshot(self, row, known):
+        projects = json.loads(row["project_ids"])
+        full_access = bool(row["all_projects"]) or row["role"] == "admin"
+        scope = {"all": full_access, "projects": [] if full_access else [
+            {"id": identity, "name": known.get(identity, identity) if isinstance(known, dict) else identity} for identity in projects]}
+        state = {"active":"已启用", "email":"待验证邮箱", "setup":"待绑定验证器", "invited":"待接受邀请", "expired":"邀请已过期", "disabled":"已停用"}[self.member_info(row)["status"]]
+        return {"role": ROLE_LABELS[row["role"]],
+                "scope": scope,
+                "remote_allowed": "允许（管理员默认）" if row["role"] == "admin" else "允许" if self.remote_allowed(row["id"]) else "不允许",
+                "status": state}
+
+    def member_audit(self, actor, action, row, before, after, note=""):
+        labels = {"role": "成员角色", "scope": "事项范围", "remote_allowed": "外部 AI 工具", "status": "账号状态"}
+        changes = [{"field": key, "label": labels[key], "before": before.get(key), "after": value}
+                   for key, value in after.items() if before.get(key) != value]
+        self.audit(actor, action, row["id"], details={"subject": self.audit_subject(row), "changes": changes, "note": note}, commit=False)
+
+    def audit_entries(self, request):
+        scope, before = request.get("scope", "all"), request.get("before", 9223372036854775807)
+        if scope not in ("all", "members") or type(before) is not int or not 0 < before <= 9223372036854775807:
+            raise AuthError("操作记录查询条件无效。", "invalid")
+        predicate = " AND action IN (" + ",".join("?" for _ in MEMBER_AUDIT_ACTIONS) + ")" if scope == "members" else ""
+        values = (before, *MEMBER_AUDIT_ACTIONS) if scope == "members" else (before,)
+        rows = self.db.execute("SELECT * FROM audit WHERE id<?" + predicate + " ORDER BY id DESC LIMIT 101", values).fetchall()
+        entries = []
+        for row in rows[:100]:
+            item = dict(row)
+            details = json.loads(item.pop("details"))
+            subject = details.get("subject")
+            if subject:
+                item["subject"] = {**subject, "source": "recorded"}
+            elif row["action"].startswith("account.") or row["action"] in ("remote.grant", "remote.ungrant"):
+                current = self.db.execute("SELECT * FROM users WHERE id=?", (row["target"],)).fetchone()
+                item["subject"] = {**self.audit_subject(current), "source": "current"} if current else None
+            else:
+                item["subject"] = None
+            item["changes"], item["note"] = details.get("changes"), details.get("note", "")
+            entries.append(item)
+        return {"entries": entries, "next_before": entries[-1]["id"] if len(rows) > 100 else None}
 
     def session(self, token):
         # Better Auth has already verified the signed cookie in Node. Check its persisted
@@ -136,7 +188,7 @@ class Accounts:
         return bool(self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='ba_session'").fetchone())
 
     def revoke(self, identity):
-        for table in ("remote_tokens", "remote_drafts"):
+        for table in ("remote_tokens", "remote_drafts", "remote_writes"):
             if self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone():
                 self.db.execute("DELETE FROM " + table + " WHERE owner=?", (identity,))
         if self.has_provider():
@@ -204,7 +256,7 @@ class Accounts:
             # Never persist an administrator's implicit access as an ordinary member grant.
             self.db.execute("DELETE FROM remote_grants WHERE owner=?", (identity,))
         if not allowed and not administrator:
-            for table in ("remote_tokens", "remote_drafts"):
+            for table in ("remote_tokens", "remote_drafts", "remote_writes"):
                 if self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone():
                     self.db.execute("DELETE FROM " + table + " WHERE owner=?", (identity,))
 
@@ -230,9 +282,8 @@ class Accounts:
                             (identity, email, name, role, int(all_projects), json.dumps(projects), secrets.token_hex(16), secrets.token_hex(16)))
             self.set_remote_allowed(identity, remote_allowed)
             invitation = self.new_invitation(identity)
-        self.audit(actor, "account.invite", identity)
-        if remote_allowed:
-            self.audit(actor, "remote.grant", identity)
+            row = self.db.execute("SELECT * FROM users WHERE id=?", (identity,)).fetchone()
+            self.member_audit(actor, "account.invite", row, {}, self.permission_snapshot(row, known), "邀请有效期 48 小时，需由成员本人激活。")
         return invitation
 
     def new_invitation(self, identity):
@@ -271,6 +322,7 @@ class Accounts:
             row = self.db.execute("SELECT * FROM users WHERE id=?", (payload.get("id"),)).fetchone()
             if not row or payload.get("revision") != row["revision"]:
                 raise AuthError("成员信息已变化，请刷新后重试。", "conflict")
+            before = self.permission_snapshot(row, known)
             was_allowed = self.remote_allowed(row["id"])
             # Demotion requires a deliberate grant; even an older explicit admin grant must not carry over.
             remote_allowed = self.remote_permission(payload, was_allowed if row["role"] != "admin" else False)
@@ -289,9 +341,10 @@ class Accounts:
             # Editing an unaccepted invitation must not silently cancel its link.
             if row["active"] or payload["active"]:
                 self.db.execute("DELETE FROM invitations WHERE user_id=?", (row["id"],))
-        self.audit(actor, "account.permissions", row["id"])
-        if was_allowed != remote_allowed:
-            self.audit(actor, "remote.grant" if remote_allowed else "remote.ungrant", row["id"])
+            updated = self.db.execute("SELECT * FROM users WHERE id=?", (row["id"],)).fetchone()
+            preserved_invitation = self.db.execute("SELECT 1 FROM invitations WHERE user_id=?", (row["id"],)).fetchone()
+            note = "原有登录和工具凭据已失效。" + ("原邀请链接及到期时间保留。" if preserved_invitation else "账号已停用。" if not payload["active"] else "需重新登录。")
+            self.member_audit(actor, "account.permissions", row, before, self.permission_snapshot(updated, known), note)
         return {"saved": True}
 
     def reset(self, identity, actor, recovery=False):
@@ -302,12 +355,14 @@ class Accounts:
             raise AuthError("未找到成员。", "not_found")
         if not recovery and row["id"] == actor["id"]:
             raise AuthError("请由另一名管理员重置，或在服务器上使用账号恢复命令。", "invalid")
+        before_status = self.permission_snapshot(row, {})["status"]
         with self.db:
             result = self.new_invitation(row["id"])
             self.revoke(row["id"])
             # Reject old provider credentials and pending MFA challenges immediately.
             self.db.execute("UPDATE users SET active=0,credential_revision=?,revision=? WHERE id=?", (secrets.token_hex(16), secrets.token_hex(16), row["id"]))
-        self.audit(actor, "account.reset", row["id"])
+            self.member_audit(actor, "account.reset", row, {"status": before_status}, {"status": "待接受邀请"},
+                              "已签发新的 48 小时邀请；旧邀请、登录和工具凭据失效。原角色和事项权限保留，需重新设置密码及身份验证器。")
         return result
 
     def dispatch(self, action, request, actor, known):
@@ -320,7 +375,7 @@ class Accounts:
         if action == "team_update": return self.update(request, actor, known)
         if action == "team_reset": return self.reset(request.get("id"), actor)
         if action == "team_audit":
-            return {"entries": [dict(row) for row in self.db.execute("SELECT * FROM audit WHERE id<? ORDER BY id DESC LIMIT 100", (int(request.get("before", 9223372036854775807)),))]}
+            return self.audit_entries(request)
         raise AuthError("未知账号操作。", "invalid")
 
 
@@ -370,6 +425,6 @@ def validate_account_backup(path):
 def clear_transient_access(db):
     tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     for table in ('invitations', 'ba_session', 'ba_verification', 'ba_rate_limit',
-                  'remote_tokens', 'remote_drafts', 'remote_attempts', 'remote_grants', 'remote_settings'):
+                  'remote_tokens', 'remote_drafts', 'remote_writes', 'remote_attempts', 'remote_grants', 'remote_settings'):
         if table in tables:
             db.execute('DELETE FROM ' + table)

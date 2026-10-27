@@ -15,13 +15,14 @@ import tempfile
 import time
 from types import SimpleNamespace
 import unittest
+import uuid
 from unittest.mock import patch
 import zipfile
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-from team_auth import Accounts, AuthError, backup_accounts, validate_account_backup
+from team_auth import Accounts, AuthError, backup_accounts, validate_account_backup, public_user
 from team_policy import Policy
 from remote_access import RemoteAccess
 from workspace_service import Workspace
@@ -271,14 +272,15 @@ class AccountTests(unittest.TestCase):
             with accounts.db:
                 accounts.db.execute("INSERT INTO remote_settings VALUES(1,1,'settings-revision')")
                 accounts.db.execute("INSERT INTO remote_grants VALUES('member')")
-                accounts.db.execute("INSERT INTO remote_tokens VALUES('token-id','hash','member','revision','laptop',1,9999999999,1)")
+                accounts.db.execute("INSERT INTO remote_tokens VALUES('token-id','hash','member','revision','laptop',1,9999999999,1,0)")
                 accounts.db.execute("INSERT INTO remote_drafts VALUES('draft','member','token-id','revision','request-id','fingerprint','matter',?,'pending',1,9999999999)", (marker,))
+                accounts.db.execute("INSERT INTO remote_writes VALUES('write','member','token-id','revision','write-request','fingerprint','matter','saved',?,1,9999999999)", (marker,))
                 accounts.db.execute("INSERT INTO remote_attempts VALUES('member',?)", (int(time.time()),))
             self.assertTrue(remote.settings()['enabled'])
             target = Path(temp) / 'remote-backup.sqlite3'
             self.assertTrue(backup_accounts(content, target))
             with sqlite3.connect(target) as backup:
-                for table in ('remote_settings', 'remote_grants', 'remote_tokens', 'remote_drafts', 'remote_attempts'):
+                for table in ('remote_settings', 'remote_grants', 'remote_tokens', 'remote_drafts', 'remote_writes', 'remote_attempts'):
                     self.assertEqual(backup.execute('SELECT COUNT(*) FROM ' + table).fetchone()[0], 0)
             self.assertNotIn(marker.encode(), target.read_bytes())
             self.assertTrue(remote.settings()['enabled'], 'Backing up must not disable the live instance')
@@ -310,6 +312,245 @@ class AccountTests(unittest.TestCase):
                 self.assertGreater(backup.execute('SELECT COUNT(*) FROM audit').fetchone()[0],0)
                 self.assertEqual(backup.execute('SELECT COUNT(*) FROM invitations').fetchone()[0],0)
             accounts.close()
+
+
+class MemberAuditTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
+        self.content = Path(self.temp.name) / 'content'; self.content.mkdir()
+        self.accounts = Accounts(self.content); self.addCleanup(lambda: self.accounts.close())
+        self.actor = {'id':'admin','name':'实际管理员','role':'admin'}
+        self.known = {'first':'合作事项','second':'投资事项'}
+        self.invitation = self.accounts.invite({'name':'目标成员','role':'viewer','project_ids':['first']}, self.actor, self.known)
+        self.identity = self.accounts.invitation(self.invitation['token'])['user_id']
+
+    def member(self):
+        member = self.accounts.member_info(self.accounts.db.execute('SELECT * FROM users WHERE id=?',(self.identity,)).fetchone())
+        return member | {'remote_allowed_before':member['remote_allowed']}
+
+    def entries(self, **request):
+        return self.accounts.dispatch('team_audit', {'scope':'members',**request}, self.actor, self.known)
+
+    def test_single_record_captures_real_actor_target_and_exact_changes(self):
+        initial = self.entries()['entries']
+        self.assertEqual(len(initial),1)
+        self.assertEqual(initial[0]['subject'], {'id':self.identity,'name':'目标成员','username':None,'source':'recorded'})
+        self.assertTrue(all(change['before'] is None for change in initial[0]['changes']))
+        forged = {'actor':{'name':'伪造管理员'},'details':{'secret':'must-not-log'},'name':'伪造目标姓名','password':'must-not-log','token':'must-not-log'}
+        self.accounts.update({**self.member(),**forged,'role':'editor','project_ids':['second'],'active':False,'remote_allowed':True,'remote_allowed_before':False}, self.actor, self.known)
+        items = self.entries()['entries']; self.assertEqual(len(items),2)
+        event = items[0]
+        self.assertEqual(event['actor_name'],'实际管理员'); self.assertEqual(event['subject']['name'],'目标成员')
+        changes={change['field']:change for change in event['changes']}
+        self.assertEqual(set(changes),{'role','scope','remote_allowed'})
+        self.assertEqual(changes['role']['before'],'只读成员'); self.assertEqual(changes['role']['after'],'编辑成员')
+        self.assertEqual(changes['scope']['before'],{'all':False,'projects':[{'id':'first','name':'合作事项'}]})
+        self.assertEqual(changes['scope']['after'],{'all':False,'projects':[{'id':'second','name':'投资事项'}]})
+        self.assertEqual(changes['remote_allowed']['before'],'不允许'); self.assertEqual(changes['remote_allowed']['after'],'允许')
+        self.assertNotIn('must-not-log',json.dumps(items));self.assertNotIn(self.invitation['token'],json.dumps(items))
+        self.assertEqual(self.accounts.invitation(self.invitation['token'])['user_id'],self.identity)
+
+    def test_names_are_snapshots_and_equal_names_do_not_hide_identity_changes(self):
+        same_names={'first':'同名事项','second':'同名事项'}
+        self.accounts.update({**self.member(),'active':False,'project_ids':['second']},self.actor,same_names)
+        captured=self.entries()['entries'][0]
+        scope=next(change for change in captured['changes'] if change['field']=='scope')
+        self.assertNotEqual(scope['before'],scope['after'])
+        with self.accounts.db:self.accounts.db.execute('UPDATE users SET name=?,username=? WHERE id=?',('改名成员','new_name',self.identity))
+        self.known['first']='已改名事项'
+        self.assertEqual(self.entries()['entries'][0],captured)
+
+    def test_old_records_resolve_current_member_without_fabricating_changes(self):
+        self.accounts.audit(self.actor,'account.permissions',self.identity)
+        # Simulate a database created before structured audit details existed.
+        with self.accounts.db:self.accounts.db.execute('ALTER TABLE audit DROP COLUMN details')
+        self.accounts.close();self.accounts=Accounts(self.content)
+        entry=self.entries()['entries'][0]
+        self.assertEqual(entry['subject']['source'],'current');self.assertEqual(entry['subject']['name'],'目标成员')
+        self.assertIsNone(entry['changes'])
+        self.accounts.audit(self.actor,'account.permissions','missing-member')
+        self.assertIsNone(self.entries()['entries'][0]['subject'])
+
+    def test_filtered_cursor_pages_and_admin_boundary(self):
+        for index in range(105):
+            self.accounts.audit(self.actor,'account.permissions',self.identity)
+            self.accounts.audit(self.actor,'remote.read_matter','token-id')
+        first=self.entries();second=self.entries(before=first['next_before'])
+        self.assertEqual(len(first['entries']),100);self.assertEqual(len(second['entries']),6);self.assertIsNone(second['next_before'])
+        ids=[entry['id'] for page in (first,second) for entry in page['entries']]
+        self.assertEqual(len(ids),len(set(ids)));self.assertEqual(ids,sorted(ids,reverse=True))
+        self.assertTrue(all(entry['action'] in ('account.permissions','account.invite') for page in (first,second) for entry in page['entries']))
+        self.assertTrue(any(entry['action']=='remote.read_matter' for entry in self.entries(scope='all')['entries']))
+        for role in ('viewer','editor'):
+            with self.assertRaises(AuthError): self.accounts.dispatch('team_audit',{},self.actor|{'role':role},self.known)
+        for invalid in ({'before':True},{'before':'2'},{'before':0},{'before':2**63},{'scope':'unknown'}):
+            with self.assertRaises(AuthError):self.entries(**invalid)
+
+    def test_audit_failure_rolls_back_membership_and_invitation_changes(self):
+        original=self.accounts.audit
+        def failure(*args,**kwargs):
+            original(*args,**kwargs)
+            raise OSError('audit persistence failure')
+        before=[tuple(row) for row in self.accounts.db.execute('SELECT * FROM users')]
+        invitation=[tuple(row) for row in self.accounts.db.execute('SELECT * FROM invitations')]
+        audit_count=self.accounts.db.execute('SELECT COUNT(*) FROM audit').fetchone()[0]
+        actions=(lambda:self.accounts.invite({'name':'new','role':'editor','remote_allowed':True},self.actor,self.known),
+                 lambda:self.accounts.update({**self.member(),'role':'editor','active':False,'remote_allowed':True,'remote_allowed_before':False},self.actor,self.known),
+                 lambda:self.accounts.reset(self.identity,self.actor))
+        for action in actions:
+            with patch.object(self.accounts,'audit',side_effect=failure):
+                with self.assertRaises(OSError):action()
+            self.assertEqual([tuple(row) for row in self.accounts.db.execute('SELECT * FROM users')],before)
+            self.assertEqual([tuple(row) for row in self.accounts.db.execute('SELECT * FROM invitations')],invitation)
+            self.assertEqual(self.accounts.db.execute('SELECT COUNT(*) FROM audit').fetchone()[0],audit_count)
+            self.assertFalse(self.accounts.remote_allowed(self.identity))
+
+    def test_all_scope_deactivation_reset_and_backups_preserve_details(self):
+        with self.accounts.db:self.accounts.db.execute('UPDATE users SET active=1 WHERE id=?',(self.identity,))
+        self.accounts.update({**self.member(),'active':False,'all_projects':True},self.actor,self.known)
+        changed={item['field']:item for item in self.entries()['entries'][0]['changes']}
+        self.assertEqual(changed['scope']['after'],{'all':True,'projects':[]})
+        self.assertEqual(changed['status']['before'],'待绑定验证器');self.assertEqual(changed['status']['after'],'已停用')
+        result=self.accounts.reset(self.identity,self.actor)
+        item=self.entries()['entries'][0];self.assertEqual(item['subject']['id'],self.identity)
+        self.assertEqual(item['changes'][0]['after'],'待接受邀请')
+        self.assertNotIn(result['token'],json.dumps(item))
+        target=Path(self.temp.name)/'backup.sqlite3';backup_accounts(self.content,target)
+        with sqlite3.connect(target) as backup:
+            details=json.loads(backup.execute('SELECT details FROM audit ORDER BY id DESC LIMIT 1').fetchone()[0])
+            self.assertEqual(details['subject']['name'],'目标成员')
+            self.assertEqual(details['changes'],item['changes'])
+        self.assertNotIn(result['token'].encode(),target.read_bytes())
+
+
+class RemoteWriteTests(unittest.TestCase):
+    """Fault injection at the durable save boundary; HTTP tests cover real MFA."""
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.content = Path(self.temp.name) / 'content'
+        shutil.copytree(ROOT / 'fixtures/demo/content', self.content)
+        self.workspace = Workspace(self.content)
+        self.accounts = Accounts(self.content)
+        self.addCleanup(self.accounts.close)
+        self.accounts.invite({'email': 'writer@example.invalid', 'name': 'Test writer', 'role': 'admin'}, None, set(), bootstrap=True)
+        with self.accounts.db: self.accounts.db.execute('UPDATE users SET active=1')
+        self.actor = public_user(self.accounts.db.execute('SELECT * FROM users').fetchone())
+        for method in ('enrolled', 'email_allowed'):
+            mock = patch.object(self.accounts, method, return_value=True)
+            mock.start(); self.addCleanup(mock.stop)
+        self.remote = RemoteAccess(self.workspace, self.accounts)
+        self.remote.browser({'operation': 'configure', 'enabled': True, 'revision': 'initial'}, self.actor)
+        self.token = self.issue('direct')
+        self.matter = 'project-demo-partnership'
+
+    def issue(self, mode):
+        return self.remote.browser({'operation': 'issue', 'label': 'Test AI client', 'accessMode': mode}, self.actor)
+
+    def call(self, tool, arguments=None, token=None):
+        return self.remote.rpc({'tool': tool, 'arguments': arguments or {}}, (token or self.token)['token'])
+
+    def arguments(self):
+        current = self.call('read_matter', {'matter_id': self.matter})
+        return {'matter_id': self.matter, 'operation': 'add_progress', 'request_id': uuid.uuid4().hex,
+                'revision': current['revision'], 'changes': {'date': '2026-10-27', 'title': 'Remote progress', 'summary': 'Discussed; not signed.'}}
+
+    def count(self):
+        return len(self.workspace.get_record({'kind': 'project', 'id': self.matter})['record']['events'])
+
+    def test_receipt_survives_restart_and_draft_retention_window(self):
+        args, before = self.arguments(), self.count()
+        saved = self.call('save_progress', args)
+        self.assertEqual(saved['status'], 'saved')
+        self.assertEqual(self.count(), before + 1)
+        self.assertEqual(self.call('save_progress', args), saved)
+        with patch('remote_access.time.time', return_value=time.time() + 2 * 86400):
+            self.remote = RemoteAccess(self.workspace, self.accounts)
+            self.assertEqual(self.call('save_progress', args), saved)
+        self.assertEqual(self.count(), before + 1)
+        with self.assertRaises(AuthError) as caught:
+            self.call('submit_draft', args)
+        self.assertEqual(caught.exception.code, 'conflict')
+        self.assertEqual(self.accounts.db.execute('SELECT COUNT(*) FROM remote_drafts').fetchone()[0], 0)
+
+    def test_lost_acknowledgement_never_repeats_business_write(self):
+        args, before = self.arguments(), self.count()
+        original = self.workspace.save
+        def lost_ack(request, preview=False):
+            result = original(request, preview=preview)
+            if not preview: raise OSError('simulated lost acknowledgement')
+            return result
+        with patch.object(self.workspace, 'save', side_effect=lost_ack):
+            with self.assertRaises(AuthError) as caught:
+                self.call('save_progress', args)
+        self.assertEqual(caught.exception.code, 'uncertain')
+        self.assertEqual(self.count(), before + 1)
+        self.remote = RemoteAccess(self.workspace, self.accounts)
+        retry = self.call('save_progress', args)
+        self.assertEqual(retry['status'], 'uncertain')
+        self.assertEqual(self.count(), before + 1)
+        with self.assertRaises(AuthError) as caught:
+            self.call('save_progress', args | {'changes': args['changes'] | {'summary': 'different'}})
+        self.assertEqual(caught.exception.code, 'conflict')
+
+    def test_interruption_before_business_write_also_blocks_replay(self):
+        args, before = self.arguments(), self.count()
+        audit = self.accounts.audit
+        def crash(actor, action, target, outcome='success'):
+            if action == 'remote.save_progress' and outcome == 'started':
+                raise RuntimeError('simulated interruption after durable claim')
+            return audit(actor, action, target, outcome)
+        with patch.object(self.accounts, 'audit', side_effect=crash):
+            with self.assertRaises(RuntimeError): self.call('save_progress', args)
+        self.remote = RemoteAccess(self.workspace, self.accounts)
+        self.assertEqual(self.call('save_progress', args)['status'], 'uncertain')
+        self.assertEqual(self.count(), before)
+
+    def test_backend_checks_mode_and_live_role_independent_of_tool_listing(self):
+        args, before = self.arguments(), self.count()
+        for mode in ('read', 'draft'):
+            token = self.issue(mode)
+            self.assertFalse(self.call('access', token=token)['canSave'])
+            with self.assertRaises(AuthError) as caught: self.call('save_progress', args, token)
+            self.assertEqual(caught.exception.code, 'forbidden')
+        # Defense in depth: even an unexpected role change without binding rotation denies writing.
+        with self.accounts.db:
+            self.accounts.db.execute("UPDATE users SET role='editor'")
+            self.accounts.set_remote_allowed(self.actor['id'], True)
+        self.assertFalse(self.call('access')['canSave'])
+        with self.assertRaises(AuthError) as caught: self.call('save_progress', args)
+        self.assertEqual(caught.exception.code, 'forbidden')
+        self.assertEqual(self.count(), before)
+
+    def test_expiry_revocation_disable_and_reset_invalidate_receipts(self):
+        self.call('save_progress', self.arguments())
+        with patch('remote_access.time.time', return_value=time.time() + 8 * 86400):
+            self.remote = RemoteAccess(self.workspace, self.accounts)
+            with self.assertRaises(AuthError) as caught: self.call('access')
+            self.assertEqual(caught.exception.code, 'unauthenticated')
+            self.assertEqual(self.accounts.db.execute('SELECT COUNT(*) FROM remote_writes').fetchone()[0], 0)
+        for action in ('revoke', 'disable', 'reset'):
+            self.token = self.issue('direct')
+            self.call('save_progress', self.arguments())
+            if action == 'revoke': self.remote.browser({'operation': 'revoke', 'tokenId': self.token['id']}, self.actor)
+            elif action == 'disable':
+                self.remote.browser({'operation': 'configure', 'enabled': False, 'revision': self.remote.settings()['revision']}, self.actor)
+            else: self.accounts.reset(self.actor['email'], None, recovery=True)
+            with self.assertRaises(AuthError): self.call('access')
+            self.assertEqual(self.accounts.db.execute('SELECT COUNT(*) FROM remote_writes').fetchone()[0], 0)
+            if action == 'disable':
+                self.remote.browser({'operation': 'configure', 'enabled': True, 'revision': self.remote.settings()['revision']}, self.actor)
+
+    def test_existing_tokens_never_gain_direct_write_capability(self):
+        with self.accounts.db:
+            self.accounts.db.execute('DROP TABLE remote_tokens')
+            self.accounts.db.execute('CREATE TABLE remote_tokens (id TEXT PRIMARY KEY, digest TEXT UNIQUE NOT NULL, owner TEXT NOT NULL, binding TEXT NOT NULL, label TEXT NOT NULL, can_draft INTEGER NOT NULL, expires INTEGER NOT NULL, created INTEGER NOT NULL)')
+            self.accounts.db.execute("INSERT INTO remote_tokens VALUES('old','digest',?,?, 'existing',1,9999999999,1)", (self.actor['id'], self.actor['revision']))
+        for _ in range(2):
+            self.remote = RemoteAccess(self.workspace, self.accounts)
+            old = self.accounts.db.execute("SELECT * FROM remote_tokens WHERE id='old'").fetchone()
+            self.assertEqual(old['can_draft'], 1)
+            self.assertEqual(old['can_save'], 0)
 
 
 class BackupTests(unittest.TestCase):

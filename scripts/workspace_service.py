@@ -984,7 +984,7 @@ def main():
             if action not in {"auth_invite_info"}:
                 actor = accounts.session(os.environ.get("BD_SESSION", ""))
             if action.startswith(("auth_", "team_")):
-                result = accounts.dispatch(action, request, actor, set(workspace.projects(workspace.read_files())))
+                result = accounts.dispatch(action, request, actor, {identity: metadata["name"] for identity, (_, metadata, _) in workspace.projects(workspace.read_files()).items()})
                 print(json.dumps({"ok": True, "result": result}, ensure_ascii=False))
                 accounts.close()
                 return
