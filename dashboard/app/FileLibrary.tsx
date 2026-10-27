@@ -3,14 +3,38 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useEffect, useRef, useState } from "react";
 import { Field, PeoplePicker } from "./RecordForms";
+import AgreementDates from "./AgreementDates";
 import type { DashboardData } from "./lib/types";
 import type { RecordTarget, SavedResponse } from "./lib/workspace-types";
 import { agreementTypes, fileCategories, fileStatuses, fileUses, fileRequest, fileUrl, fileTypeLabel, matchesFileFilter, type AgreementType, type FileFilter, type FileListing, type LibraryFile, type FileUsage, type FileVersion } from "./lib/file-library";
 
 export type FileTarget = { projectId?: string; eventId?: string; counterpartyId?: string; agreementType?: AgreementType; category?: LibraryFile["category"]; usageKind?: FileUsage["kind"]; fileId?: string };
-type EditMode = "view" | "import" | "version" | "metadata" | "usage";
+type EditMode = "view" | "import" | "version" | "metadata" | "usage" | "dates";
 const accept = ".pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.txt,.md,.csv,.zip";
 const sizeLabel = (size: number) => size >= 1024 * 1024 ? `${(size / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.ceil(size / 1024))} KB`;
+
+function AgreementDateFields({value, onChange}: {
+  value: Pick<FileVersion, "agreement_date" | "signing_completed_date">;
+  onChange: (dates: Pick<FileVersion, "agreement_date" | "signing_completed_date">) => void;
+}) {
+  return <div className="agreement-date-fields edit-field-wide">
+    <Field label="协议载明日期（选填）" hint="协议文本中写明的日期；预先填写也可记录。"><input type="date" value={value.agreement_date || ""} onChange={event => onChange({...value, agreement_date:event.target.value})} /></Field>
+    <Field label="实际签署完成日期（选填）" hint="确认各方完成签署的实际日期；尚未完成或不确定时留空。"><input type="date" value={value.signing_completed_date || ""} onChange={event => onChange({...value, signing_completed_date:event.target.value})} /></Field>
+    <p className="admin-help">日期对应此文件版本，可以不同；不会从文件名或归档时间推断，也不自动改变文件状态或事项阶段。</p>
+  </div>;
+}
+
+function AgreementDateForm({version, number, busy, onDirty, onSave, onCancel}: {
+  version: FileVersion; number: number; busy: boolean; onDirty: () => void;
+  onSave: (payload: Record<string, unknown>) => Promise<void>; onCancel: () => void;
+}) {
+  const [dates, setDates] = useState({agreement_date:version.agreement_date || "", signing_completed_date:version.signing_completed_date || ""});
+  return <form className="files-form" onSubmit={event => {event.preventDefault();void onSave({version_id:version.id, ...dates});}}>
+    <h3>协议日期 · v{number}</h3><p className="admin-help">{version.filename}</p>
+    <fieldset disabled={busy} className="edit-fields"><AgreementDateFields value={dates} onChange={value => {setDates({agreement_date:value.agreement_date || "", signing_completed_date:value.signing_completed_date || ""});onDirty();}} /></fieldset>
+    <div className="admin-actions"><button type="button" className="admin-button" disabled={busy} onClick={onCancel}>取消</button><button type="submit" className="admin-button admin-primary" disabled={busy}>{busy ? "正在保存…" : "保存协议日期"}</button></div>
+  </form>;
+}
 
 function FileForm({ data, file, mode, target, busy, onDirty, onSave, onCancel }: {
   data: DashboardData; file?: LibraryFile; mode: EditMode; target: FileTarget; busy: boolean;
@@ -26,6 +50,7 @@ function FileForm({ data, file, mode, target, busy, onDirty, onSave, onCancel }:
   const [upload, setUpload] = useState<File>();
   const [status, setStatus] = useState<FileVersion["status"]>("unspecified");
   const [note, setNote] = useState("");
+  const [dates, setDates] = useState<Pick<FileVersion, "agreement_date" | "signing_completed_date">>({});
   const [error, setError] = useState("");
   return <form className="files-form" onChange={onDirty} onSubmit={event => {
     event.preventDefault(); setError("");
@@ -33,7 +58,7 @@ function FileForm({ data, file, mode, target, busy, onDirty, onSave, onCancel }:
     if (!data.projects.some(item => projects.includes(item.id) && item.counterparty_ids.includes(homeParty))) {setError("至少选择一个与归档对接方有关的事项。");return;}
     if (!projects.length) { setError("至少选择一个关联事项。"); return; }
     if (mode !== "metadata" && (!upload || !upload.size || upload.size > 50 * 1024 * 1024)) { setError("请选择非空文件，单个文件不能超过 50 MB。"); return; }
-    void onSave({ title, organization:data.counterparties.find(party => party.id === homeParty)?.name || "", category, agreement_type: category === "agreement" ? agreementType : "unspecified", project_ids: projects, home_counterparty_id: homeParty, notes, status, note }, upload);
+    void onSave({ title, organization:data.counterparties.find(party => party.id === homeParty)?.name || "", category, agreement_type: category === "agreement" ? agreementType : "unspecified", project_ids: projects, home_counterparty_id: homeParty, notes, status, note, ...(category === "agreement" && mode !== "metadata" ? dates : {}) }, upload);
   }}>
     <h3>{mode === "version" ? `导入新版本 · ${file?.title}` : mode === "metadata" ? "修改资料信息" : "导入事项资料"}</h3>
     <fieldset disabled={busy} className="edit-fields">
@@ -49,6 +74,7 @@ function FileForm({ data, file, mode, target, busy, onDirty, onSave, onCancel }:
         <Field label="选择归档文件" wide hint="支持 PDF、Office 文档、图片、文本、ZIP；单个文件不超过 50 MB。"><input type="file" accept={accept} required onChange={event => { const chosen=event.target.files?.[0];setUpload(chosen);if(chosen && !title) setTitle(chosen.name.replace(/\.[^.]+$/, "")); }} /></Field>
         <Field label="此版本的文件状态"><select value={status} onChange={event => setStatus(event.target.value as FileVersion["status"])}>{Object.entries(fileStatuses).map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
         <Field label="版本说明"><input maxLength={500} value={note} onChange={event => setNote(event.target.value)} placeholder="例如：补充研发里程碑" /></Field>
+        {category === "agreement" && <AgreementDateFields value={dates} onChange={setDates} />}
         <p className="admin-help edit-field-wide">归档后保留此版本原件。会议使用、实际发送和对方提供的情况，可在归档后单独记录。</p>
       </>}
     </fieldset>
@@ -97,6 +123,7 @@ export default function FileLibraryDialog({ data, target, onClose, onChanged, on
   const [eventOnly, setEventOnly] = useState(true);
   const [mode, setMode] = useState<EditMode>("view");
   const [usageId, setUsageId] = useState("");
+  const [dateVersionId, setDateVersionId] = useState("");
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -105,6 +132,7 @@ export default function FileLibraryDialog({ data, target, onClose, onChanged, on
   const [confirmation, setConfirmation] = useState<{title:string; detail:string; action:() => void} | null>(null);
   const opener = useRef<HTMLElement | null>(null);
   const file = listing?.files.find(item => item.id === selected);
+  const dateVersion = file?.versions.find(version => version.id === dateVersionId);
   const project = data.projects.find(item => item.id === target.projectId);
   const event = project?.events.find(item => item.id === target.eventId);
   const party = data.counterparties.find(item => item.id === target.counterpartyId);
@@ -161,11 +189,12 @@ export default function FileLibraryDialog({ data, target, onClose, onChanged, on
     </aside><div className="files-detail" aria-busy={busy}>
       {(mode === "import" || mode === "version" || mode === "metadata") ? <FileForm key={`${mode}-${selected}`} data={data} target={{...target,agreementType:filter in agreementTypes ? filter as AgreementType : undefined}} file={mode === "import" ? undefined : file} mode={mode} busy={busy} onDirty={() => setDirty(true)} onCancel={cancel} onSave={(payload,upload) => save(mode === "metadata" ? "metadata" : "upload",payload,upload)} />
       : mode === "usage" && file ? <UsageForm key={`${file.id}-${usageId}`} data={data} file={file} target={target} original={file.records.find(record => record.id === usageId)} busy={busy} onDirty={() => setDirty(true)} onCancel={cancel} onSave={payload => save("usage",payload)} />
+      : mode === "dates" && file && dateVersion ? <AgreementDateForm key={`${file.id}-${dateVersion.id}`} version={dateVersion} number={file.versions.indexOf(dateVersion)+1} busy={busy} onDirty={() => setDirty(true)} onCancel={cancel} onSave={payload => save("agreement_dates",payload)} />
       : file ? <>
         <div className="files-title"><div><span className="eyebrow">{fileTypeLabel(file)} · {file.archived ? "回收站" : "在用资料"}</span><h3>{file.title}</h3><p>{partyName(file)}</p></div></div>
         {canEdit && <div className="admin-actions files-detail-actions">{canEdit && !file.archived && <><button className="admin-button" disabled={busy} onClick={() => changeMode("version")}>导入新版本</button><button className="admin-button" disabled={busy} onClick={() => changeMode("usage")}>记录使用 / 发送</button><button className="admin-button" disabled={busy} onClick={() => changeMode("metadata")}>修改信息</button></>}{canAdmin && <button className="admin-button" disabled={busy} onClick={() => {onClose();onHistory({kind:"file",id:file.id});}}>修改历史</button>}<button className="admin-button" disabled={busy} onClick={() => setConfirmation({title:file.archived ? "恢复这份资料？" : "移入回收站？",detail:file.archived ? "恢复后可继续关联交流和记录发送。" : "文件原件、所有版本和使用记录都会保留，可随时恢复。",action:() => {void save(file.archived ? "unarchive" : "archive");}})}>{file.archived ? "恢复资料" : "移入回收站"}</button></div>}
         {file.notes && <p className="files-notes">{file.notes}</p>}<p className="admin-help">归档对接方：{data.counterparties.find(item => item.id === file.home_counterparty_id)?.name || file.home_counterparty_id}</p><p className="admin-help">关联事项：{file.project_ids.map(id => data.projects.find(item => item.id === id)?.name || id).join("、")}</p>
-        <section className="files-section"><h4>文件版本</h4>{[...file.versions].reverse().map(version => <article className="file-version" key={version.id}><div><strong>v{file.versions.indexOf(version)+1} · {fileStatuses[version.status]} {version.id === file.current_version && <span className="file-current">当前版本</span>}</strong><p>{version.filename}</p><small>{new Date(version.created_at).toLocaleString(data.workspace.locale,{timeZone:data.workspace.timezone})} · {sizeLabel(version.size)}</small>{version.note && <p>{version.note}</p>}</div><div className="admin-actions"><a className="admin-button" href={fileUrl(file,version)} download>下载</a>{local && <button type="button" className="admin-button" disabled={busy} onClick={() => void reveal({version_id:version.id})}>打开所在文件夹</button>}{/\.(pdf|png|jpe?g)$/i.test(version.filename) && <a className="admin-button" href={fileUrl(file,version,true)} target="_blank" rel="noreferrer">预览</a>}{canEdit && !file.archived && version.id !== file.current_version && <button className="admin-button" disabled={busy} onClick={() => setConfirmation({title:`恢复为 v${file.versions.indexOf(version)+1}？`,detail:"其他文件版本继续保留，已有发送记录仍指向当时的版本。",action:() => {void save("select_version",{version_id:version.id});}})}>设为当前版本</button>}</div></article>)}</section>
+        <section className="files-section"><h4>文件版本</h4>{[...file.versions].reverse().map(version => <article className="file-version" key={version.id}><div><strong>v{file.versions.indexOf(version)+1} · {fileStatuses[version.status]} {version.id === file.current_version && <span className="file-current">当前版本</span>}</strong><p>{version.filename}</p><small>归档于 {new Date(version.created_at).toLocaleString(data.workspace.locale,{timeZone:data.workspace.timezone})} · {sizeLabel(version.size)}</small>{version.note && <p>{version.note}</p>}{file.category === "agreement" && <AgreementDates version={version} />}</div><div className="admin-actions">{canEdit && !file.archived && file.category === "agreement" && <button type="button" className="admin-button" disabled={busy} onClick={() => {setDateVersionId(version.id);changeMode("dates");}}>填写 / 更正日期</button>}<a className="admin-button" href={fileUrl(file,version)} download>下载</a>{local && <button type="button" className="admin-button" disabled={busy} onClick={() => void reveal({version_id:version.id})}>打开所在文件夹</button>}{/\.(pdf|png|jpe?g)$/i.test(version.filename) && <a className="admin-button" href={fileUrl(file,version,true)} target="_blank" rel="noreferrer">预览</a>}{canEdit && !file.archived && version.id !== file.current_version && <button className="admin-button" disabled={busy} onClick={() => setConfirmation({title:`恢复为 v${file.versions.indexOf(version)+1}？`,detail:"其他文件版本继续保留，已有发送记录仍指向当时的版本。",action:() => {void save("select_version",{version_id:version.id});}})}>设为当前版本</button>}</div></article>)}</section>
         <section className="files-section"><h4>使用与发送记录</h4>{!file.records.length && <p className="admin-help">暂无使用记录。导入文件不会自动标记为已发送。</p>}{[...file.records].sort((a,b) => b.date.localeCompare(a.date)).map(record => {const relatedProject=data.projects.find(item => item.id === record.project_id);const relatedEvent=relatedProject?.events.find(item => item.id === record.event_id);const version=file.versions.find(item => item.id === record.version_id)!;return <article className="file-usage" key={record.id}><div><strong>{record.date} · {fileUses[record.kind]} · v{file.versions.indexOf(version)+1}</strong><p>{record.people.map(id => data.people.find(person => person.id === id)?.name || id).join("、") || "未指定人员"}{record.channel ? ` · ${record.channel}` : ""}</p><small>{relatedProject?.name}{relatedEvent ? ` · ${relatedEvent.title}` : ""}</small>{record.note && <p>{record.note}</p>}</div><div className="admin-actions"><a className="admin-button" href={fileUrl(file,version)} download>下载当时版本</a>{local && <button type="button" className="admin-button" disabled={busy} onClick={() => void reveal({record_id:record.id})}>打开所在文件夹</button>}{canEdit && !file.archived && <><button className="admin-button" disabled={busy} onClick={() => {setUsageId(record.id);setMode("usage");}}>更正记录</button><button className="admin-button" disabled={busy} onClick={() => setConfirmation({title:"移除这条使用记录？",detail:"仅移除这条记录，文件原件继续保留；修改历史中可回溯。",action:() => {void save("usage_remove",{record_id:record.id});}})}>移除记录</button></>}</div></article>;})}</section>
       </> : <div className="files-empty"><h3>把交流资料与进展放在一起</h3><p>选择一份资料查看版本和发送情况，或导入第一份资料。</p><p>同一份资料可关联多个事项，发送记录始终对应具体版本。</p></div>}
     </div></div>

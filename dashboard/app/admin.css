@@ -22,13 +22,30 @@
 .admin-list-items small { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
 .admin-detail,.version-preview { border-left:1px solid var(--line); padding-left:24px; min-width:0; }
 .admin-detail > p { font-size:var(--text-body); line-height:var(--leading-reading); }
-.admin-related-actions { margin-top:12px; }
-.admin-progress-list article { display:flex; gap:12px; justify-content:space-between; align-items:flex-start; border-bottom:1px solid var(--line); padding:16px 0; }
-.admin-progress-list article > div:first-child { flex:1; min-width:0; overflow-wrap:anywhere; }
-.admin-progress-list article > .admin-actions { flex:none; }
-.admin-progress-list time { font-size:var(--text-caption); color:var(--muted); }
-.admin-progress-list h4 { font-size:var(--text-body); margin:6px 0; }
-.admin-progress-list p { font-size:var(--text-body); line-height:var(--leading-reading); margin:0; }
+/* Separate the record summary, shared context and chronological updates. */
+.admin-list-count { margin:10px 0 0; color:var(--muted); font-size:var(--text-caption); }
+.admin-record-head { padding-bottom:22px; }
+.admin-record-heading { display:flex; justify-content:space-between; align-items:flex-start; gap:20px; }
+.admin-record-heading > div { min-width:0; }
+.admin-record-heading h2 { margin:6px 0 0; overflow-wrap:anywhere; line-height:var(--leading-heading); }
+.admin-record-summary { margin:16px 0 8px; color:var(--ink); font-size:var(--text-body); line-height:var(--leading-reading); overflow-wrap:anywhere; white-space:pre-wrap; }
+.admin-record-context { display:grid; grid-template-columns:minmax(0,1.7fr) minmax(0,1fr); gap:20px; padding:18px 20px; background:var(--canvas); border:1px solid var(--line); border-radius:12px; margin-bottom:28px; }
+.admin-record-context > div { min-width:0; display:grid; align-content:start; gap:6px; }
+.admin-context-label { font-size:var(--text-caption); color:var(--muted); line-height:var(--leading-body); }
+.admin-record-context strong { font-size:var(--text-body); line-height:var(--leading-body); overflow-wrap:anywhere; }
+.admin-file-context { border-left:1px solid var(--line); padding-left:20px; }
+.admin-context-links { display:flex; align-items:center; flex-wrap:wrap; gap:6px 18px; }
+.admin-progress-heading { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:20px; }
+.admin-progress-heading > div { display:flex; align-items:baseline; flex-wrap:wrap; gap:6px 12px; }
+.admin-progress-heading h3 { margin:0; }
+.admin-progress-heading span { font-size:var(--text-caption); color:var(--muted); }
+.admin-progress-items { border-left:1px solid var(--line); margin-left:5px; }
+.admin-progress-item { position:relative; margin-left:22px; padding:0 0 22px; overflow-wrap:anywhere; }
+.admin-progress-item:last-child { padding-bottom:4px; }
+.admin-progress-item::before { content:""; position:absolute; top:7px; left:-27px; width:9px; height:9px; border:2px solid var(--paper); border-radius:50%; background:var(--blue); box-shadow:0 0 0 1px var(--line); }
+.admin-progress-item time { font-size:var(--text-caption); color:var(--muted); font-variant-numeric:tabular-nums; }
+.admin-progress-item h4 { font-size:var(--text-body); line-height:var(--leading-heading); margin:8px 0; }
+.admin-progress-item p { font-size:var(--text-body); color:var(--muted); line-height:var(--leading-reading); margin:0 0 8px; white-space:pre-wrap; }
 .admin-person-details { display:grid; grid-template-columns:85px minmax(0,1fr); gap:12px; font-size:var(--text-body); margin-top:24px; }
 .admin-person-details dt { color:var(--muted); }
 .admin-person-details dd { margin:0; overflow-wrap:anywhere; }
@@ -115,7 +132,10 @@
 }
 @media(max-width:650px) {
   .workspace-admin > .section-heading,.version-history > .section-heading { flex-direction:column; gap:16px; }
-  .admin-progress-list article { flex-direction:column; }
+  .admin-record-heading { gap:12px; flex-wrap:wrap; }
+  .admin-record-context { grid-template-columns:1fr; gap:16px; padding:16px; }
+  .admin-file-context { padding-left:0; padding-top:14px; border-left:0; border-top:1px solid var(--line); }
+  .admin-record-head { padding-bottom:18px; }
   .workspace-nav { flex-wrap:wrap; }
   .workspace-nav button { padding:8px 11px; font-size:var(--text-small); }
   .admin-layout,.history-layout,.edit-form-grid,.version-change-values,.history-filters { grid-template-columns:1fr; }

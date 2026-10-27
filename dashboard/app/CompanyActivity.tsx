@@ -2,9 +2,10 @@
 
 import { useState, type ReactNode } from "react";
 import type { CompanyEvent } from "./lib/types";
-import { companyActivityYears, companyCategoryLabel, filterCompanyEvents } from "./lib/company-events";
+import { companyCategoryLabel, filterCompanyEvents } from "./lib/company-events";
 
-import CompanyCalendar from "./CompanyCalendar";
+import ActivityCalendarPanel from "./ActivityCalendarPanel";
+import { activityYears } from "./lib/activity-calendar";
 
 export default function CompanyActivity({
   events, renderEvent, timezone = "Asia/Shanghai",
@@ -58,7 +59,7 @@ export default function CompanyActivity({
         </label>
         <button type="button" className="history-trigger" onClick={reset}>重置筛选</button>
       </div>
-      <CompanyCalendar events={filtered} years={companyActivityYears(events)} timezone={timezone} selectedDate={selectedDate}
+      <ActivityCalendarPanel events={filtered} years={activityYears(events)} timezone={timezone} selectedDate={selectedDate}
         onSelectDate={date => setSelectedDate(current => current === date ? "" : date)} onClearDate={() => setSelectedDate("")} />
       <div className="event-history-status" aria-live="polite">
         <span>显示 {visible.length} / {events.length} 条动态</span>

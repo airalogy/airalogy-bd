@@ -34,3 +34,12 @@ test("investment cooperation agreements filter and search independently from NDA
   assert.equal(matchesFileFilter(investment,"nda"),false);
   assert.equal(matchesFileFilter({...investment,category:"presentation"},"investment_cooperation"),false);
 });
+
+test("progress links count only active files attached to the same event and matter",()=>{
+  const file={id:"one",archived:false,project_ids:["matter-a","matter-b"],records:[{project_id:"matter-a",event_id:"event-a"},{project_id:"matter-a",event_id:"event-a"}]};
+  const archived={...file,id:"archived",archived:true};
+  const otherMatter={...file,id:"other",records:[{project_id:"matter-b",event_id:"event-a"}]};
+  assert.deepEqual(exports.filesForEvent([file,archived,otherMatter],"matter-a","event-a"),[file]);
+  assert.deepEqual(exports.filesForEvent([file],"matter-a","event-without-files"),[]);
+  assert.deepEqual(exports.filesForEvent([],"matter-a","event-a"),[]);
+});

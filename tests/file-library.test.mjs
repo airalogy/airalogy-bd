@@ -244,6 +244,7 @@ test("invalid and stale file edits cannot alter the index or immutable originals
 test("a complete backup restores files, prior versions and history into a new workspace",()=>{
   const w=setup();const destination=w.directory+"-restored";try {
     w.upload();let file=w.list()[0];
+    w.save(file,"agreement_dates",{version_id:file.current_version,agreement_date:"2026-10-01",signing_completed_date:"2026-10-07"});file=w.list()[0];
     w.save(file,"usage",{version_id:file.current_version,kind:"sent",date:"2026-10-08",project_id:"project-demo-partnership",people:["陈青"],channel:"微信"});file=w.list()[0];
     w.upload("%PDF-1.4\nsecond bytes",file);file=w.list()[0];w.save(file,"archive");
     const backup=w.ok({action:"file_backup"}),download=w.ok({action:"backup_download",id:backup.id});
@@ -253,6 +254,7 @@ test("a complete backup restores files, prior versions and history into a new wo
     };
     const restored=invoke({action:"files"}).files[0];assert.equal(restored.archived,true);assert.equal(restored.versions.length,2);
     assert.equal(restored.records[0].archive_path,undefined);
+    assert.equal(restored.versions[0].agreement_date,"2026-10-01");assert.equal(restored.versions[0].signing_completed_date,"2026-10-07");
     assert.equal(readFileSync(invoke({action:"file_location",id:restored.id,record_id:restored.records[0].id}).path,"utf8"),"%PDF-1.4\nfirst bytes");
     for(const [index,expected] of ["%PDF-1.4\nfirst bytes","%PDF-1.4\nsecond bytes"].entries()) {
       const result=invoke({action:"file_download",id:restored.id,version_id:restored.versions[index].id});assert.equal(readFileSync(result.path,"utf8"),expected);
@@ -365,5 +367,59 @@ test("investment cooperation archives round-trip through versions and history wi
     assert.equal(file.versions[1].sha256,fingerprint);
     assert.deepEqual(w.ok({action:"record",kind:"project",id:"project-demo-partnership"}).record,matterBefore);
     assert.equal(w.call({action:"file_save",id:file.id,revision:file.revision,operation:"metadata",payload:{category:"presentation",agreement_type:"investment_cooperation"}}).ok,false);
+  } finally {w.close();}
+});
+
+test("agreement dates are explicit, version-specific and independently recoverable",()=>{
+  const w=setup();try {
+    w.upload();let file=w.list()[0];const first=file.versions[0];
+    assert.equal(first.agreement_date,undefined);assert.equal(first.signing_completed_date,undefined);
+    const matter=w.ok({action:"record",kind:"project",id:"project-demo-partnership"}).record;
+    const saved=w.save(file,"agreement_dates",{version_id:first.id,agreement_date:"2026-10-10",signing_completed_date:"2026-10-16"});
+    const stale=file;file=w.list()[0];
+    assert.equal(file.versions[0].agreement_date,"2026-10-10");
+    assert.equal(file.versions[0].signing_completed_date,"2026-10-16");
+    assert.equal(file.versions[0].status,"draft");
+    assert.equal(file.versions[0].created_at,first.created_at);
+    assert.equal(file.versions[0].sha256,first.sha256);
+    assert.equal(file.versions.length,1);
+    assert.deepEqual(w.ok({action:"record",kind:"project",id:"project-demo-partnership"}).record,matter);
+    assert.equal(w.call({action:"file_save",operation:"agreement_dates",id:file.id,revision:stale.revision,payload:{version_id:first.id,agreement_date:"2026-10-11"}}).code,"conflict");
+    w.save(file,"upload",{filename:"签署件.pdf",data:Buffer.from("signed copy").toString("base64"),status:"signed",agreement_date:"2026-10-10",signing_completed_date:"2026-10-17"});
+    file=w.list()[0];const second=file.versions[1];
+    assert.equal(second.signing_completed_date,"2026-10-17");
+    assert.equal(file.versions[0].signing_completed_date,"2026-10-16");
+    w.save(file,"agreement_dates",{version_id:first.id,agreement_date:"2026-10-20",signing_completed_date:""});file=w.list()[0];
+    assert.equal(file.versions[0].signing_completed_date,undefined);
+    assert.equal(file.versions[1].signing_completed_date,"2026-10-17");
+    // The two dates have different meanings: neither chronological order is inferred.
+    w.save(file,"agreement_dates",{version_id:first.id,signing_completed_date:"2026-10-18"});file=w.list()[0];
+    assert.equal(file.versions[0].agreement_date,"2026-10-20");
+    assert.equal(w.ok({action:"historical",version:saved.status.version}).data.files[0].versions[0].signing_completed_date,"2026-10-16");
+    const compare=w.ok({action:"compare",kind:"file",id:file.id,version:saved.status.version});
+    w.ok({action:"restore",kind:"file",id:file.id,version:saved.status.version,revision:compare.revision});file=w.list()[0];
+    assert.equal(file.versions[0].signing_completed_date,"2026-10-16");
+    assert.equal(readFileSync(w.ok({action:"file_download",id:file.id,version_id:first.id}).path,"utf8"),"%PDF-1.4\nfirst bytes");
+    w.save(file,"upload",{filename:"另一签署件.pdf",data:Buffer.from("another signed copy").toString("base64"),status:"signed"});file=w.list()[0];
+    assert.equal(file.versions.at(-1).agreement_date,undefined);assert.equal(file.versions.at(-1).signing_completed_date,undefined);
+  } finally {w.close();}
+});
+
+test("agreement date validation rejects invalid dates, non-agreements and stale or archived edits",()=>{
+  const w=setup();try {
+    w.upload();let file=w.list()[0];const version_id=file.current_version;
+    const call=payload=>w.call({action:"file_save",operation:"agreement_dates",id:file.id,revision:file.revision,payload:{version_id,...payload}});
+    for(const value of ["2026-02-30","2026-1-01","2026-01-01T00:00:00Z","0000-01-01",null,42,{},true]) {
+      assert.equal(call({agreement_date:value}).ok,false,String(value));
+      assert.equal(call({signing_completed_date:value}).ok,false,String(value));
+    }
+    assert.equal(call({version_id:"missing",agreement_date:"2026-10-10"}).ok,false);
+    assert.deepEqual(w.list()[0],file);
+    w.save(file,"agreement_dates",{version_id,agreement_date:"2026-10-10"});file=w.list()[0];
+    assert.equal(w.call({action:"file_save",operation:"metadata",id:file.id,revision:file.revision,payload:{category:"bp"}}).ok,false);
+    w.save(file,"archive");file=w.list()[0];assert.equal(call({agreement_date:"2026-10-11"}).ok,false);
+    w.save(file,"unarchive");file=w.list()[0];w.save(file,"agreement_dates",{version_id,agreement_date:""});file=w.list()[0];
+    w.save(file,"metadata",{category:"bp"});file=w.list()[0];assert.equal(call({agreement_date:"2026-10-11"}).ok,false);
+    assert.equal(w.call({action:"file_save",id:file.id,revision:file.revision,operation:"upload",payload:{filename:"BP.pdf",data:Buffer.from("BP").toString("base64"),agreement_date:"2026-10-10"}}).ok,false);
   } finally {w.close();}
 });

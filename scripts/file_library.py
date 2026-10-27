@@ -19,6 +19,7 @@ MAX_BYTES = 50 * 1024 * 1024
 CATEGORIES = {"agreement", "presentation", "bp", "introduction", "other"}
 AGREEMENT_TYPES = {"unspecified", "nda", "investment_cooperation"}
 STATUSES = {"unspecified", "draft", "final", "signed"}
+AGREEMENT_DATES = {"agreement_date": "协议载明日期", "signing_completed_date": "实际签署完成日期"}
 USES = {"meeting", "sent", "received"}
 EXTENSIONS = {".pdf", ".ppt", ".pptx", ".doc", ".docx", ".xls", ".xlsx", ".png", ".jpg", ".jpeg", ".txt", ".md", ".csv", ".zip"}
 
@@ -101,6 +102,18 @@ def check_index(files):
                 raise LibraryError("文件状态或归档位置无效。")
             text(version.get("created_at"), "版本时间", limit=40)
             text(version.get("note", ""), "版本说明", required=False, limit=500)
+            for field, label in AGREEMENT_DATES.items():
+                value = version.get(field, "")
+                if value == "":
+                    continue
+                if item["category"] != "agreement":
+                    raise LibraryError("协议日期仅适用于协议；请先清空各版本的协议日期，再修改资料分类。")
+                try:
+                    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+                        raise ValueError()
+                    date.fromisoformat(value)
+                except (ValueError, TypeError):
+                    raise LibraryError(f"{label}须留空或填写有效的 YYYY-MM-DD。")
         if item.get("current_version") not in version_ids:
             raise LibraryError("当前文件版本不存在。")
         records = item.get("records")
@@ -330,6 +343,9 @@ class FileLibrary:
             directory = self.document_directory(before, index, item)
             archive_path = self.available_path(directory, filename, hashlib.sha256(data).hexdigest(), len(item["versions"]) + 1, self.reserved_paths(index))
             version = {"id": version_id, "filename": filename, "sha256": hashlib.sha256(data).hexdigest(), "size": len(data), "status": payload.get("status", "unspecified"), "note": payload.get("note", ""), "created_at": datetime.now(timezone.utc).isoformat(), "archive_path": archive_path}
+            for field in AGREEMENT_DATES:
+                if field in payload:
+                    version[field] = payload[field]
             item["versions"].append(version)
             item["current_version"] = version_id
             after = {**before, "files.yaml": dump(index)}
@@ -349,6 +365,21 @@ class FileLibrary:
                 if item["category"] != "agreement" and "agreement_type" not in payload:
                     item["agreement_type"] = "unspecified"
                 label = "修改资料信息：" + str(item["title"])
+            elif operation == "agreement_dates":
+                if item["archived"]:
+                    raise LibraryError("请先从回收站恢复这份资料。")
+                if item["category"] != "agreement":
+                    raise LibraryError("仅协议资料可填写协议日期。")
+                version = next((entry for entry in item["versions"] if entry["id"] == payload.get("version_id")), None)
+                if not version:
+                    raise LibraryError("请选择具体协议版本。")
+                for field in AGREEMENT_DATES:
+                    if field in payload:
+                        if payload[field] == "":
+                            version.pop(field, None)
+                        else:
+                            version[field] = payload[field]
+                label = "修改协议日期：" + item["title"] + " · v" + str(item["versions"].index(version) + 1)
             elif operation in {"archive", "unarchive"}:
                 item["archived"] = operation == "archive"
                 label = ("移入资料回收站：" if item["archived"] else "从资料回收站恢复：") + item["title"]

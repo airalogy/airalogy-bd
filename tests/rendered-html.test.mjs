@@ -229,7 +229,6 @@ test("dashboard is reusable and configured for local use only", async () => {
   assert.match(dashboard, /阅读完整记录/);
   assert.match(dashboard, /data\.company_events/);
   assert.match(dashboard, /includeCompanyEvents/);
-  assert.match(dashboard, /公司事件/);
   assert.match(dashboard, /查看全部/);
   assert.match(dashboard, /全部历史/);
   assert.match(dashboard, /近 7 天/);
