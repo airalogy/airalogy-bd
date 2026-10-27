@@ -32,6 +32,42 @@ OSS = {'BD_OSS_REGION':'cn-hangzhou','BD_OSS_BUCKET':'test-private-bucket','BD_O
 
 
 class AccountTests(unittest.TestCase):
+    def test_member_invites_and_edits_keep_remote_permissions_atomic(self):
+        with tempfile.TemporaryDirectory() as temp:
+            content=Path(temp)/'content';content.mkdir()
+            accounts=Accounts(content)
+            actor={'id':'admin','name':'管理员','role':'admin'}
+            remote=RemoteAccess(None,accounts)
+            invitation=accounts.invite({'name':'工具成员','role':'editor','project_ids':['matter'],'remote_allowed':True},actor,{'matter'})
+            identity=accounts.invitation(invitation['token'])['user_id']
+            member=accounts.member_info(accounts.db.execute('SELECT * FROM users WHERE id=?',(identity,)).fetchone())
+            self.assertTrue(member['remote_allowed']);self.assertFalse(accounts.remote_enabled())
+            self.assertEqual(accounts.db.execute('SELECT COUNT(*) FROM remote_tokens').fetchone()[0],0)
+            # Pending membership and remote permission are changed together, without consuming or extending the invitation.
+            accounts.update({**member,'active':False,'role':'viewer','remote_allowed':False,'remote_allowed_before':True},actor,{'matter'})
+            self.assertEqual(accounts.invitation(invitation['token'])['user_id'],identity)
+            self.assertEqual(accounts.invitation(invitation['token'])['expires'],invitation['expires'])
+            fresh=accounts.member_info(accounts.db.execute('SELECT * FROM users WHERE id=?',(identity,)).fetchone())
+            self.assertEqual(fresh['status'],'invited');self.assertFalse(fresh['remote_allowed'])
+            # A parallel change through the former grant endpoint cannot be silently overwritten by an open member form.
+            remote.browser({'operation':'grant','memberId':identity,'allowed':True},actor)
+            with self.assertRaisesRegex(AuthError,'权限已变化'):
+                accounts.update({**fresh,'active':False,'remote_allowed':False,'remote_allowed_before':False},actor,{'matter'})
+            old_client={k:v for k,v in fresh.items() if k!='remote_allowed'}
+            accounts.update({**old_client,'active':False},actor,{'matter'})
+            self.assertTrue(accounts.remote_allowed(identity))
+            self.assertEqual(accounts.invitation(invitation['token'])['expires'],invitation['expires'])
+            before=accounts.db.execute('SELECT COUNT(*) FROM users').fetchone()[0]
+            with patch.object(accounts,'new_invitation',side_effect=RuntimeError('simulated invitation failure')):
+                with self.assertRaises(RuntimeError):
+                    accounts.invite({'name':'失败邀请','remote_allowed':True},actor,set())
+            self.assertEqual(accounts.db.execute('SELECT COUNT(*) FROM users').fetchone()[0],before)
+            self.assertEqual(accounts.db.execute('SELECT COUNT(*) FROM remote_grants').fetchone()[0],1)
+            for invalid in ('true',1,None):
+                with self.assertRaises(AuthError):accounts.invite({'name':'无效权限','remote_allowed':invalid},actor,set())
+            self.assertEqual(accounts.db.execute('SELECT COUNT(*) FROM users').fetchone()[0],before)
+            accounts.close()
+
     def test_email_optional_invites_keep_identity_grants_and_survive_backup(self):
         with tempfile.TemporaryDirectory() as temp:
             content=Path(temp)/'content';content.mkdir()

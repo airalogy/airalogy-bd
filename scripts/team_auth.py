@@ -58,6 +58,7 @@ class Accounts:
                 id TEXT PRIMARY KEY, email TEXT UNIQUE, name TEXT NOT NULL,
                 role TEXT NOT NULL, all_projects INTEGER NOT NULL, project_ids TEXT NOT NULL,
                 active INTEGER NOT NULL DEFAULT 0, credential_revision TEXT NOT NULL DEFAULT '', revision TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS remote_grants (owner TEXT PRIMARY KEY);
             CREATE TABLE IF NOT EXISTS invitations (
                 digest TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id),
                 expires INTEGER NOT NULL);
@@ -176,6 +177,32 @@ class Accounts:
             all_projects, projects = True, []
         return role, all_projects, sorted(set(projects)) if not all_projects else []
 
+    def remote_allowed(self, identity):
+        return bool(self.db.execute("SELECT 1 FROM remote_grants WHERE owner=?", (identity,)).fetchone())
+
+    def remote_enabled(self):
+        if not self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='remote_settings'").fetchone():
+            return False
+        row = self.db.execute("SELECT enabled FROM remote_settings WHERE id=1").fetchone()
+        return bool(row and row["enabled"])
+
+    @staticmethod
+    def remote_permission(payload, default=False):
+        allowed = payload.get("remote_allowed", default)
+        if type(allowed) is not bool:
+            raise AuthError("外部 AI 工具权限无效。", "invalid")
+        return allowed
+
+    def set_remote_allowed(self, identity, allowed):
+        # Called inside the account transaction; never creates a personal credential.
+        if allowed:
+            self.db.execute("INSERT OR IGNORE INTO remote_grants VALUES(?)", (identity,))
+        else:
+            self.db.execute("DELETE FROM remote_grants WHERE owner=?", (identity,))
+            for table in ("remote_tokens", "remote_drafts"):
+                if self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone():
+                    self.db.execute("DELETE FROM " + table + " WHERE owner=?", (identity,))
+
     def invite(self, payload, actor, known, bootstrap=False):
         if not bootstrap:
             self.require_admin(actor)
@@ -186,6 +213,7 @@ class Accounts:
         if not 1 <= len(name) <= 100:
             raise AuthError("请填写成员姓名（不超过 100 个字符）。", "invalid")
         role, all_projects, projects = self.permissions(payload, known)
+        remote_allowed = self.remote_permission(payload)
         with self.db:
             if bootstrap and self.db.execute("SELECT 1 FROM users LIMIT 1").fetchone():
                 raise AuthError("管理员已初始化，请通过成员管理邀请其他账号。", "conflict")
@@ -194,8 +222,11 @@ class Accounts:
             identity = secrets.token_hex(16)
             self.db.execute("INSERT INTO users(id,email,name,role,all_projects,project_ids,revision,credential_revision) VALUES(?,?,?,?,?,?,?,?)",
                             (identity, email, name, role, int(all_projects), json.dumps(projects), secrets.token_hex(16), secrets.token_hex(16)))
+            self.set_remote_allowed(identity, remote_allowed)
             invitation = self.new_invitation(identity)
         self.audit(actor, "account.invite", identity)
+        if remote_allowed:
+            self.audit(actor, "remote.grant", identity)
         return invitation
 
     def new_invitation(self, identity):
@@ -223,7 +254,7 @@ class Accounts:
             ('invited' if invitation['expires'] > time.time() else 'expired') if invitation else 'disabled')
         if row['active'] and not self.email_allowed(row['id']):
             status = 'email'
-        return public_user(row) | {'status': status, 'invitation_expires': invitation['expires'] if invitation else None}
+        return public_user(row) | {'status': status, 'invitation_expires': invitation['expires'] if invitation else None, 'remote_allowed': self.remote_allowed(row['id'])}
 
     def update(self, payload, actor, known):
         self.require_admin(actor)
@@ -234,7 +265,11 @@ class Accounts:
             row = self.db.execute("SELECT * FROM users WHERE id=?", (payload.get("id"),)).fetchone()
             if not row or payload.get("revision") != row["revision"]:
                 raise AuthError("成员信息已变化，请刷新后重试。", "conflict")
-            if payload["active"] and not self.enrolled(row["id"]):
+            was_allowed = self.remote_allowed(row["id"])
+            remote_allowed = self.remote_permission(payload, was_allowed)
+            if "remote_allowed" in payload and (type(payload.get("remote_allowed_before")) is not bool or payload["remote_allowed_before"] != was_allowed):
+                raise AuthError("外部 AI 工具权限已变化，请刷新后重试。", "conflict")
+            if payload["active"] and not row["active"] and not self.enrolled(row["id"]):
                 raise AuthError("成员须先通过邀请设置登录信息。", "invalid")
             others = sum(self.enrolled(r[0]) for r in self.db.execute("SELECT id FROM users WHERE role='admin' AND active=1 AND id!=?", (row["id"],)).fetchall())
             if row["role"] == "admin" and row["active"] and not others and (role != "admin" or not payload["active"]):
@@ -242,8 +277,13 @@ class Accounts:
             self.db.execute("UPDATE users SET role=?,all_projects=?,project_ids=?,active=?,revision=? WHERE id=?",
                             (role, int(all_projects), json.dumps(projects), int(payload["active"]), secrets.token_hex(16), row["id"]))
             self.revoke(row["id"])
-            self.db.execute("DELETE FROM invitations WHERE user_id=?", (row["id"],))
+            self.set_remote_allowed(row["id"], remote_allowed)
+            # Editing an unaccepted invitation must not silently cancel its link.
+            if row["active"] or payload["active"]:
+                self.db.execute("DELETE FROM invitations WHERE user_id=?", (row["id"],))
         self.audit(actor, "account.permissions", row["id"])
+        if was_allowed != remote_allowed:
+            self.audit(actor, "remote.grant" if remote_allowed else "remote.ungrant", row["id"])
         return {"saved": True}
 
     def reset(self, identity, actor, recovery=False):
@@ -267,7 +307,7 @@ class Accounts:
         if action == "auth_session": return actor
         self.require_admin(actor)
         if action == "team_list":
-            return {"users": [self.member_info(row) for row in self.db.execute("SELECT * FROM users ORDER BY name")]}
+            return {"users": [self.member_info(row) for row in self.db.execute("SELECT * FROM users ORDER BY name")], "remote_enabled": self.remote_enabled()}
         if action == "team_invite": return self.invite(request, actor, known)
         if action == "team_update": return self.update(request, actor, known)
         if action == "team_reset": return self.reset(request.get("id"), actor)

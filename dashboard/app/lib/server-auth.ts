@@ -3,7 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { cookies, headers as pageHeaders } from "next/headers";
 import { invokeWorkspace, isLocalRequest } from "./workspace-server";
 
-export type TeamUser = {id:string;name:string;email:string|null;email_verified?:boolean;username?:string|null;status?:"active"|"email"|"setup"|"invited"|"expired"|"disabled";invitation_expires?:number|null;role:"admin"|"editor"|"viewer";all_projects:boolean;project_ids:string[];active:boolean;revision:string;csrf:string;expires:number};
+export type TeamUser = {id:string;name:string;email:string|null;email_verified?:boolean;username?:string|null;status?:"active"|"email"|"setup"|"invited"|"expired"|"disabled";invitation_expires?:number|null;remote_allowed?:boolean;role:"admin"|"editor"|"viewer";all_projects:boolean;project_ids:string[];active:boolean;revision:string;csrf:string;expires:number};
 export const serverMode = () => {
   if(process.env.BD_MODE && !["local","server"].includes(process.env.BD_MODE)) throw new Error("工作台运行模式配置无效。");
   return process.env.BD_MODE === "server";

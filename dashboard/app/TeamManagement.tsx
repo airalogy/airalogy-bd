@@ -2,14 +2,16 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import {useCallback,useEffect,useRef,useState} from "react";
 import {useRouter} from "next/navigation";
+import Link from "next/link";
 import {teamRequest,type TeamUser} from "./lib/team-client";
 import type {Project} from "./lib/types";
 import {workspaceRequest} from "./lib/workspace-client";
 import type {WorkspaceResponse} from "./lib/workspace-types";
 import {SettingsIcon,SettingsPanelHeader,SettingsStatus} from "./SettingsUI";
 
+type MemberList={users:TeamUser[];remote_enabled:boolean};
 type Audit={id:number;at:number;actor_name:string;action:string;target:string;outcome:string};
-const actionNames:Record<string,string>={"account.invite":"邀请成员","account.activate":"激活账号","account.login":"登录","account.permissions":"调整权限","account.reset":"重置登录",save:"保存资料",file_save:"更新附件",restore:"恢复资料",backup_config:"调整备份",backup_now:"立即备份",file_backup:"导出完整备份"};
+const actionNames:Record<string,string>={"account.invite":"邀请成员","account.activate":"激活账号","account.login":"登录","account.permissions":"调整权限","account.reset":"重置登录","remote.grant":"允许外部 AI 工具","remote.ungrant":"取消外部 AI 工具权限","remote.configure":"调整外部 AI 全局开关","remote.issue":"生成个人接入凭据","remote.revoke":"撤销接入凭据",save:"保存资料",file_save:"更新附件",restore:"恢复资料",backup_config:"调整备份",backup_now:"立即备份",file_backup:"导出完整备份"};
 const roleNames={admin:"管理员",editor:"编辑成员",viewer:"只读成员"};
 const roleHelp={admin:"管理全部资料、成员权限和系统设置。",editor:"修改获授权事项和附件、补充进展。",viewer:"查看和导出获授权资料，不能修改。"};
 const statusNames={active:"已启用",email:"待验证邮箱",setup:"待绑定验证器",invited:"待接受邀请",expired:"邀请已过期",disabled:"已停用"};
@@ -23,6 +25,7 @@ export default function TeamManagement({user,projects,timezone}:{user:TeamUser;p
   const [editorOpen,setEditorOpen]=useState(false),[selected,setSelected]=useState<TeamUser|null>(null);
   const [email,setEmail]=useState(""),[name,setName]=useState("");
   const [role,setRole]=useState<TeamUser["role"]>("viewer"),[all,setAll]=useState(false),[ids,setIds]=useState<string[]>([]);
+  const [remoteAllowed,setRemoteAllowed]=useState(false),[remoteEnabled,setRemoteEnabled]=useState(false);
   const [active,setActive]=useState(true),[busy,setBusy]=useState(false);
   const [error,setError]=useState(""),[formError,setFormError]=useState(""),[notice,setNotice]=useState("");
   const [link,setLink]=useState(""),[linkExpires,setLinkExpires]=useState<number|null>(null);
@@ -38,23 +41,23 @@ export default function TeamManagement({user,projects,timezone}:{user:TeamUser;p
     return matches&&(statusFilter==="all"||(statusFilter==="pending"?["invited","expired","email","setup"].includes(member.status||""):member.status===statusFilter));
   });
   const fullAccess=role==="admin"||all;
-  const dirty=selected?role!==selected.role||all!==selected.all_projects||active!==!!selected.active||JSON.stringify([...ids].sort())!==JSON.stringify([...selected.project_ids].sort()):!!name||!!email||role!=="viewer"||all||ids.length>0;
-  const refresh=useCallback(async()=>{const result=await teamRequest<{users:TeamUser[]}>("team_list",{},user.csrf);setMembers(result.users);},[user.csrf]);
-  useEffect(()=>{let cancelled=false;teamRequest<{users:TeamUser[]}>("team_list",{},user.csrf).then(result=>{if(!cancelled)setMembers(result.users);}).catch(err=>{if(!cancelled)setError(err.message);}).finally(()=>{if(!cancelled)setLoading(false);});return()=>{cancelled=true;};},[user.csrf]);
+  const dirty=selected?remoteAllowed!==!!selected.remote_allowed||role!==selected.role||all!==selected.all_projects||active!==!!selected.active||JSON.stringify([...ids].sort())!==JSON.stringify([...selected.project_ids].sort()):!!name||!!email||remoteAllowed||role!=="viewer"||all||ids.length>0;
+  const refresh=useCallback(async()=>{const result=await teamRequest<MemberList>("team_list",{},user.csrf);setMembers(result.users);setRemoteEnabled(result.remote_enabled);},[user.csrf]);
+  useEffect(()=>{let cancelled=false;teamRequest<MemberList>("team_list",{},user.csrf).then(result=>{if(!cancelled){setMembers(result.users);setRemoteEnabled(result.remote_enabled);}}).catch(err=>{if(!cancelled)setError(err.message);}).finally(()=>{if(!cancelled)setLoading(false);});return()=>{cancelled=true;};},[user.csrf]);
   useEffect(()=>{const controller=new AbortController();workspaceRequest<WorkspaceResponse>("workspace",{},false,controller.signal).then(result=>{if(result.data)setProjectChoices(result.data.projects);}).catch(err=>{if(!controller.signal.aborted)setError(err.message);});return()=>controller.abort();},[]);
   useEffect(()=>{if(!pendingInvitations)return;const timer=window.setInterval(()=>{void refresh().catch(err=>setError(err.message));},60000);return()=>window.clearInterval(timer);},[pendingInvitations,refresh]);
   useEffect(()=>{if(formError&&editorOpen){formAlert.current?.focus();formAlert.current?.scrollIntoView({block:"nearest"});}},[formError,editorOpen]);
   function select(member:TeamUser|null,button:HTMLButtonElement){
-    opener.current=button;setSelected(member);setEmail(member?.email||"");setName(member?.name||"");setRole(member?.role||"viewer");setAll(member?.all_projects||false);setIds(member?.project_ids||[]);setProjectSearch("");setActive(member?!!member.active:true);setFormError("");setError("");setNotice("");setEditorOpen(true);
+    opener.current=button;setSelected(member);setRemoteAllowed(!!member?.remote_allowed);setEmail(member?.email||"");setName(member?.name||"");setRole(member?.role||"viewer");setAll(member?.all_projects||false);setIds(member?.project_ids||[]);setProjectSearch("");setActive(member?!!member.active:true);setFormError("");setError("");setNotice("");setEditorOpen(true);
   }
   function closeEditor(){if(!busy&&(!dirty||window.confirm("放弃尚未保存的成员设置？")))setEditorOpen(false);}
   function showLink(result:{token:string;expires:number}){setLinkExpires(result.expires);setLink(`${window.location.origin}/join#${result.token}`);setNotice("邀请链接已生成，请单独交给该成员。");}
   async function save(event:React.FormEvent){
     event.preventDefault();if(busy)return;setBusy(true);setFormError("");setNotice("");
     try{
-      const payload={email,name,role,all_projects:all,project_ids:ids,active,id:selected?.id,revision:selected?.revision};
+      const payload={email,name,remote_allowed:remoteAllowed,...(selected?{remote_allowed_before:!!selected.remote_allowed}:{}),role,all_projects:all,project_ids:ids,active,id:selected?.id,revision:selected?.revision};
       if(selected){
-        await teamRequest("team_update",payload,user.csrf);setNotice(active?"权限已更新，该成员需要重新登录。":"账号已停用，已有记录和历史已保留。");
+        await teamRequest("team_update",payload,user.csrf);setNotice(isInvitation(selected)?"邀请权限已更新；原邀请链接和到期时间保持不变。":active?"权限已更新，该成员需要重新登录并按需生成新的工具凭据。":"账号已停用，已有记录和历史已保留。");
         if(selected.id===user.id){router.replace("/login");router.refresh();return;}
       }else showLink(await teamRequest("team_invite",payload,user.csrf));
       try{await refresh();}catch(err){setError(`已保存，但成员列表未能刷新：${(err as Error).message}`);}
@@ -69,13 +72,13 @@ export default function TeamManagement({user,projects,timezone}:{user:TeamUser;p
   async function loadAudit(more=false){setAuditBusy(true);try{const result=await teamRequest<{entries:Audit[]}>("team_audit",more&&audit.length?{before:audit.at(-1)!.id}:{},user.csrf);setAudit(old=>more?[...old,...result.entries]:result.entries);setAuditLoaded(true);}catch(err){setError((err as Error).message);}finally{setAuditBusy(false);}}
   return <section className="team-management">
     <section className="panel admin-center-panel member-panel">
-      <SettingsPanelHeader title="成员与权限" description="管理成员身份、角色和事项访问范围。" actions={<button ref={inviteButton} type="button" className="admin-button admin-primary" disabled={busy} onClick={event=>select(null,event.currentTarget)}><SettingsIcon name="plus"/>邀请新成员</button>}/>
+      <SettingsPanelHeader title="成员与权限" description="一次设置成员角色、事项范围和外部 AI 工具权限。" actions={<button ref={inviteButton} type="button" className="admin-button admin-primary" disabled={busy} onClick={event=>select(null,event.currentTarget)}><SettingsIcon name="plus"/>邀请新成员</button>}/>
       {error&&<p className="admin-alert" role="alert">{error}</p>}{notice&&<p className="admin-notice" role="status">{notice}</p>}
       {link&&<section className="invitation-result" aria-label="生成的邀请链接"><div className="invitation-result-heading"><strong>一次性邀请链接</strong><button className="settings-text-button" type="button" onClick={()=>{setLink("");setLinkExpires(null);}}>收起</button></div><div className="invitation-copy"><label className="sr-only" htmlFor="member-invitation-link">邀请链接</label><input id="member-invitation-link" readOnly value={link} onFocus={e=>e.target.select()}/><button type="button" className="admin-button" onClick={()=>void copyLink()}>复制链接</button></div><p className="admin-help">{linkExpires&&<>有效至 <time dateTime={new Date(linkExpires*1000).toISOString()}>{expiryText(linkExpires)}</time>（{timezone}），</>}仅可使用一次。由本人填写邮箱、设置密码和身份验证器。</p></section>}
       <div className="member-toolbar"><label className="settings-search"><SettingsIcon name="search"/><span className="sr-only">搜索成员</span><input type="search" placeholder="搜索姓名、用户名或邮箱" value={memberSearch} onChange={event=>setMemberSearch(event.target.value)}/></label><label className="member-status-filter"><span className="sr-only">成员状态</span><select value={statusFilter} onChange={event=>setStatusFilter(event.target.value)}><option value="all">全部状态</option><option value="active">已启用</option><option value="pending">待激活</option><option value="disabled">已停用</option></select></label><span className="member-count">{members.length} 名成员</span></div>
       {loading?<p className="settings-empty" role="status">正在读取成员…</p>:<div className="member-list">{visibleMembers.map(member=><article className="member-row" key={member.id}>
         <div className="member-identity"><span className="member-avatar" aria-hidden="true">{Array.from(member.name)[0]}</span><div><div className="member-name"><strong>{member.name}</strong>{member.id===user.id&&<span className="member-self">你</span>}<SettingsStatus tone={member.status==="active"?"success":member.status==="expired"?"warning":"neutral"}>{member.status?statusNames[member.status]:member.active?"已启用":"已停用"}</SettingsStatus></div><p>{member.username||"尚未设置用户名"}</p><p className="member-email">{member.email||"邮箱待本人填写"}</p>{!!member.invitation_expires&&<p className={member.status==="expired"?"team-invitation-expired":""}>{member.status==="expired"?"已于":"邀请将于"} <time dateTime={new Date(member.invitation_expires*1000).toISOString()}>{expiryText(member.invitation_expires)}</time> 到期</p>}</div></div>
-        <div className="member-permissions"><span className="member-role">{roleNames[member.role]}</span><p>{member.role==="admin"||member.all_projects?"全部事项":member.project_ids.length?`指定事项 · ${member.project_ids.length} 项`:"尚未分配事项"}</p><small>{member.role==="admin"||member.all_projects?"自动包含新增事项":"新增事项需另行授权"}</small></div>
+        <div className="member-permissions"><span className="member-role">{roleNames[member.role]}</span><p>{member.role==="admin"||member.all_projects?"全部事项":member.project_ids.length?`指定事项 · ${member.project_ids.length} 项`:"尚未分配事项"}</p><small>{member.role==="admin"||member.all_projects?"自动包含新增事项":"新增事项需另行授权"}</small><small className="member-tool-access">外部 AI 工具 · {member.remote_allowed?(remoteEnabled?"已允许":"已允许，功能待开启"):"未允许"}</small></div>
         <div className="member-actions"><button type="button" className="admin-button" disabled={busy} onClick={event=>select(member,event.currentTarget)}>调整权限</button>{member.id!==user.id&&<button type="button" disabled={busy} className="settings-text-button" onClick={()=>void reset(member)}>{isInvitation(member)?"重新邀请":"重置登录"}</button>}</div>
       </article>)}{!visibleMembers.length&&<p className="settings-empty">{members.length?"没有符合条件的成员，试试其他关键词或状态。":"尚无成员，可通过邀请链接加入团队。"}</p>}</div>}
       <p className="member-policy-note">停用账号会撤销登录访问，保留已有业务记录和操作历史。人员总库维护、事项创建、全局历史和备份由管理员管理。</p>
@@ -89,9 +92,11 @@ export default function TeamManagement({user,projects,timezone}:{user:TeamUser;p
         {role!=="admin"?<><fieldset className="team-scope-options"><legend>可访问的事项</legend><label className={`team-scope-option${!all?" is-selected":""}`}><input type="radio" name="matter-scope" checked={!all} onChange={()=>setAll(false)}/><span><strong>指定事项</strong><span>仅限勾选项，新增事项需另行授权。</span></span></label><label className={`team-scope-option${all?" is-selected":""}`}><input type="radio" name="matter-scope" checked={all} onChange={()=>setAll(true)}/><span><strong>全部事项</strong><span>自动包含当前和以后新增的事项。</span></span></label></fieldset>
           {all?<p className="admin-help">同时可查看公司动态及共享的人员、对接方资料。</p>:<div className="team-project-picker"><label className="settings-search"><SettingsIcon name="search"/><span className="sr-only">搜索事项</span><input type="search" placeholder="搜索事项名称" value={projectSearch} onChange={e=>setProjectSearch(e.target.value)}/></label><div className="team-selection-toolbar"><span role="status">已选 {ids.length} 项</span><div><button type="button" className="settings-text-button" disabled={!visibleProjects.length} onClick={()=>setIds(current=>[...new Set([...current,...visibleProjects.map(project=>project.id)])])}>{projectSearch.trim()?"选中搜索结果":"选中当前全部"}</button><button type="button" className="settings-text-button" disabled={!ids.length} onClick={()=>setIds([])}>清空</button></div></div><div className="team-project-list">{visibleProjects.map(project=><label className="team-check" key={project.id}><input type="checkbox" checked={ids.includes(project.id)} onChange={e=>setIds(e.target.checked?[...ids,project.id]:ids.filter(id=>id!==project.id))}/>{project.name}</label>)}{!visibleProjects.length&&<p className="admin-help">{projectChoices.length?"没有匹配的事项。":"暂无事项，可在新增后分配。"}</p>}</div><p className="admin-help">批量选择只包含现有事项。跨事项附件需具备其全部关联事项的权限。</p></div>}</>:<p className="admin-help">管理员始终管理全部事项，自动包含以后新增的事项。</p>}
         </section>
-        {selected&&<label className="team-check member-active"><input type="checkbox" checked={active} onChange={e=>setActive(e.target.checked)}/>启用账号</label>}
-        <section className="team-permission-summary" aria-labelledby="team-permission-summary-title"><h3 id="team-permission-summary-title">权限预览</h3>{selected&&!active?<p>保存后账号将停用，不能访问工作台；已有记录和历史保留。</p>:<><dl><div><dt>可操作</dt><dd>{roleHelp[role]}</dd></div><div><dt>可访问</dt><dd>{fullAccess?"全部事项":ids.length?`已选的 ${ids.length} 个事项`:"尚未分配事项"}</dd></div><div><dt>以后新增事项</dt><dd>{fullAccess?"自动获得访问权限":"需要管理员另行授权"}</dd></div></dl>{!fullAccess&&!ids.length&&<p className="admin-help">可以激活账号，但暂时不能查看业务事项。</p>}</>}</section>
-      </fieldset></div><footer className="admin-dialog-footer"><span>{selected?"保存后，该成员的现有登录将失效。":"邀请链接有效期 48 小时，仅可使用一次。"}</span><div className="admin-actions"><button type="button" className="admin-button" disabled={busy} onClick={closeEditor}>取消</button><button className="admin-button admin-primary" type="submit" disabled={busy}>{busy?"正在保存…":selected?"保存权限":"生成邀请链接"}</button></div></footer></form>
+        <section className="settings-form-section member-external-ai"><h3>外部 AI 工具</h3><label className="team-scope-option"><input type="checkbox" checked={remoteAllowed} onChange={e=>setRemoteAllowed(e.target.checked)} aria-describedby="member-external-ai-help"/><span><strong>允许连接外部 AI 工具</strong><span>例如 Codex，通过 MCP 连接工作台。</span></span></label><p id="member-external-ai-help" className="admin-help">{role==="viewer"?"只读成员仅可查询获授权事项，不能提交修改草稿。":"仅可查询获授权事项、提交修改草稿；修改需本人在网站确认后保存。"}本人激活账号后，在“我的账号 → AI 工具连接”生成个人凭据。</p>{!remoteEnabled&&<p className="admin-notice">工作区暂未开启外部工具接入，可以先保存成员权限；管理员在 <Link href="/admin?section=ai#external-ai" target="_blank" rel="noopener noreferrer">AI 设置</Link> 开启后才能连接。</p>}</section>
+        {selected&&isInvitation(selected)&&<p className="admin-help">成员尚未接受邀请，可先调整权限；账号仍需本人完成激活。</p>}
+        {selected&&!isInvitation(selected)&&<label className="team-check member-active"><input type="checkbox" checked={active} onChange={e=>setActive(e.target.checked)}/>启用账号</label>}
+        <section className="team-permission-summary" aria-labelledby="team-permission-summary-title"><h3 id="team-permission-summary-title">权限预览</h3>{selected&&!active&&!isInvitation(selected)?<p>保存后账号将停用，不能访问工作台；已有记录和历史保留。</p>:<><dl><div><dt>可操作</dt><dd>{roleHelp[role]}</dd></div><div><dt>可访问</dt><dd>{fullAccess?"全部事项":ids.length?`已选的 ${ids.length} 个事项`:"尚未分配事项"}</dd></div><div><dt>以后新增事项</dt><dd>{fullAccess?"自动获得访问权限":"需要管理员另行授权"}</dd></div><div><dt>外部 AI 工具</dt><dd>{remoteAllowed?(role==="viewer"?"允许连接 · 仅查询":"允许连接 · 查询和提交草稿"):"未允许连接"}</dd></div></dl>{!fullAccess&&!ids.length&&<p className="admin-help">可以激活账号，但暂时不能查看业务事项。</p>}</>}</section>
+      </fieldset></div><footer className="admin-dialog-footer"><span>{selected?(isInvitation(selected)?"保留原邀请链接及其到期时间。":"保存后，现有登录、工具凭据与草稿将失效。"):"邀请链接有效期 48 小时，仅可使用一次。"}</span><div className="admin-actions"><button type="button" className="admin-button" disabled={busy} onClick={closeEditor}>取消</button><button className="admin-button admin-primary" type="submit" disabled={busy}>{busy?"正在保存…":selected?"保存权限":"生成邀请链接"}</button></div></footer></form>
     </Dialog.Content></Dialog.Portal></Dialog.Root>
   </section>;
 }

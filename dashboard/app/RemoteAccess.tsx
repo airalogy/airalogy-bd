@@ -20,7 +20,8 @@ function display(field: string, value: unknown) {
 }
 const when = (value: number) => new Date(value * 1000).toLocaleString("zh-CN");
 
-export default function RemoteAccess({ user, manage = false, endpoint = "" }: { user: TeamUser; manage?: boolean; endpoint?: string }) {
+export default function RemoteAccess({ user, mode, endpoint = "" }: { user: TeamUser; mode: "settings" | "connection" | "drafts"; endpoint?: string }) {
+  const manage = mode === "settings";
   const [status, setStatus] = useState<Status | null>(null), [drafts, setDrafts] = useState<Draft[]>([]);
   const [error, setError] = useState(""), [notice, setNotice] = useState(""), [busy, setBusy] = useState(false);
   const [secret, setSecret] = useState(""), [label, setLabel] = useState("我的 Codex"), [days, setDays] = useState(7), [canDraft, setCanDraft] = useState(false);
@@ -35,14 +36,19 @@ export default function RemoteAccess({ user, manage = false, endpoint = "" }: { 
   }, [user.csrf]);
   const load = useCallback(async () => {
     const latest = await request<Status>(manage ? "settings" : "status");
-    const pending = !manage && latest.enabled && latest.granted ? (await request<{ drafts: Draft[] }>("drafts")).drafts : [];
+    const pending = mode === "drafts" && latest.enabled && latest.granted ? (await request<{ drafts: Draft[] }>("drafts")).drafts : [];
     return { latest, pending };
-  }, [manage, request]);
+  }, [manage, mode, request]);
   const apply = useCallback(({ latest, pending }: { latest: Status; pending: Draft[] }) => {
     setStatus(latest); setDrafts(pending); setChecked({});
   }, []);
   async function reload() { apply(await load()); }
   useEffect(() => { void load().then(apply).catch(err => setError((err as Error).message)); }, [load, apply]);
+  useEffect(() => {
+    if (mode !== "drafts" || !drafts.length) return;
+    const anchor = window.location.hash.slice(1);
+    if (drafts.some(draft => anchor === `draft-${draft.id}`)) document.getElementById(anchor)?.scrollIntoView({ block: "start" });
+  }, [mode, drafts]);
   async function act(action: string, input: Record<string, unknown>, message: string) {
     setBusy(true); setError(""); setNotice("");
     try {
@@ -52,25 +58,20 @@ export default function RemoteAccess({ user, manage = false, endpoint = "" }: { 
     } catch (err) { setError((err as Error).message); }
     finally { setBusy(false); }
   }
-  return <section className="panel admin-center-panel remote-access">
-    <SettingsPanelHeader title={manage?"远程接入":"我的远程接入"} description="远程助手可查询获授权事项并提交草稿，核对确认后才会正式保存。"/>
+  return <section id={manage?"external-ai":mode==="connection"?"ai-tools":undefined} className="panel admin-center-panel remote-access">
+    <SettingsPanelHeader title={manage?"外部 AI 工具":mode==="connection"?"AI 工具连接":"修改草稿"} description={manage?"允许成员通过 Codex 等外部工具访问工作台，与内置 AI 的模型配置和费用独立。":mode==="connection"?"连接自己的 AI 工具，查询获授权事项或提交修改草稿。":"核对外部 AI 工具提交的内容，由你确认后正式保存。"} actions={mode==="connection"?<Link className="admin-button" href="/remote">查看待确认修改</Link>:undefined}/>
     {error && <p className="admin-alert" role="alert">{error}</p>}
     {notice && <p className="admin-notice" role="status">{notice}</p>}
     {!status ? <p>正在读取接入状态…</p> : <>
-      <div className="remote-state"><div><SettingsStatus tone={status.enabled?"success":"neutral"}>{status.enabled?"已开启":"已关闭"}</SettingsStatus><p className="admin-help">{manage?"按账号授权，成员使用自己生成的接入凭据。":"接入权限与账号的事项访问范围保持一致。"}</p></div>{manage&&<button className="admin-button" disabled={busy} onClick={()=>void act("configure",{enabled:!status.enabled,revision:status.revision},status.enabled?"已关闭，旧凭据和草稿已失效。":"已开启。请为需要使用的成员授权。")}>{status.enabled?"关闭远程接入并撤销凭据":"开启远程接入"}</button>}</div>
-      {manage ? <>
-        <p className="admin-help">按账号授权。关闭接入将撤销全部凭据和待确认草稿；重新开启后需重新生成凭据。</p>
-        <h3>成员授权</h3>
-        <ul className="remote-items">{status.members?.map(member => <li key={member.id}><span>{member.name} · {{ admin: "管理员", editor: "编辑成员", viewer: "只读成员" }[member.role]}{!member.active && " · 未启用"}</span>
-          <button className="admin-button" disabled={busy || (!member.active && !member.granted)} onClick={() => void act("grant", { memberId: member.id, allowed: !member.granted }, member.granted ? "已取消授权，该成员的凭据与草稿已失效。" : "成员可登录后自行生成凭据。")}>{member.granted ? "取消远程授权" : "允许远程接入"}</button></li>)}</ul>
-        <p><Link className="admin-button" href="/remote">管理我自己的凭据和草稿</Link></p>
-      </> : <>
-        <p className="admin-help">返回给 Codex 的业务资料会进入你所使用的模型上下文。请按公司要求使用模型；这里不自动读取附件和联系方式。Codex 的模型费用由对应账号承担。</p>
-        {!status.enabled || !status.granted ? <p>请联系管理员开启功能并授权你的账号。</p> : <>
+      {mode !== "drafts" && <div className="remote-state"><div><SettingsStatus tone={status.enabled?"success":"neutral"}>{status.enabled?"工作区已开启":"工作区未开启"}</SettingsStatus><p className="admin-help">{manage?"成员权限统一在“成员与权限”中分配。":status.granted?"你的账号已获授权，访问范围与事项权限一致。":"你的账号尚未获授权，请联系管理员调整成员权限。"}</p></div>{manage&&<button className="admin-button" disabled={busy} onClick={()=>{if(status.enabled&&!window.confirm("关闭外部 AI 工具接入？全部个人凭据和待确认草稿将失效，成员授权设置保留。"))return;void act("configure",{enabled:!status.enabled,revision:status.revision},status.enabled?"已关闭，旧凭据和草稿已失效。":"已开启，已获授权的成员可自行连接工具。");}}>{status.enabled?"关闭外部工具接入":"开启外部工具接入"}</button>}</div>}
+      {manage && <p className="admin-help">在 <Link href="/admin?section=members">成员与权限</Link> 邀请或编辑成员时分配权限。关闭全局开关会撤销全部凭据和草稿，保留成员授权；重新开启后，由成员生成新凭据。</p>}
+      {mode === "connection" && <>
+        <p className="admin-help">返回给外部工具的业务资料会进入你所使用的模型上下文，请按公司要求选择模型。这里不自动读取附件和联系方式，模型费用由对应工具账号承担。</p>
+        {!status.enabled || !status.granted ? <p className="settings-empty">{!status.enabled?"工作区尚未开启外部工具接入。":"请联系管理员允许你的账号连接外部 AI 工具。"}</p> : <>
           <form onSubmit={event => { event.preventDefault(); void act("issue", { label, days, canDraft }, "凭据已生成，仅显示这一次。请保存在自己的电脑中。"); }}>
             <div className="remote-form"><label>凭据名称<input required maxLength={80} value={label} onChange={e => setLabel(e.target.value)} /></label>
               <label>有效天数<input type="number" min={1} max={30} required value={days} onChange={e => setDays(Number(e.target.value))} /></label>
-              {user.role !== "viewer" && <label><input type="checkbox" checked={canDraft} onChange={e => setCanDraft(e.target.checked)} />允许提交草稿（仍需本人确认）</label>}</div>
+              {user.role !== "viewer" && <label className="remote-draft-option"><input type="checkbox" checked={canDraft} onChange={e => setCanDraft(e.target.checked)} />允许提交草稿（仍需本人确认）</label>}</div>
             <button className="admin-button" disabled={busy || !!secret}>生成个人凭据</button>
           </form>
           {secret && <div className="admin-notice"><p>仅本次显示，请勿发送到聊天、提交到代码仓库或与他人共用。</p>
@@ -83,14 +84,17 @@ export default function RemoteAccess({ user, manage = false, endpoint = "" }: { 
           </details>
         </>}
       </>}
+      {mode !== "drafts" && <>
       <h3>{manage ? "全部个人凭据" : "我的凭据"}</h3>
       {!status.tokens.length && <p className="settings-empty">暂无凭据。</p>}
       <ul className="remote-items">{status.tokens.map(token => <li key={token.id}><div><strong>{token.label}</strong>{manage && <span> · {status.members?.find(member => member.id === token.owner)?.name || "成员"}</span>}<p>{token.can_draft ? "查询和提交草稿" : "仅查询"} · {when(token.expires)} 到期</p></div>
         <button className="admin-button" disabled={busy} onClick={() => void act("revoke", { tokenId: token.id }, "凭据及其待确认草稿已撤销。")}>撤销</button></li>)}</ul>
-      {!manage && <>
-        <h3>我的待确认草稿</h3>
+      </>}
+      {mode === "drafts" && <>
+        <p className="admin-help">个人连接与凭据在 <Link href="/account#ai-tools">我的账号 → AI 工具连接</Link> 管理。</p>
+        {(!status.enabled || !status.granted) && <p className="admin-notice">{!status.enabled?"工作区尚未开启外部工具接入。":"你的账号尚未获授权使用外部工具。"}</p>}
         <button className="admin-button" disabled={busy} onClick={() => { setError(""); void reload().catch(err => setError((err as Error).message)); }}>刷新草稿</button>
-        {!drafts.length && <p>暂无可确认的草稿。草稿最长保留 24 小时；权限变化、凭据失效或关闭功能后不可确认。</p>}
+        {!drafts.length && <p>暂无可确认的修改。外部工具提交草稿后在这里核对；草稿最长保留 24 小时，权限变化、凭据失效或关闭功能会使草稿失效。</p>}
         {drafts.map(draft => <article key={draft.id} id={`draft-${draft.id}`} className="ai-draft">
           <h3>{draft.counterparty} · {draft.matterName} · {operations[draft.operation]}</h3>
           {draft.progressTitle && <p>进展：{draft.progressDate} · {draft.progressTitle}</p>}<p>有效至 {when(draft.expires)}</p>

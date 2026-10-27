@@ -1338,15 +1338,9 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
       : scopeLabel;
 
   return (
-    <main className="page-shell">
-      <header className="topbar">
-        <a className="brand" href="#top" aria-label="返回看板顶部">
-          <BrandLogo />
-          <span>
-            <strong>{data.workspace.short_name}</strong>
-            <small>{data.workspace.workspace_title}</small>
-          </span>
-        </a>
+    <main className="page-shell workspace-page">
+      <header className="workspace-toolbar">
+        {readOnly?<a className="brand" href="#top" aria-label="返回历史看板顶部"><BrandLogo/><span><strong>{data.workspace.short_name}</strong><small>历史资料</small></span></a>:<div className="workspace-context"><span>业务工作台</span><p>{data.workspace.description}</p></div>}
         <div className="topbar-actions">
           <div className="data-freshness">
             <span className="live-dot" aria-hidden="true" />
@@ -1383,7 +1377,6 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
         </button>
         {!readOnly && canAdmin && <button type="button" aria-pressed={page === "admin"} onClick={() => setPage("admin")}>资料管理</button>}
         {!readOnly && canAdmin && <button type="button" aria-pressed={page === "history"} onClick={() => {setHistoryTarget(null);setPage("history");}}>修改历史</button>}
-        {!readOnly && !data.access && <Link href="/admin" className="admin-button">管理中心</Link>}
         {!readOnly && <button type="button" onClick={()=>openFiles()}>事项资料</button>}{readOnly && <button type="button" onClick={()=>openFiles()}>历史资料</button>}
         {!readOnly && <button type="button" aria-pressed={page === "ai"} onClick={() => {setAiScope("");setPage("ai");}}>AI 助手</button>}
       </nav>

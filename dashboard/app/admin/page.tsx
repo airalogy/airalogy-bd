@@ -17,7 +17,8 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   const data = await loadDashboardData().catch(() => null);
   if (team && data?.access && data.access.role !== "admin") redirect("/");
   const { section } = await searchParams;
+  if (section === "remote") redirect("/admin?section=ai#external-ai");
   const timezone = data?.workspace.timezone || "Asia/Shanghai";
   return <AdminCenter user={session?.user || null} projects={data?.projects.map(({ id, name }) => ({ id, name })) || []}
-    timezone={timezone} dates={initialDates(timezone)} unavailable={!data} initialSection={section} />;
+    workspace={data?.workspace} timezone={timezone} dates={initialDates(timezone)} unavailable={!data} initialSection={section} />;
 }

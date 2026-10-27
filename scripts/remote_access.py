@@ -124,10 +124,7 @@ class RemoteAccess:
             if type(request.get("allowed")) is not bool or not self.db.execute("SELECT 1 FROM users WHERE id=?", (identity,)).fetchone():
                 raise AuthError("成员或授权设置无效。", "invalid")
             with self.db:
-                if request["allowed"]: self.db.execute("INSERT OR IGNORE INTO remote_grants VALUES(?)", (identity,))
-                else:
-                    self.db.execute("DELETE FROM remote_grants WHERE owner=?", (identity,))
-                    self.invalidate("owner=?", (identity,))
+                self.accounts.set_remote_allowed(identity, request["allowed"])
             self.accounts.audit(actor, "remote.grant" if request["allowed"] else "remote.ungrant", identity)
             return self.status(actor, True)
         if op == "issue":

@@ -100,7 +100,14 @@ test("server HTTP enforces invitations, scope, roles, CSRF, concurrent saves, do
     assert.equal((await request("/api/auth",{action:"auth_accept",token:invitation.token,password:"short"})).status,400);
     assert.equal((await request("/api/auth",{action:"auth_accept",token:invitation.token,username:"不合规用户名",password:"member secure password"})).status,400);
     const admin=await join(invitation.token);
-    assert.match(await (await request("/account",null,admin)).text(),/我的账号/);
+    const accountHtml=await (await request("/account",null,admin)).text();
+    assert.match(accountHtml,/我的账号/);assert.match(accountHtml,/AI 工具连接/);
+    assert.ok(accountHtml.indexOf('class="app-header"')<accountHtml.indexOf('<main'));
+    const draftsHtml=await (await request("/remote",null,admin)).text();
+    assert.match(draftsHtml,/待确认修改/);assert.doesNotMatch(draftsHtml,/远程接入与草稿/);
+    const oldRemotePage=await request("/admin?section=remote",null,admin);
+    assert.equal(new URL(oldRemotePage.url).searchParams.get('section'),'ai');
+    assert.match(await oldRemotePage.text(),/外部 AI 工具/);
     const aliasLogin=await request("/api/auth",{action:"auth_login",identifier:" ADMIN ",password:"member secure password"},null,{"X-Real-IP":"192.0.2.200"});
     assert.equal((await okay(aliasLogin)).step,"verify");
     const aliasPending={cookie:cookieJar(aliasLogin),user:{csrf:""},ip:"192.0.2.200"};
@@ -224,7 +231,7 @@ test("server HTTP enforces invitations, scope, roles, CSRF, concurrent saves, do
     const members=await okay(await request("/api/auth",{action:"team_list"},admin));
     const fresh=members.users.find(x=>x.id===viewer.user.id);
     const pendingViewer=await passwordStep(viewer);
-    await okay(await request("/api/auth",{action:"team_update",...fresh,active:false},admin));
+    await okay(await request("/api/auth",{action:"team_update",...fresh,remote_allowed_before:fresh.remote_allowed,active:false},admin));
     assert.equal((await request("/api/workspace?action=workspace",null,viewer)).status,401);
     assert.equal((await request(download,null,viewer)).status,401);
     assert.equal((await request("/api/auth",{action:"auth_verify",code:otp(viewer.secret)},pendingViewer)).status,401);
@@ -232,7 +239,7 @@ test("server HTTP enforces invitations, scope, roles, CSRF, concurrent saves, do
     assert.equal((await request("/api/auth",{action:"auth_login",identifier:viewer.user.username,password:"member secure password"})).status,401);
     const pendingPermissions=await passwordStep(editor);
     const freshEditor=(await okay(await request("/api/auth",{action:"team_list"},admin))).users.find(x=>x.id===editor.user.id);
-    await okay(await request("/api/auth",{action:"team_update",...freshEditor,active:true},admin));
+    await okay(await request("/api/auth",{action:"team_update",...freshEditor,remote_allowed_before:freshEditor.remote_allowed,active:true},admin));
     assert.equal((await request("/api/auth",{action:"auth_verify",code:otp(editor.secret)},pendingPermissions)).status,401);
     assert.equal((await request("/api/workspace?action=workspace",null,editor)).status,401);
     const pendingEditor=await passwordStep(editor);

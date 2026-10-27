@@ -37,7 +37,34 @@ export async function exerciseRemote({ directory, request, okay, admin, editor, 
     assert.equal((await web("grant", { memberId: member.user.id, allowed: true }, member)).status, 403);
   }
   assert.equal((await web("configure", { enabled: true, revision: "initial" }, admin, { "X-BD-CSRF": "wrong" })).status, 403);
+  // Invitation grants are saved while the global feature is off; no credential is issued for the member.
+  const integratedInvite = await okay(await request("/api/auth", { action: "team_invite", name: "邀请工具成员", email: "invited-tool@example.invalid", role: "editor", project_ids: [matter], remote_allowed: true }, admin));
+  let roster = await okay(await request("/api/auth", { action: "team_list" }, admin));
+  assert.equal(roster.remote_enabled, false);
+  const invited = roster.users.find(member => member.email === "invited-tool@example.invalid");
+  assert.equal(invited.remote_allowed, true); assert.equal(invited.status, "invited");
+  assert.equal((await status()).tokens.filter(token => token.owner === invited.id).length, 0);
+  assert.equal((await request("/api/auth", { action: "team_update", ...invited, active: false, remote_allowed_before: true }, editor)).status, 403);
+  await okay(await request("/api/auth", { action: "team_update", ...invited, active: false, remote_allowed_before: true }, admin));
+  const invitedMember = await join(integratedInvite.token);
+  assert.equal((await web("issue", { label: "disabled", days: 7, canDraft: true }, invitedMember)).status, 503);
   await configure(true);
+  const integratedToken = await issue(invitedMember);
+  assert.deepEqual((await call("search_matters", {}, integratedToken.token)).matters.map(m => m.id), [matter]);
+  const integratedDraft = await newDraft(integratedToken.token);
+  roster = await okay(await request("/api/auth", { action: "team_list" }, admin));
+  const integratedCurrent = roster.users.find(member => member.id === invited.id);
+  await okay(await request("/api/auth", { action: "team_update", ...integratedCurrent, active: true, remote_allowed: false, remote_allowed_before: true }, admin));
+  assert.equal((await rpc("tools/list", {}, integratedToken.token)).status, 401);
+  assert.equal((await request("/api/workspace?action=workspace", null, invitedMember)).status, 401);
+  const integratedDB = new DatabaseSync(path.join(directory, ".bd-auth/accounts.sqlite3"));
+  assert.equal(integratedDB.prepare("SELECT COUNT(*) n FROM remote_drafts WHERE id=?").get(integratedDraft.draft.draftId).n, 0);
+  integratedDB.close();
+  const viewerInvitation = await okay(await request("/api/auth", { action: "team_invite", name: "只读工具成员", email: "viewer-tool@example.invalid", role: "viewer", project_ids: [matter], remote_allowed: true }, admin));
+  const toolViewer = await join(viewerInvitation.token);
+  assert.equal((await web("issue", { label: "invalid writer", days: 7, canDraft: true }, toolViewer)).status, 422);
+  const toolViewerToken = await issue(toolViewer, false);
+  assert.deepEqual((await (await rpc("tools/list", {}, toolViewerToken.token)).json()).result.tools.map(t => t.name), ["search_matters", "read_matter", "read_progress"]);
   assert.equal((await web("issue", { label: "Unapproved", canDraft: true }, editor)).status, 403);
   for (const member of [admin, editor, viewer]) await okay(await web("grant", { memberId: member.user.id, allowed: true }));
   assert.equal((await web("issue", { label: "Too long", days: 31 }, editor)).status, 422);
