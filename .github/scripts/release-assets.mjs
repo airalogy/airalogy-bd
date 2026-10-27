@@ -19,8 +19,10 @@ export function deploymentFiles(root, record) {
   return {
     'compose.yaml': readFileSync(path.join(root, 'deploy/compose.yaml'), 'utf8'),
     '.env.example': env,
+    'bdctl': readFileSync(path.join(root, 'deploy/bdctl'), 'utf8'),
+    'network_preflight.py': readFileSync(path.join(root, 'deploy/network_preflight.py'), 'utf8'),
     'image.json': JSON.stringify(record, null, 2) + '\n',
-    'README.md': `# Airalogy BD ${version}\n\n镜像版本：\`${record.tag}\`，配置默认锁定测试通过的镜像摘要。支持 Linux amd64 / arm64。\n\n安装 Docker Engine 和 Compose v2，复制 \`.env.example\` 为 \`.env\`，将权限设为 600。设置 BD_PUBLIC_URL，并用 \`openssl rand -hex 32\` 生成一次 BETTER_AUTH_SECRET，独立妥善保管。\n\n\`\`\`sh\ndocker compose pull\ndocker compose run --rm bd init --id company-id --name 公司名称\ndocker compose run --rm bd account-init --email admin@example.com --name 管理员姓名\ndocker compose up -d\n\`\`\`\n\n已有实例只更新镜像配置；更新前备份资料并记录旧镜像摘要，不重复初始化管理员。单实例运行，用 HTTPS 反向代理接入仅绑定本机的 3100 端口。禁止删除持久卷；程序回退与数据恢复分别处理。配置密钥和业务资料不在此安装包内。\n\n完整部署、备份及恢复说明：https://github.com/airalogy/airalogy-bd/blob/v${version}/docs/server-deployment.md\n`,
+    'README.md': `# Airalogy BD ${version}\n\n镜像版本：\`${record.tag}\`，配置默认锁定测试通过的镜像摘要。支持 Linux amd64 / arm64。\n\n安装 Docker Engine、Compose v2、Python 3.10+ 和 iproute2，复制 \`.env.example\` 为 \`.env\`，将权限设为 600。设置 BD_PUBLIC_URL，并用 \`openssl rand -hex 32\` 生成一次 BETTER_AUTH_SECRET，独立妥善保管。设置并核对 BD_DOCKER_SUBNET 和云/VPC/VPN 网络配置；已有实例保留实际安全网段。网段冲突或无法检查时拒绝部署。\n\n\`\`\`sh\n./bdctl preflight\n./bdctl pull\n./bdctl run --rm bd init --id company-id --name 公司名称\n./bdctl run --rm bd account-init --email admin@example.com --name 管理员姓名\n./bdctl up -d\n\`\`\`\n\n已有实例只更新镜像配置；更新前备份资料并记录旧镜像摘要，不重复初始化管理员。单实例运行，用 HTTPS 反向代理接入仅绑定本机的 3100 端口。禁止删除持久卷；程序回退与数据恢复分别处理。配置密钥和业务资料不在此安装包内。\n\n完整部署、备份及恢复说明：https://github.com/airalogy/airalogy-bd/blob/v${version}/docs/server-deployment.md\n`,
   };
 }
 export function verifyExistingAsset(existing, digest) {
@@ -39,8 +41,8 @@ export function prepareDeploymentAssets(root, directory, record) {
   execFileSync('python3', ['-c', `import gzip,io,pathlib,sys,tarfile
 root=pathlib.Path(sys.argv[1])
 with open(sys.argv[2],'wb') as target, gzip.GzipFile(filename='',mode='wb',fileobj=target,mtime=0) as gz, tarfile.open(fileobj=gz,mode='w') as archive:
- for name in sorted(['README.md','compose.yaml','.env.example','image.json']):
-  p=root/name; data=p.read_bytes(); info=tarfile.TarInfo(p.name); info.size=len(data); info.mode=0o644; info.mtime=0; archive.addfile(info,io.BytesIO(data))
+ for name in sorted(['README.md','compose.yaml','.env.example','image.json','bdctl','network_preflight.py']):
+  p=root/name; data=p.read_bytes(); info=tarfile.TarInfo(p.name); info.size=len(data); info.mode=0o755 if name=='bdctl' else 0o644; info.mtime=0; archive.addfile(info,io.BytesIO(data))
 `, staging, path.join(directory, bundle)]);
   const digest = file => digestFile(directory, file);
   const assets = [bundle, 'image.json'];
