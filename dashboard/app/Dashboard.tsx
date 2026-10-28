@@ -1032,7 +1032,6 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
   const [selectedProjectValue, setSelectedProject] = useState<Project | null>(null);
   const selectedProject = data.projects.find(project => project.id === selectedProjectValue?.id) || null;
   const [selectedRecord, setSelectedRecord] = useState<RecordSelection | null>(null);
-  const [keyEventsOnly, setKeyEventsOnly] = useState(false);
   const [keyPeopleOnly, setKeyPeopleOnly] = useState(true);
   const [peopleSort, setPeopleSort] = useState<PeopleSort>("recent");
 
@@ -1050,7 +1049,6 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
     clearFacetFilters();
     setProjectSort("recent");
     setPeopleSort("recent");
-    setKeyEventsOnly(false);
     setSelectedProject(null);
   };
 
@@ -1220,10 +1218,6 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
     relationshipFilter === "all" &&
     projectQuery.trim().length === 0;
   const allEvents = collectActivityEvents(filteredProjects, includeCompanyEvents ? data.company_events : []).sort(eventSort);
-
-  const recentEvents = (keyEventsOnly
-    ? allEvents.filter((event) => event.importance === "key")
-    : allEvents).slice(0, 6);
 
   const scopedProjectIds = new Set(filteredProjects.map((project) => project.id));
   const scopedPeople = data.people
@@ -1488,56 +1482,12 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
           </div>
         </section>
 
-        <section className="panel events-panel" id="events" aria-labelledby="events-title">
-          <div className="section-heading">
-            <div>
-              <div className="eyebrow">最近事件</div>
-              <h2 id="events-title">最近进展</h2>
-            </div>
-            <div className="event-panel-actions">
-              <span role="status">最近 {recentEvents.length} 条</span>
-              <button
-                type="button"
-                className="history-trigger event-key-filter"
-                aria-pressed={keyEventsOnly}
-                aria-controls="recent-progress-list"
-                onClick={() => setKeyEventsOnly((current) => !current)}
-              >
-                仅看关键
-              </button>
-              <EventHistoryDialog
-                events={allEvents}
-                workspace={data.workspace}
-                scopeLabel={scopeLabel}
-                referenceDate={data.updated_at ?? ""}
-                onOpenRecord={(event) =>
-                  setSelectedRecord({ event, sourceLabel: event.sourceLabel })
-                }
-              />
-            </div>
-          </div>
-          <div className="event-list" id="recent-progress-list">
-            {recentEvents.length > 0 ? (
-              recentEvents.map((event) => (
-                <EventItem
-                  key={event.activityId}
-                  event={event}
-                  workspace={data.workspace}
-                  sourceLabel={event.sourceLabel}
-                  onOpenRecord={() =>
-                    setSelectedRecord({ event, sourceLabel: event.sourceLabel })
-                  }
-                />
-              ))
-            ) : (
-              <div className="panel-empty-state">{keyEventsOnly ? "当前筛选下暂无关键进展，可关闭“仅看关键”查看普通进展。" : "当前筛选下暂无进展。"}</div>
-            )}
-          </div>
-        </section>
       </div>
 
       <OverviewActivity key={JSON.stringify([viewMode,projectScope,stageFilter,priorityFilter,followUpFilter,relationshipFilter,projectQuery])}
         events={allEvents} timezone={data.workspace.timezone} includeCompanyEvents={includeCompanyEvents} scopeLabel={scopeLabel}
+        historyAction={<EventHistoryDialog events={allEvents} workspace={data.workspace} scopeLabel={scopeLabel}
+          referenceDate={data.updated_at ?? ""} onOpenRecord={event => setSelectedRecord({event, sourceLabel:event.sourceLabel})} />}
         renderEvent={event => <EventItem event={event} workspace={data.workspace} sourceLabel={event.sourceLabel}
           onOpenRecord={() => setSelectedRecord({event,sourceLabel:event.sourceLabel})}
           actions={!event.related_document ? <button type="button" className="event-secondary-trigger" onClick={() => setSelectedRecord({event,sourceLabel:event.sourceLabel})}>查看进展</button> : undefined} />} />

@@ -8,6 +8,20 @@ export type FileFilter = "all" | AgreementType | keyof typeof fileCategories;
 export const fileStatuses = { unspecified: "未标注", draft: "草案", final: "定稿", signed: "签署件" };
 export const fileUses = { meeting: "会议使用", sent: "实际发送", received: "对方提供" };
 export type FileVersion = { id: string; filename: string; sha256: string; size: number; status: keyof typeof fileStatuses; created_at: string; archive_path: string; note: string; agreement_date?: string; signing_completed_date?: string };
+export type AgreementDateValues = Pick<FileVersion, "agreement_date" | "signing_completed_date">;
+export type SigningDateMode = "unset" | "same" | "custom";
+export function signingDateMode(value: AgreementDateValues): SigningDateMode {
+  if (!value.signing_completed_date) return "unset";
+  return value.agreement_date === value.signing_completed_date ? "same" : "custom";
+}
+export function chooseSigningDate(value: AgreementDateValues, mode: SigningDateMode): AgreementDateValues {
+  if (mode === "same" && !value.agreement_date) throw new Error("请先填写协议载明日期。");
+  return {...value, signing_completed_date: mode === "unset" ? "" : mode === "same" ? value.agreement_date : value.signing_completed_date};
+}
+// Copying a date is a shortcut, never a persistent link between two facts.
+export function changeAgreementDate(value: AgreementDateValues, date: string): AgreementDateValues {
+  return {...value, agreement_date: date};
+}
 export type FileUsage = { id: string; version_id: string; kind: keyof typeof fileUses; date: string; project_id: string; event_id: string; people: string[]; channel: string; note: string; archive_path?: string };
 export type LibraryFile = { id: string; title: string; organization: string; category: keyof typeof fileCategories; agreement_type?: keyof typeof agreementTypes; project_ids: string[]; home_counterparty_id: string; notes: string; archived: boolean; current_version: string; versions: FileVersion[]; records: FileUsage[]; revision?: string };
 export type FileListing = { files: LibraryFile[]; directory_pattern: string; workspace_directory: string; max_bytes: number };

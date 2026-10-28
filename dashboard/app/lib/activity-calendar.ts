@@ -36,3 +36,12 @@ export function activityCalendar(events: {date: string}[], year: number) {
   return [...counts].sort(([a], [b]) => a.localeCompare(b))
     .map(([date, count]) => ({ date, count, level: Math.min(count, 4) }));
 }
+
+// The calendar and progress pane share the same authorized event collection.
+// A date shows every matching event; the unselected view shows six recent events.
+export function activityFeed(events: ScopedActivityEvent[], {year, date = "", keyOnly = false}: {year: number; date?: string; keyOnly?: boolean}) {
+  const filtered = events.filter(event => event.date.startsWith(`${year}-`)
+    && (!date || event.date === date) && (!keyOnly || event.importance === "key"))
+    .sort((a, b) => b.date.localeCompare(a.date));
+  return date ? filtered : filtered.slice(0, 6);
+}

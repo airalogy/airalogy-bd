@@ -12,7 +12,7 @@ const { filterCompanyEvents, companyCategoryLabel } = await import(
 );
 const calendarSource = await readFile(new URL("../dashboard/app/lib/activity-calendar.ts", import.meta.url), "utf8");
 const calendarCode = ts.transpileModule(calendarSource, {compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
-const {activityCalendar, activityYears, collectActivityEvents} = await import("data:text/javascript;base64," + Buffer.from(calendarCode).toString("base64"));
+const {activityCalendar, activityYears, collectActivityEvents, activityFeed} = await import("data:text/javascript;base64," + Buffer.from(calendarCode).toString("base64"));
 const events = [
   { id: "early", date: "2026-07-01", title: "首次路演", summary: "融资交流", category: "fundraising", participants: ["林青"], organizers: ["创新中心"] },
   { id: "later", date: "2026-09-22", title: "Innovation Expo", summary: "参与展示", category: "industry-recognition", participants: ["陈宁"], related_document: { markdown: "入选创新榜单，现场讨论生命科学" } },
@@ -88,4 +88,18 @@ test("unified activity calendar counts all visible matter and company events onc
   assert.equal(activityCalendar(scoped,2026).find(day => day.count).count,1);
   assert.deepEqual([projectA,projectB,company],before);
   assert.deepEqual(collectActivityEvents([],[]),[]);
+});
+
+test("one progress feed switches between recent and all selected-day events within its year and scope", () => {
+  const daily = Array.from({length: 8}, (_, i) => ({id: String(i), date: "2026-10-27", importance: i === 0 ? "key" : "normal"}));
+  const records = [{id:"other-year",date:"2025-12-31",importance:"key"}, ...daily, {id:"older",date:"2026-09-23"}];
+  const before = structuredClone(records);
+  assert.equal(activityFeed(records, {year:2026}).length, 6);
+  assert.ok(activityFeed(records, {year:2026}).every(event => event.date === "2026-10-27"));
+  assert.equal(activityFeed(records, {year:2026, date:"2026-10-27"}).length, 8);
+  assert.deepEqual(activityFeed(records, {year:2026, date:"2026-10-27", keyOnly:true}).map(event => event.id), ["0"]);
+  assert.deepEqual(activityFeed(records, {year:2025}).map(event => event.id), ["other-year"]);
+  assert.deepEqual(activityFeed(records, {year:2025, date:"2026-10-27"}), []);
+  assert.deepEqual(activityFeed([], {year:2026}), []);
+  assert.deepEqual(records, before);
 });

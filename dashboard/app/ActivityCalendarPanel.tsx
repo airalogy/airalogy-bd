@@ -14,10 +14,10 @@ const labels = {
   legend: { less: "少", more: "多" },
 };
 
-export default function ActivityCalendarPanel({ events, years, timezone, selectedDate, onSelectDate, onClearDate, description = "按实际发生日期统计，点击有动态的日期查看记录。", scopeLabel = "公司动态", renderDay }: {
+export default function ActivityCalendarPanel({ events, years, timezone, selectedDate, onSelectDate, onClearDate, description = "按实际发生日期统计，点击有动态的日期查看记录。", scopeLabel = "公司动态", renderDetails }: {
   events: {date: string}[]; description?: string; scopeLabel?: string; years: number[]; timezone: string; selectedDate: string;
   onSelectDate: (date: string) => void; onClearDate: () => void;
-  renderDay?: (date: string) => ReactNode;
+  renderDetails?: (selection: {year: number; date: string}) => ReactNode;
 }) {
   const titleId = useId();
   const chartRef = useRef<HTMLDivElement>(null);
@@ -40,16 +40,17 @@ export default function ActivityCalendarPanel({ events, years, timezone, selecte
   const data = year ? activityCalendar(events, year) : [];
   const total = data.reduce((sum, day) => sum + day.count, 0);
   const activeDays = data.filter(day => day.count > 0).length;
-  const latestDate = data.findLast(day => day.count > 0)?.date ?? "";
-  const displayDate = renderDay ? (data.some(day => day.date === selectedDate && day.count) ? selectedDate : latestDate) : selectedDate;
+  const displayDate = data.some(day => day.date === selectedDate && day.count) ? selectedDate : "";
+  const heading = <div className="activity-calendar-heading"><div><h2 id={titleId}>动态日历</h2><p>{description}</p></div>
+      {year && <label><span className="sr-only">日历年份</span><select value={year} onChange={event => { setChosenYear(Number(event.target.value)); onClearDate(); }}>{options.map(value => <option key={value} value={value}>{value} 年</option>)}</select></label>}
+    </div>;
 
   return <section className="activity-calendar" aria-labelledby={titleId}>
-    <div className="activity-calendar-heading"><div><h2 id={titleId}>动态日历</h2><p>{description}</p></div>
-      {year && <label><span className="sr-only">日历年份</span><select value={year} onChange={event => { setChosenYear(Number(event.target.value)); onClearDate(); }}>{options.map(value => <option key={value} value={value}>{value} 年</option>)}</select></label>}
-    </div>
+
     {year ? <>
       <div className="activity-calendar-content">
       <div className="activity-calendar-main">
+      {heading}
       <div ref={chartRef} className="activity-calendar-chart" role="region" aria-label={`${year} 年${scopeLabel}日历，可横向滚动`} tabIndex={0}>
         <ActivityCalendar data={data} colorScheme="light" theme={{ light: ["#edf1f5", "#b9dbee", "#78b6db", "#3d87b7", "#15557f"] }}
           labels={labels} fontSize={12} blockSize={blockSize} blockMargin={3} blockRadius={2} weekStart={1} showWeekdayLabels={["mon", "wed", "fri"]} showTotalCount={false}
@@ -64,21 +65,16 @@ export default function ActivityCalendarPanel({ events, years, timezone, selecte
             style: { ...block.props.style, ...(displayDate === day.date ? { stroke: "#102d46", strokeWidth: 2 } : {}) },
           })} />
       </div>
-      <div className="activity-calendar-status"><span>{scopeLabel}</span>{renderDay && <span><strong>{total}</strong> 条动态 · <strong>{activeDays}</strong> 个活跃日</span>}</div>
+      <div className="activity-calendar-status"><span>{scopeLabel}</span>{renderDetails && <span><strong>{total}</strong> 条动态 · <strong>{activeDays}</strong> 个活跃日</span>}</div>
       </div>
-      <aside className="activity-calendar-detail" aria-label={renderDay ? "当天动态" : "年度动态概况"}>
-        {renderDay ? <>
-          <div className="activity-calendar-detail-heading"><h3>{displayDate ? formatDay(displayDate) : `${year} 年`}</h3>
-            {displayDate === latestDate && displayDate ? <span>最近动态</span> : displayDate && <button type="button" className="settings-text-button" onClick={onClearDate}>回到最近</button>}
-          </div>
-          {displayDate ? renderDay(displayDate) : <p className="activity-calendar-empty">当前范围内，本年暂无动态。</p>}
-        </> : <>
+      <aside className="activity-calendar-detail" aria-label={renderDetails ? "动态进展" : "年度动态概况"}>
+        {renderDetails ? renderDetails({year, date: displayDate}) : <>
           <div className="activity-calendar-totals"><div><strong>{total}</strong><span>条动态</span></div><div><strong>{activeDays}</strong><span>个活跃日</span></div></div>
           <p className="activity-calendar-hint">{total ? "点击有颜色的日期，查看当天记录。" : "当前筛选下暂无动态。"}</p>
           {selectedDate && <div className="activity-calendar-selection" role="status"><span>{formatDay(selectedDate)}</span><button type="button" className="settings-text-button" onClick={onClearDate}>取消日期选择</button></div>}
         </>}
       </aside>
       </div>
-    </> : <p className="admin-help" role="status">正在载入日历…</p>}
+    </> : <div>{heading}<p className="admin-help" role="status">正在载入日历…</p></div>}
   </section>;
 }

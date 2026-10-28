@@ -43,3 +43,23 @@ test("progress links count only active files attached to the same event and matt
   assert.deepEqual(exports.filesForEvent([file],"matter-a","event-without-files"),[]);
   assert.deepEqual(exports.filesForEvent([],"matter-a","event-a"),[]);
 });
+
+test("signing-date shortcuts default to blank and copy only an explicitly chosen agreement date",()=>{
+  const {signingDateMode,chooseSigningDate,changeAgreementDate}=exports;
+  assert.equal(signingDateMode({agreement_date:"2026-10-10"}),"unset");
+  assert.throws(()=>chooseSigningDate({},"same"),/协议载明日期/);
+  const original={agreement_date:"2026-10-10",signing_completed_date:"2026-10-15"};
+  assert.equal(signingDateMode(original),"custom");
+  const copied=chooseSigningDate(original,"same");
+  assert.equal(copied.signing_completed_date,"2026-10-10");
+  assert.equal(signingDateMode(copied),"same");
+  const corrected=changeAgreementDate(copied,"2026-10-12");
+  assert.equal(corrected.signing_completed_date,"2026-10-10");
+  assert.equal(signingDateMode(corrected),"custom");
+  const cleared=changeAgreementDate(copied,"");
+  assert.equal(cleared.signing_completed_date,"2026-10-10");
+  assert.equal(signingDateMode(cleared),"custom");
+  assert.equal(chooseSigningDate(original,"unset").signing_completed_date,"");
+  assert.deepEqual(chooseSigningDate(original,"custom"),original);
+  assert.deepEqual(original,{agreement_date:"2026-10-10",signing_completed_date:"2026-10-15"});
+});

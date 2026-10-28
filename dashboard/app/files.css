@@ -56,6 +56,16 @@
 .agreement-dates > div { display:grid; gap:4px; }
 .agreement-dates dt { color:var(--muted); font-size:var(--text-caption); }
 .agreement-dates dd { margin:0; font-size:var(--text-small); font-variant-numeric:tabular-nums; }
-.agreement-date-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; padding:16px; margin-top:12px; background:var(--canvas); border:1px solid var(--line); border-radius:10px; }
+.agreement-date-fields { display:grid; align-items:start; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; padding:16px; margin-top:12px; background:var(--canvas); border:1px solid var(--line); border-radius:10px; }
 .agreement-date-fields > p { grid-column:1/-1; margin:0; }
 @media(max-width:700px) { .agreement-date-fields { grid-template-columns:1fr; } }
+
+.agreement-signing-date { min-width:0; margin:0; padding:0; border:0; }
+.agreement-signing-date legend { padding:0; margin-bottom:8px; font-size:var(--text-small); font-weight:600; }
+.agreement-date-options { display:grid; gap:6px; }
+.agreement-date-option { display:flex; align-items:center; gap:8px; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:var(--paper); font-size:var(--text-small); cursor:pointer; }
+.agreement-date-option.is-selected { border-color:var(--blue); background:var(--blue-soft); }
+.agreement-date-option:has(input:disabled) { opacity:0.55; cursor:default; }
+.agreement-date-option input[type=radio] { width:16px; height:16px; min-height:0; margin:0; padding:0; accent-color:var(--blue); flex:none; }
+.agreement-signing-date > .admin-help { margin:8px 0; }
+.agreement-date-confirmation { margin:8px 0 0; font-size:var(--text-small); color:var(--navy); font-variant-numeric:tabular-nums; }
