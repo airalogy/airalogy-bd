@@ -1,4 +1,5 @@
 "use client";
+import EventAttachments from "./EventAttachments";
 import { BrandLogo } from "./Branding";
 import Link from "next/link";
 import AiAssistant from "./AiAssistant";
@@ -505,6 +506,7 @@ function EventItem({
   compact = false,
   onOpenRecord,
   actions,
+  attachments,
 }: {
   event: ProjectEvent;
   workspace: Workspace;
@@ -512,6 +514,7 @@ function EventItem({
   compact?: boolean;
   onOpenRecord?: (event: ProjectEvent) => void;
   actions?: ReactNode;
+  attachments?: ReactNode;
 }) {
   return (
     <article className={`event-item${compact ? " compact" : ""}`}>
@@ -527,6 +530,7 @@ function EventItem({
         </div>
         <h4>{event.title}</h4>
         <p>{event.summary}</p>
+        {attachments}
         {(event.related_document && onOpenRecord) || actions ? (
           <div className={actions ? "event-actions" : undefined}>
             {event.related_document && onOpenRecord && (
@@ -783,6 +787,7 @@ function EventHistoryDialog({
 }
 
 function ProjectDrawer({
+  fileSnapshot,
   data, onSelectProject, onCounterpartyFiles, readOnly, onAi,
   onFiles,
   fileCount,
@@ -810,6 +815,7 @@ function ProjectDrawer({
   onSelectProject: (project:Project) => void;
   onAi?: () => void;
   onCounterpartyFiles: (identity:string) => void;
+  fileSnapshot?: string;
   onFiles: (eventId?:string) => void;
   fileCount: number;
   onBpFiles: (fileId?: string) => void;
@@ -994,6 +1000,7 @@ function ProjectDrawer({
                     workspace={workspace}
                     compact
                     onOpenRecord={onOpenRecord}
+                    attachments={<EventAttachments files={data.files || []} matter={project.id} event={event.id} snapshot={fileSnapshot}/>}
                     actions={filesForEvent(data.files || [],project.id,event.id).length > 0 ? <button type="button" className="event-secondary-trigger" aria-label={`关联资料：${event.title}`} onClick={() => onFiles(event.id)}>相关资料 · {filesForEvent(data.files || [],project.id,event.id).length}</button> : undefined}
                   />
                 ))}
@@ -1892,7 +1899,7 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
       </footer>
 
       {selectedProject && (
-        <ProjectDrawer readOnly={readOnly || !canEdit}
+        <ProjectDrawer fileSnapshot={historicalVersion} readOnly={readOnly || !canEdit}
           onBpFiles={fileId => setFilesTarget({projectId:selectedProject.id,fileId,category:"bp",usageKind:"sent"})}
           onAi={readOnly ? undefined : () => {setAiScope(selectedProject.id);setSelectedProject(null);setPage("ai");}}
           data={data} onSelectProject={setSelectedProject} onCounterpartyFiles={identity => openFiles(undefined,undefined,identity)}

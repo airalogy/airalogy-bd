@@ -1,4 +1,5 @@
 "use client";
+import EventAttachments from "./EventAttachments";
 import { useState } from "react";
 import type { DashboardData, ProjectEvent } from "./lib/types";
 import type { RecordTarget } from "./lib/workspace-types";
@@ -51,6 +52,7 @@ export default function WorkspaceAdmin({data, onEdit, onHistory, onFiles, onNdaF
               const fileCount = filesForEvent(data.files || [],project.id,event.id).length;
               return <article className="admin-progress-item" key={event.id}>
                 <time dateTime={event.date}>{event.date}</time><h4>{event.title}</h4>{event.summary && <p>{event.summary}</p>}
+                <EventAttachments files={data.files || []} matter={project.id} event={event.id}/>
                 <div className="admin-context-links">
                   {event.related_document && <button type="button" className="event-secondary-trigger" onClick={() => onOpenRecord(event,project.name)}>阅读完整记录</button>}
                   {fileCount > 0 && <button type="button" className="event-secondary-trigger" onClick={() => onFiles(selected,event.id)} aria-label={`关联资料：${event.title}`}>相关资料 · {fileCount}</button>}

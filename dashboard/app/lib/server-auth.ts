@@ -30,7 +30,7 @@ export function trustedRequest(request:Request, mutate=false) {
 }
 export const privateHeaders = {"Cache-Control":"no-store", "X-Content-Type-Options":"nosniff", "Referrer-Policy":"no-referrer"};
 export function serviceResponse(result:Record<string,unknown>) {
-  const statuses:Record<string,number> = {unauthenticated:401,forbidden:403,conflict:409,duplicate:409,not_found:404,unavailable:503,rate_limited:429,too_large:413};
+  const statuses:Record<string,number> = {unauthenticated:401,forbidden:403,conflict:409,attachment_conflict:409,duplicate:409,not_found:404,unavailable:503,rate_limited:429,too_large:413};
   return Response.json(result,{status:result.ok ? 200 : statuses[String(result.code)] || 422,headers:privateHeaders});
 }
 export function denied(message="此请求未获授权。", status=403) {

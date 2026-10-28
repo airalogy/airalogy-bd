@@ -13,7 +13,11 @@ export async function httpFetch(url, init = {}, redirects = 0) {
       incoming.on("data",chunk=>chunks.push(chunk));incoming.on("error",reject);
       incoming.on("end",()=>resolve(new Response(Buffer.concat(chunks),{status:incoming.statusCode,headers})));
     });
-    outgoing.on("error",reject);outgoing.setTimeout(30000,()=>outgoing.destroy(new Error("Test HTTP request timed out")));
+    outgoing.on("error",reject);outgoing.setTimeout(30000,()=>{
+      let operation="";
+      try {const input=JSON.parse(body?.toString()||"{}");operation=input.params?.name||input.operation||input.action||"";} catch {}
+      outgoing.destroy(new Error(`Test HTTP request timed out: ${request.method} ${new URL(url).pathname} ${operation}`));
+    });
     outgoing.end(body);
   });
   if ([301,302,303,307,308].includes(response.status) && response.headers.get("location") && redirects<5) return httpFetch(new URL(response.headers.get("location"),url),init,redirects+1);

@@ -38,7 +38,7 @@ EVENT_FIELDS = {"date", "type", "title", "summary", "importance", "participants"
 LABELS = {"name": "名称", "affiliation": "单位及职位", "phone": "电话", "wechat": "微信", "email": "邮箱", "counterparties": "对方单位", "record_type": "事项类型", "category": "分类", "stage": "阶段", "relationship": "关系", "priority": "优先级", "owner": "负责人", "first_contact": "首次接触日期", "first_contact_certainty": "首次接触日期依据", "sourced_by": "对接来源人员", "source_certainty": "来源依据", "source_note": "来源说明", "follow_up_status": "跟进状态", "next_action": "下一步", "next_action_due": "下一步期限", "target_investment_amount_cny": "目标投资金额（元）", "date": "日期", "type": "事件类型", "title": "标题", "summary": "进展摘要", "importance": "重要程度", "participants": "参与人", "organizers": "主办方", "location": "地点", "side": "关系", "project_roles": "项目角色", "notes": "备注", "body": "正文", "contacts": "事项联系人", "events": "沟通进展", "metadata": "事项信息", "documents": "沟通记录", "document": "记录信息", "event": "进展信息"}
 
 
-LABELS.update({"agreement_date":"协议载明日期", "signing_completed_date":"实际签署完成日期", "agreement_type":"协议类型", "organization":"对接机构或个人", "home_counterparty_id":"归档对接方", "primary_counterparty_id":"归档对接方", "counterparty_ids":"参与对接方", "short_name":"简称", "kind":"对接方类型", "project_ids":"关联事项", "archived":"回收站状态", "current_version":"当前文件版本", "versions":"文件版本", "records":"使用与发送记录", "filename":"文件名", "sha256":"文件指纹", "size":"文件大小", "status":"文件状态", "created_at":"归档时间", "note":"说明", "archive_path":"归档位置", "version_id":"具体版本", "kind":"类型", "people":"相关人员", "channel":"渠道", "event_id":"关联交流", "project_id":"关联事项"})
+LABELS.update({"attachments":"进展附件", "agreement_date":"协议载明日期", "signing_completed_date":"实际签署完成日期", "agreement_type":"协议类型", "organization":"对接机构或个人", "home_counterparty_id":"归档对接方", "primary_counterparty_id":"归档对接方", "counterparty_ids":"参与对接方", "short_name":"简称", "kind":"对接方类型", "project_ids":"关联事项", "archived":"回收站状态", "current_version":"当前文件版本", "versions":"文件版本", "records":"使用与发送记录", "filename":"文件名", "sha256":"文件指纹", "size":"文件大小", "status":"文件状态", "created_at":"归档时间", "note":"说明", "archive_path":"归档位置", "version_id":"具体版本", "kind":"类型", "people":"相关人员", "channel":"渠道", "event_id":"关联交流", "project_id":"关联事项"})
 
 
 class ServiceError(Exception):
@@ -137,6 +137,8 @@ class Workspace:
         self.journal = self.store / "transaction.json"
         self.state_file = self.store / "state.json"
         self.actor = None
+        self.policy = None
+        self.upload_scope = {"owner": "local", "channel": "web"}
         self.original_repo: Path | None = None
         self.original_prefix = "content"
         discovered = subprocess.run(["git", "-C", str(self.root), "rev-parse", "--show-toplevel"], capture_output=True, text=True)
@@ -312,6 +314,9 @@ class Workspace:
             return [], output.read_text(encoding="utf-8")
 
     def observe(self, label="记录文件修改", origin="external", force=False) -> dict:
+        if (self.store / "uploads").exists():
+            from staged_uploads import UploadStore
+            UploadStore(self).cleanup()
         files = self.read_files()
         revision = digest(files)
         state = json.loads(self.state_file.read_text()) if self.state_file.exists() else {}
@@ -434,7 +439,17 @@ class Workspace:
                 return None
             text = files.get(directory + "/" + event.get("related_record", ""))
             document, body = parse_md(text) if text else ({}, "")
-            return {"event": event, "document": document, "body": body}
+            result = {"event": event, "document": document, "body": body}
+            if kind == "progress":
+                result["attachments"] = []
+                for item in index_from(files)["files"]:
+                    if self.policy and not self.policy.file_allowed(item):
+                        continue
+                    for use in item["records"]:
+                        if use["kind"] == "reference" and use["project_id"] == project_id and use.get("event_id") == identity:
+                            version = next(v for v in item["versions"] if v["id"] == use["version_id"])
+                            result["attachments"].append({"file_id": item["id"], "title": item["title"], "version_id": version["id"], "filename": version["filename"], "status": version["status"]})
+            return result
         raise ServiceError("未知的资料类型。")
 
     def record_revision(self, files: dict[str, str], kind: str, identity: str, project_id="") -> str:
@@ -462,6 +477,14 @@ class Workspace:
                     changed.append(key)
             except (ServiceError, LibraryError, KeyError, TypeError):
                 changed.append(key)
+        for project in set(self.projects(before)) | set(self.projects(after)):
+            event_ids = set()
+            for files in (before, after):
+                record = self.record(files, "project", project)
+                event_ids.update(e["id"] for e in (record or {}).get("events", []))
+            for identity in event_ids:
+                if self.record(before, "progress", identity, project) != self.record(after, "progress", identity, project):
+                    changed.append("progress:" + identity)
         return changed
 
     def get_record(self, request: dict) -> dict:
@@ -642,13 +665,32 @@ class Workspace:
             identity, title = self.write_progress(files, kind, identity, project, payload)
         else:
             raise ServiceError("未知的资料类型。")
-        if preview:
-            errors, _ = self.stage(files)
+        attachments = request.get("attachments", [])
+        if not isinstance(attachments, list):
+            raise ServiceError("附件列表格式无效。")
+        writes, attached = [], []
+        if attachments:
+            if kind != "progress":
+                raise ServiceError("附件合并保存仅适用于已有事项的进展。")
+            from progress_files import attach_progress
+            files, writes, attached = attach_progress(self, files, project, identity, payload["date"], attachments)
+        if preview or attachments:
+            errors, _ = self.stage(files, verify_attachments=not bool(attachments))
             if errors:
                 raise ServiceError("草稿尚未通过资料校验，请补充或修正后重试。", "validation", errors)
-            return {"valid": True}
+            if preview:
+                return {"valid": True, "attachments": attached}
+        for relative, data in writes:
+            FileLibrary(self).put(relative, data)
         result = self.commit(before, files, ("修改" if request.get("id") else "新增") + "：" + title, "form")
         result["id"] = identity
+        if attachments:
+            from staged_uploads import UploadStore
+            uploads = UploadStore(self)
+            for item in attachments:
+                if item.get("upload_id"):
+                    uploads.remove(item["upload_id"])
+            result["attachments"] = attached
         return result
 
     def restore_candidate(self, current: dict[str, str], historical: dict[str, str], kind: str, identity: str, project_id="") -> dict[str, str]:
@@ -709,6 +751,21 @@ class Workspace:
                     raise ServiceError("历史记录的文件名已被其他记录占用，无法直接恢复。")
                 after[directory + "/" + new_related] = historical[old_directory + "/" + new_related]
             after[event_path] = replace_item(after[event_path], "events", "id", identity, record["event"] if record else None, sort_dates=True)
+            if kind == "progress":
+                current_index, old_index = index_from(after), index_from(historical)
+                relevant = lambda r: r["kind"] == "reference" and r["project_id"] == project_id and r.get("event_id") == identity
+                known = {f["id"]: f for f in current_index["files"]}
+                for file in current_index["files"]:
+                    file["records"] = [r for r in file["records"] if not relevant(r)]
+                for old_file in old_index["files"]:
+                    records = [r for r in old_file["records"] if relevant(r)]
+                    if not records: continue
+                    file = known.get(old_file["id"])
+                    if not file or any(r["version_id"] not in {v["id"] for v in file["versions"]} for r in records):
+                        raise ServiceError("历史关联的文件版本已不在当前资料库，请先恢复对应资料版本。")
+                    file["records"].extend(records)
+                if current_index != index_from(after):
+                    after["files.yaml"] = dump(current_index)
             if kind == "company" and not record and not other_events and event_path not in historical:
                 after.pop(event_path, None)
         else:
@@ -790,7 +847,7 @@ class Workspace:
                     return next((event["title"] for event in (project or {}).get("events", []) if event["id"] == record.get("event_id")), record.get("event_id", ""))
                 statuses = {"unspecified": "未标注", "draft": "草案", "final": "定稿", "signed": "签署件"}
                 categories = {"agreement": "协议", "presentation": "演示材料", "bp": "商业计划书", "introduction": "公司介绍", "other": "其他资料"}
-                uses = {"meeting": "会议使用", "sent": "实际发送", "received": "对方提供"}
+                uses = {"reference": "进展附件", "meeting": "会议使用", "sent": "实际发送", "received": "对方提供"}
                 display = {**item, "category": categories.get(item["category"], item["category"]), "archived": "已移入回收站" if item["archived"] else "在用资料", "project_ids": [project_name(identity) for identity in item["project_ids"]], "home_counterparty_id": counterparties(files).get(item["home_counterparty_id"], (None, {}, None))[1].get("name", item["home_counterparty_id"]), "current_version": version_names.get(item["current_version"], item["current_version"])}
                 display["versions"] = [{**version, "title": version_names[version["id"]], "status": statuses[version["status"]], "size": f'{version["size"]:,} 字节'} for version in item["versions"]]
                 display["records"] = [{**record, "title": record["date"] + " · " + uses[record["kind"]], "kind": uses[record["kind"]], "version_id": version_names[record["version_id"]], "project_id": project_name(record["project_id"]), "event_id": event_name(record)} for record in item["records"]]
@@ -989,6 +1046,8 @@ def main():
                 accounts.close()
                 return
             policy = Policy(workspace, actor)
+            workspace.policy = policy
+            workspace.upload_scope = {"owner": actor["id"], "binding": actor["revision"], "channel": "web"}
             policy.authorize(request)
             workspace.actor = {key: actor[key] for key in ("id", "name", "email")}
             if action in {"save", "file_save", "restore", "backup_config", "backup_now", "file_backup"}:
@@ -1028,6 +1087,9 @@ def main():
                 result = {"status": status, "data": json.loads(data_file.read_text()) if data_file.exists() else None}
             elif action == "files":
                 result = FileLibrary(workspace).list()
+            elif action in {"upload_stage", "upload_discard"}:
+                from staged_uploads import UploadStore
+                result = UploadStore(workspace).dispatch(request)
             elif action == "file_save":
                 result = FileLibrary(workspace).save(request)
             elif action == "file_download":

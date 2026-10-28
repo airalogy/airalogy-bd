@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { aiMockTransport, exerciseAi } from "./ai-http.mjs";
+import { exerciseAttachmentHttp } from "./attachment-http.mjs";
 import { exerciseRemote } from "./remote-http.mjs";
 import {spawn,spawnSync} from "node:child_process";
 import {createHmac,randomBytes} from "node:crypto";
@@ -228,6 +229,7 @@ test("server HTTP enforces invitations, scope, roles, CSRF, concurrent saves, do
     assert.equal((await request(`/api/files?action=download&id=${secretFile.id}&version_id=wrong`,null,viewer)).status,403);
     assert.equal((await request(download+"&snapshot="+history.versions[0].version,null,viewer)).status,403);
     assert.equal((await request("/api/files",{action:"file_reveal",id:file.id},admin)).status,403);
+    await exerciseAttachmentHttp({directory,base,request,okay,admin,editor,viewer,publicOrigin,publicHost});
     assert.equal((await request("/api/auth",{action:"team_update",id:viewer.user.id,role:"admin",all_projects:true,project_ids:[],active:true,revision:viewer.user.revision},viewer)).status,403);
     const members=await okay(await request("/api/auth",{action:"team_list"},admin));
     const fresh=members.users.find(x=>x.id===viewer.user.id);

@@ -36,6 +36,14 @@ server {
         client_max_body_size 24k;
         proxy_pass http://127.0.0.1:3100;
     }
+    location = /api/mcp/uploads {
+        limit_req zone=bd_remote burst=10 nodelay;
+        limit_req_status 429;
+        limit_conn bd_remote_connections 2;
+        limit_conn_status 429;
+        client_max_body_size 51m;
+        proxy_pass http://127.0.0.1:3100;
+    }
     location / {
         proxy_pass http://127.0.0.1:3100;
     }

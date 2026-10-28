@@ -13,6 +13,8 @@ import time
 from team_auth import AuthError, fingerprint, public_user
 from team_policy import Policy
 from content_paths import counterparties
+from file_library import LibraryError, index_from
+from staged_uploads import UploadStore
 
 MATTER_FIELDS = {"body", "stage", "follow_up_status", "next_action", "next_action_due"}
 PROGRESS_FIELDS = {"date", "type", "title", "summary", "importance", "participants", "body", "location"}
@@ -60,6 +62,10 @@ class RemoteAccess:
             # Direct-save receipts outlive drafts and remain until their credential expires.
             self.db.execute("DELETE FROM remote_writes WHERE expires<=?", (int(time.time()),))
             self.db.execute("DELETE FROM remote_tokens WHERE expires<=?", (int(time.time()),))
+
+    def upload_context(self, actor, token):
+        self.workspace.policy = Policy(self.workspace, actor)
+        self.workspace.upload_scope = {"owner": actor["id"], "binding": actor["revision"], "channel": "remote", "token": token["id"], "expires": token["expires"]}
 
     def settings(self):
         row = self.db.execute("SELECT enabled,revision FROM remote_settings WHERE id=1").fetchone()
@@ -182,18 +188,40 @@ class RemoteAccess:
             self.grant(actor)
             return {"drafts": [{"id": row["id"], "created": row["created"], "expires": row["expires"],
                                 **json.loads(row["value"])["review"]} for row in self.pending_drafts(actor)]}
-        if op in {"confirm", "reject"}:
+        if op in {"confirm", "reject", "attachment"}:
             self.grant(actor)
             row = self.db.execute("SELECT * FROM remote_drafts WHERE id=?", (text(request.get("draftId")),)).fetchone()
             self.check_draft(row, actor, Policy(self.workspace, actor))
+            token = self.db.execute("SELECT * FROM remote_tokens WHERE id=?", (row["token_id"],)).fetchone()
+            self.upload_context(actor, token)
+            self.workspace.upload_claim = row["id"]
+            saved = json.loads(row["value"])["request"]
+            if op == "attachment":
+                upload_id = request.get("uploadId")
+                if not any(a.get("upload_id") == upload_id for a in saved.get("attachments", [])):
+                    raise AuthError("文件不属于这份草稿。")
+                store = UploadStore(self.workspace)
+                value, _ = store.bytes(upload_id, row["matter"])
+                return {"path": str(store.path(upload_id, ".bin")), "filename": value["filename"], "size": value["size"]}
             if op == "reject":
+                for a in saved.get("attachments", []):
+                    if a.get("upload_id"):
+                        UploadStore(self.workspace).remove(a["upload_id"])
                 with self.db: self.db.execute("UPDATE remote_drafts SET state='rejected',value='' WHERE id=?", (row["id"],))
                 self.accounts.audit(actor, "remote.reject", row["id"])
                 return {"rejected": True}
             if request.get("confirmed") is not True: raise AuthError("请核对草稿后明确确认。", "invalid")
             self.ready()
-            saved = json.loads(row["value"])["request"]
             Policy(self.workspace, actor).authorize(saved)
+            try:
+                self.workspace.save(saved, preview=True)
+            except Exception as exc:
+                if getattr(exc, "code", None) in {"conflict", "attachment_conflict", "upload_expired"}:
+                    with self.db: self.db.execute("UPDATE remote_drafts SET state='failed',value='' WHERE id=?", (row["id"],))
+                    for a in saved.get("attachments", []):
+                        if a.get("upload_id"): UploadStore(self.workspace).remove(a["upload_id"])
+                    raise AuthError("资料或文件已变化，本草稿已失效。请重新读取后提交。", "conflict") from exc
+                raise
             self.workspace.actor = {key: actor[key] for key in ("id", "name", "email")}
             # Claim before touching business files. A crash leaves a non-retryable receipt;
             # it cannot cause a duplicated event on retry. History resolves uncertain outcomes.
@@ -229,6 +257,11 @@ class RemoteAccess:
         self.token_actor(token)
         if actor["role"] == "viewer" or not token["can_draft"]: raise AuthError("此账号不能确认草稿。")
         policy.project(row["matter"])
+        for attachment in json.loads(row["value"])["request"].get("attachments", []):
+            if attachment.get("file_id"):
+                item = policy.file(attachment["file_id"])
+                if row["matter"] not in item["project_ids"]:
+                    raise AuthError("附件不再属于此事项。")
 
     def rpc(self, request, credential):
         actor, token = self.authenticate(credential)
@@ -239,8 +272,9 @@ class RemoteAccess:
             raise AuthError("远程请求过于频繁，请稍后再试。", "rate_limited")
         with self.db: self.db.execute("INSERT INTO remote_attempts VALUES(?,?)", (actor["id"], now))
         if op == "access": return {"canDraft": bool(token["can_draft"]) and actor["role"] != "viewer", "canSave": bool(token["can_save"]) and actor["role"] == "admin"}
-        if op not in {"search_matters", "read_matter", "read_progress", "submit_draft", "save_progress"}: raise AuthError("远程接口不提供此操作。")
+        if op not in {"search_matters", "read_matter", "read_progress", "list_files", "read_file", "prepare_upload", "upload_status", "discard_upload", "upload_bytes", "submit_draft", "save_progress"}: raise AuthError("远程接口不提供此操作。")
         policy = Policy(self.workspace, actor)
+        self.upload_context(actor, token)
         self.ready()
         try:
             result = self.tool(op, args, actor, token, policy)
@@ -251,6 +285,25 @@ class RemoteAccess:
         return result
 
     def tool(self, op, args, actor, token, policy):
+        if op in {"prepare_upload", "upload_status", "discard_upload", "upload_bytes"}:
+            if not token["can_draft"] or actor["role"] == "viewer":
+                raise AuthError("此凭据只允许查询。")
+            store = UploadStore(self.workspace)
+            if op == "prepare_upload":
+                exact(args, {"matter_id", "filename", "size", "sha256"}, {"matter_id", "filename", "size", "sha256"})
+                value = store.prepare(text(args["matter_id"]), args["filename"], args["size"], args["sha256"])
+                return {**value, "upload_path": "/api/mcp/uploads", "method": "POST", "multipart_fields": ["upload_id", "file"],
+                        "instructions": "Upload actual local file bytes with multipart/form-data using the same Bearer credential, outside model context. Resolve this path against this MCP server origin only. Never send the credential or file bytes into the conversation. A local path alone is not an upload. Then use upload_id in attachments on submit_draft or save_progress."}
+            exact(args, {"upload_id", "filename", "data"} if op == "upload_bytes" else {"upload_id"}, {"upload_id", "filename", "data"} if op == "upload_bytes" else {"upload_id"})
+            value = store.read(args["upload_id"])
+            if op == "upload_bytes":
+                return store.write(args["upload_id"], args["filename"], args["data"])
+            if op == "discard_upload":
+                if value.get("claim"):
+                    raise AuthError("此上传已用于待确认草稿，请在网页驳回草稿。", "conflict")
+                store.remove(args["upload_id"])
+                return {"discarded": True}
+            return store.public(value)
         files = self.workspace.read_files()
         parties = counterparties(files)
         def party_name(metadata):
@@ -271,6 +324,24 @@ class RemoteAccess:
         opened = self.workspace.get_record(target)
         record = opened["record"]
         if not record: raise AuthError("事项已不存在。", "not_found")
+        if op in {"list_files", "read_file"}:
+            exact(args, {"matter_id", "file_id", "offset"} if op == "read_file" else {"matter_id", "query", "offset"}, {"matter_id", "file_id"} if op == "read_file" else {"matter_id"})
+            offset = args.get("offset", 0)
+            if type(offset) is not int or not 0 <= offset <= 100000: raise AuthError("页码无效。", "invalid")
+            from workspace_service import digest
+            available = [v for v in index_from(files)["files"] if matter in v["project_ids"] and not v["archived"] and policy.file_allowed(v)]
+            def describe(v):
+                return {"file_id": v["id"], "title": v["title"], "category": v["category"], "agreement_type": v.get("agreement_type", "unspecified"), "revision": digest(v), "current_version": v["current_version"], "version_count": len(v["versions"])}
+            if op == "list_files":
+                query = text(args.get("query", ""), 100, True).casefold()
+                available = [v for v in available if query in v["title"].casefold()]
+                return {"files": [describe(v) for v in available[offset:offset+20]], "nextOffset": offset+20 if len(available)>offset+20 else None}
+            item = next((v for v in available if v["id"] == args["file_id"]), None)
+            if not item: raise AuthError("未找到可访问的资料。", "forbidden")
+            versions = list(reversed(item["versions"]))
+            return {**describe(item), "versions": [{"version_id": v["id"], "version_number": len(versions)-offset-i,
+                    **{k: v.get(k, "") for k in ("filename", "size", "sha256", "status", "agreement_date", "signing_completed_date", "note")}} for i,v in enumerate(versions[offset:offset+20])],
+                    "nextOffset": offset+20 if len(versions)>offset+20 else None}
         if op == "read_matter":
             exact(args, {"matter_id", "offset"}, {"matter_id"})
             offset = args.get("offset", 0)
@@ -287,12 +358,12 @@ class RemoteAccess:
             exact(args, {"matter_id", "progress_id"}, {"matter_id", "progress_id"})
             item = self.workspace.get_record({"kind": "progress", "id": progress_id, "project_id": matter})
             if not item["record"]: raise AuthError("未找到这条进展。", "not_found")
-            return {"matter_id": matter, "progress_id": progress_id, "revision": item["revision"], "fields": self.progress_fields(item["record"])}
+            return {"matter_id": matter, "progress_id": progress_id, "revision": item["revision"], "fields": self.progress_fields(item["record"]), "attachments": item["record"].get("attachments", [])}
         direct = op == "save_progress"
         if direct and (not token["can_save"] or actor["role"] != "admin"):
             raise AuthError("直接保存仅限管理员明确开启此权限的连接。")
         if not token["can_draft"] or actor["role"] == "viewer": raise AuthError("此凭据只允许查询。")
-        exact(args, {"matter_id", "progress_id", "revision", "operation", "changes", "request_id"}, {"matter_id", "revision", "operation", "changes", "request_id"})
+        exact(args, {"matter_id", "progress_id", "revision", "operation", "changes", "request_id", "attachments"}, {"matter_id", "revision", "operation", "changes", "request_id"})
         request_id = text(args["request_id"], 80)
         if not re.fullmatch(r"[A-Za-z0-9_-]{16,80}", request_id): raise AuthError("请提供至少 16 位唯一请求编号。", "invalid")
         signature = hashlib.sha256(json.dumps(args, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
@@ -308,7 +379,10 @@ class RemoteAccess:
         if direct and operation not in {"add_progress", "update_progress"}:
             raise AuthError("直接保存仅支持新增或修改已有事项的进展；事项信息请提交草稿。", "invalid")
         exact(changes, MATTER_FIELDS if operation == "update_matter" else PROGRESS_FIELDS)
-        if not changes: raise AuthError("请提供要修改的内容。", "invalid")
+        attachments = args.get("attachments", [])
+        if not isinstance(attachments, list) or len(attachments) > 10 or (attachments and operation == "update_matter"):
+            raise AuthError("附件仅可随进展保存，每次最多 10 个。", "invalid")
+        if not changes and not attachments: raise AuthError("请提供要修改的内容。", "invalid")
         for key, value in changes.items():
             if key == "participants":
                 if not isinstance(value, list) or len(value) > 30 or any(not isinstance(v, str) or v not in {c["person_id"] for c in record["contacts"]} for v in value): raise AuthError("只能引用当前事项已有参与人。", "invalid")
@@ -323,17 +397,17 @@ class RemoteAccess:
             item = self.workspace.get_record(target)["record"]
             if progress_id and not item: raise AuthError("未找到这条进展。", "not_found")
             before = self.progress_fields(item) if item else {"date": "", "type": "other", "title": "", "summary": "", "importance": "normal", "participants": [], "body": "", "location": ""}
-        save = {"action": "save", **target, "revision": text(args["revision"]), "payload": {**before, **changes}}
-        if operation != "add_progress" and all(before.get(key) == value for key, value in changes.items()):
+        save = {"action": "save", **target, "revision": text(args["revision"]), "payload": {**before, **changes}, "attachments": attachments}
+        if not attachments and operation != "add_progress" and all(before.get(key) == value for key, value in changes.items()):
             raise AuthError("内容没有变化，无需提交修改。", "invalid")
         policy.authorize(save)
-        self.workspace.save(save, preview=True)
+        preview = self.workspace.save(save, preview=True)
         if direct:
             return self.save_progress(save, args, actor, token, signature)
         if self.db.execute("SELECT COUNT(*) FROM remote_drafts WHERE owner=? AND state='pending'", (actor["id"],)).fetchone()[0] >= 20 or self.db.execute("SELECT COUNT(*) FROM remote_drafts").fetchone()[0] >= 2000:
             raise AuthError("待处理草稿过多，请先在 BD 中确认或驳回。", "rate_limited")
         identity, created = secrets.token_hex(16), int(time.time())
-        expires = min(created + 86400, token["expires"])
+        expires = min([created + 86400, token["expires"]] + [UploadStore(self.workspace).read(a["upload_id"])["expires"] for a in attachments if a.get("upload_id")])
         # New progress displays default fields too; edits show only fields that can change.
         displayed = save["payload"] if operation == "add_progress" else changes
         review = {"matterId": matter, "matterName": record["metadata"]["name"], "operation": operation, "progressId": progress_id,
@@ -341,8 +415,15 @@ class RemoteAccess:
                   "progressTitle": (before if progress_id else save["payload"]).get("title", ""),
                   "progressDate": (before if progress_id else save["payload"]).get("date", ""),
                   "changes": [{"field": key, "label": LABELS[key], "before": None if operation == "add_progress" else before.get(key), "after": save["payload"][key]} for key in sorted(displayed)]}
-        with self.db:
-            self.db.execute("INSERT INTO remote_drafts VALUES(?,?,?,?,?,?,?,?,'pending',?,?)", (identity, actor["id"], token["id"], actor["revision"], request_id, signature, matter, json.dumps({"request": save, "review": review}, ensure_ascii=False), created, expires))
+        review["attachments"] = preview.get("attachments", [])
+        upload_ids = [a["upload_id"] for a in attachments if a.get("upload_id")]
+        UploadStore(self.workspace).claim(upload_ids, identity)
+        try:
+            with self.db:
+                self.db.execute("INSERT INTO remote_drafts VALUES(?,?,?,?,?,?,?,?,'pending',?,?)", (identity, actor["id"], token["id"], actor["revision"], request_id, signature, matter, json.dumps({"request": save, "review": review}, ensure_ascii=False), created, expires))
+        except Exception:
+            UploadStore(self.workspace).claim(upload_ids, None)
+            raise
         return self.receipt(self.db.execute("SELECT * FROM remote_drafts WHERE id=?", (identity,)).fetchone())
 
     def save_progress(self, save, args, actor, token, signature):
@@ -361,7 +442,7 @@ class RemoteAccess:
             opened = self.workspace.get_record({"kind": "progress", "id": result["id"], "project_id": args["matter_id"]})
             receipt = {"write_id": identity, "request_id": args["request_id"], "status": "saved",
                        "matter_id": args["matter_id"], "progress_id": result["id"], "revision": opened["revision"],
-                       "history_version": result["status"]["version"],
+                       "history_version": result["status"]["version"], "attachments": result.get("attachments", []),
                        "message": "进展已正式保存，并留存修改历史；无需网页确认。"}
             with self.db:
                 self.db.execute("UPDATE remote_writes SET state='saved',result=? WHERE id=?", (json.dumps(receipt, ensure_ascii=False), identity))

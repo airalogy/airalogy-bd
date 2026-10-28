@@ -51,6 +51,12 @@ class Policy:
         # Opening a server-side Finder or arbitrary backup directories is never a web operation.
         if action in {"file_location", "file_normalize_paths", "restore_backup", "migrate_layout", "backup_tick"}:
             raise AuthError("此操作仅可由服务器维护人员执行。")
+        if action in {"upload_stage", "upload_discard"}:
+            if self.actor["role"] == "viewer":
+                raise AuthError("只读成员不能上传文件。")
+            if action == "upload_stage":
+                self.project(request.get("project_id"))
+            return
         if self.admin:
             return
         if action in {"workspace", "files"}:

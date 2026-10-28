@@ -20,7 +20,7 @@ CATEGORIES = {"agreement", "presentation", "bp", "introduction", "other"}
 AGREEMENT_TYPES = {"unspecified", "nda", "investment_cooperation"}
 STATUSES = {"unspecified", "draft", "final", "signed"}
 AGREEMENT_DATES = {"agreement_date": "协议载明日期", "signing_completed_date": "实际签署完成日期"}
-USES = {"meeting", "sent", "received"}
+USES = {"reference", "meeting", "sent", "received"}
 EXTENSIONS = {".pdf", ".ppt", ".pptx", ".doc", ".docx", ".xls", ".xlsx", ".png", ".jpg", ".jpeg", ".txt", ".md", ".csv", ".zip"}
 
 
@@ -307,9 +307,9 @@ class FileLibrary:
         index = check_index(files)
         return {"files": [{**item, "revision": digest(item)} for item in index["files"]], "directory_pattern": "content/counterparties/<对接方>/attachments/", "workspace_directory": str(self.workspace_root), "max_bytes": MAX_BYTES}
 
-    def save(self, request):
+    def prepare(self, request, before):
         from workspace_service import digest, dump
-        before = self.workspace.read_files()
+        writes = []
         index = check_index(before)
         identity = request.get("id", "")
         item = next((entry for entry in index["files"] if entry["id"] == identity), None)
@@ -350,8 +350,7 @@ class FileLibrary:
             item["current_version"] = version_id
             after = {**before, "files.yaml": dump(index)}
             check_index(after)
-            self.put(self.object_path(version).relative_to(self.root).as_posix(), data)
-            self.put(archive_path, data)
+            writes = [(self.object_path(version).relative_to(self.root).as_posix(), data), (archive_path, data)]
             label = "导入资料版本：" + item["title"]
         else:
             if not item:
@@ -416,8 +415,15 @@ class FileLibrary:
                 raise LibraryError("不支持的资料操作。")
         after = {**before, "files.yaml": dump(index)}
         check_index(after)
+        return after, item["id"], label, writes
+
+    def save(self, request):
+        before = self.workspace.read_files()
+        after, identity, label, writes = self.prepare(request, before)
+        for relative, data in writes:
+            self.put(relative, data)
         result = self.workspace.commit(before, after, label, "attachment")
-        return {**result, "id": item["id"]}
+        return {**result, "id": identity}
 
     def download(self, identity, version_id, files=None):
         index = check_index(self.workspace.read_files() if files is None else files)

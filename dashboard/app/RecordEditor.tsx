@@ -1,4 +1,6 @@
 "use client";
+import ProgressAttachments from "./ProgressAttachments";
+import { discardUpload, prepareProgressFiles, type ProgressFile } from "./lib/progress-files";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useEffect, useRef, useState } from "react";
 import type { DashboardData } from "./lib/types";
@@ -30,6 +32,9 @@ export default function RecordEditor({target, data, onTargetChange, onClose, onS
   const [details, setDetails] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [attachments,setAttachments] = useState<ProgressFile[]>([]);
+  const stagedIds = useRef(new Set<string>());
+  useEffect(()=>{const ids=stagedIds.current;return ()=>{for(const id of ids) void discardUpload(id).catch(()=>{});};},[]);
   const [latest, setLatest] = useState<RecordResponse | null>(null);
   const [conflict, setConflict] = useState(false);
   const [decision,setDecision] = useState<"close" | "reload" | "overwrite" | null>(null);
@@ -54,7 +59,9 @@ export default function RecordEditor({target, data, onTargetChange, onClose, onS
     if (!draft || !revision || busy) return;
     setBusy(true); setError(""); setDetails([]);
     try {
-      const result = await workspaceRequest<SavedResponse>("save", {...target, revision, payload:draft}, true);
+      const files = await prepareProgressFiles(attachments, target.project_id || "", (key,uploaded)=>{stagedIds.current.add(uploaded.upload_id);setAttachments(items=>items.map(item=>item.key===key?{...item,uploaded}:item));});
+      const result = await workspaceRequest<SavedResponse>("save", {...target, revision, payload:draft, ...(files.length?{attachments:files}:{})}, true);
+      stagedIds.current.clear();
       setDirty(false); if (attachAfterSave.current && onSavedWithFiles) await onSavedWithFiles(result); else onSaved(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存未完成。");
@@ -92,9 +99,10 @@ export default function RecordEditor({target, data, onTargetChange, onClose, onS
           {target.kind === "person" && <PersonForm record={draft as EditablePerson} isNew={!target.id} onChange={change} />}
           {target.kind === "project" && <ProjectForm draft={draft as ProjectDraft} data={data} isNew={!target.id} onChange={change} />}
           {(target.kind === "progress" || target.kind === "company") && <ProgressForm draft={draft as ProgressDraft} data={data} company={target.kind === "company"} contacts={project?.contacts.map(contact => ({person_id:contact.person_id,side:contact.side,project_roles:contact.project_roles,notes:contact.notes})) || []} onChange={change} />}
+          {target.kind==="progress"&&target.project_id&&<ProgressAttachments matter={target.project_id} eventId={target.id} items={attachments} onChange={items=>{setAttachments(items);setDirty(true);}}/>}
         </fieldset>}
       </div>
-      <div className="admin-dialog-footer"><span>保存前校验资料，保存后留存可恢复版本。</span><div className="admin-actions"><button type="button" className="admin-button" disabled={busy} onClick={close}>取消</button><>{onSavedWithFiles && (target.kind === "project" || target.kind === "progress") && <button type="button" className="admin-button" disabled={!draft || busy || conflict} onClick={() => {attachAfterSave.current=true;void save();}}>保存并关联资料</button>}</><button type="submit" className="admin-button admin-primary" disabled={!draft || busy || conflict}>{busy ? "正在保存…" : "保存并留存版本"}</button></div></div>
+      <div className="admin-dialog-footer"><span>保存前校验资料，保存后留存可恢复版本。</span><div className="admin-actions"><button type="button" className="admin-button" disabled={busy} onClick={close}>取消</button><>{onSavedWithFiles && target.kind === "project" && <button type="button" className="admin-button" disabled={!draft || busy || conflict} onClick={() => {attachAfterSave.current=true;void save();}}>保存并关联资料</button>}</><button type="submit" className="admin-button admin-primary" disabled={!draft || busy || conflict}>{busy ? "正在保存…" : attachments.length ? "保存进展与附件" : "保存并留存版本"}</button></div></div>
     </form>
   </Dialog.Content></Dialog.Portal></Dialog.Root>;
 }

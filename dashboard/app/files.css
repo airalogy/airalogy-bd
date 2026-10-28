@@ -69,3 +69,26 @@
 .agreement-date-option input[type=radio] { width:16px; height:16px; min-height:0; margin:0; padding:0; accent-color:var(--blue); flex:none; }
 .agreement-signing-date > .admin-help { margin:8px 0; }
 .agreement-date-confirmation { margin:8px 0 0; font-size:var(--text-small); color:var(--navy); font-variant-numeric:tabular-nums; }
+
+/* Progress and attachments share the same form and save action. */
+.progress-attachments { margin-top:var(--space-5,1.5rem); border-top:1px solid var(--line); padding-top:1.25rem; }
+.progress-attachments-heading,.progress-file-card-heading { display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; }
+.progress-attachments-heading h3 { margin:0; }
+.progress-attachments-heading h3 span { font-size:var(--text-small); color:var(--muted); font-weight:400; }
+.progress-attachment-actions { display:flex; flex-wrap:wrap; gap:.5rem; margin:1rem 0; }
+.progress-file-card { margin-top:.75rem; border:1px solid var(--line); border-radius:12px; padding:1rem; background:var(--paper); }
+.progress-file-card-heading { margin-bottom:1rem; }
+.progress-file-card .edit-form-grid { align-items:start; }
+.progress-linked-files { list-style:none; padding:0; margin:1rem 0; }
+.progress-linked-files li { display:flex; justify-content:space-between; align-items:center; gap:1rem; padding:.65rem 0; border-bottom:1px solid var(--line); }
+.progress-linked-files strong,.progress-linked-files span { display:block; overflow-wrap:anywhere; }
+.progress-linked-files span { color:var(--muted); font-size:var(--text-small); }
+.remote-attachment-list { list-style:none; padding:0; display:grid; gap:.75rem; }
+.remote-attachment-list li { border:1px solid var(--line); border-radius:10px; padding:1rem; overflow-wrap:anywhere; }
+.remote-attachment-list p { margin:.4rem 0; }
+@media(max-width:600px) { .progress-attachments-heading { flex-direction:column; gap:.5rem; } .progress-file-card { padding:.8rem; } }
+
+.event-file-links { list-style:none; padding:0; margin:.7rem 0; display:flex; flex-wrap:wrap; gap:.5rem; }
+.event-file-links a { display:flex; align-items:center; gap:.65rem; padding:.45rem .7rem; border:1px solid var(--line); border-radius:8px; background:var(--paper); font-size:var(--text-small); text-decoration:none; }
+.event-file-links span { overflow-wrap:anywhere; }
+.event-file-links small { flex:none; color:var(--muted); font-size:var(--text-caption); }
