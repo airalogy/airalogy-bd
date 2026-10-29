@@ -3,12 +3,21 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import ts from "typescript";
 
-const source = await readFile(new URL("../dashboard/app/lib/investments.ts", import.meta.url), "utf8");
-const { outputText } = ts.transpileModule(source, {
-  compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
-});
-const { filterInvestments, externalContacts, needsContactInfo, csvCell, bpSendings } = await import(
-  "data:text/javascript;base64," + Buffer.from(outputText).toString("base64")
+async function compile(relative, dependencies = {}) {
+  const source = await readFile(new URL(relative, import.meta.url), "utf8");
+  const { outputText } = ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  });
+  const exports = {};
+  new Function("require", "exports", outputText)(name => {
+    assert.ok(name in dependencies, `Unexpected dependency: ${name}`);
+    return dependencies[name];
+  }, exports);
+  return exports;
+}
+const labels = await compile("../dashboard/app/lib/labels.ts");
+const { filterInvestments, externalContacts, needsContactInfo, csvCell, bpSendings } = await compile(
+  "../dashboard/app/lib/investments.ts", {"./labels": labels},
 );
 const defaults = { query: "", followUp: "all", priority: "all", stage: "all", missingContact: false, sort: "follow_up" };
 const base = { name: "示例机构", record_type: "investment", counterparties: ["示例基金"], owner: "负责人", summary: "评估中", next_action: "安排交流", source_note: "介绍认识", sourced_by: ["顾问"], stage: "initial_contact", priority: "medium", last_activity: "2026-01-12" };
@@ -35,6 +44,17 @@ test("search matches multiple contacts, channels and combined institution terms"
     assert.ok(filterInvestments(projects, { ...defaults, query }).some(p => p.id === "proactive"), query);
   }
   assert.equal(filterInvestments(projects, { ...defaults, query: "不存在" }).length, 0);
+});
+test("unassigned owners can be found and exported without changing the original assignment", async () => {
+  const owners = ["待确认", "", null, undefined, "未分配", "陈青"];
+  const examples = owners.map((owner, index) => ({...projects[0], id: String(index), owner, events: []}));
+  const original = structuredClone(examples);
+  assert.deepEqual(filterInvestments(examples, {...defaults, query: "未分配"}).map(p => p.id), ["0", "1", "2", "3", "4"]);
+  assert.deepEqual(filterInvestments(examples, {...defaults, query: "陈青"}).map(p => p.id), ["5"]);
+  const {buildLeadershipReport} = await compile("../dashboard/app/lib/report.ts", {"./labels": labels});
+  const report = buildLeadershipReport({data: {workspace: {short_name: "示例工作台"}}, projects: examples, companyEvents: [], scopeLabel: "全部", eventOrganization: "grouped"});
+  assert.deepEqual(report.items.map(item => item.owner), ["未分配", "未分配", "未分配", "未分配", "未分配", "陈青"]);
+  assert.deepEqual(examples, original);
 });
 test("filters combine, missing contacts are not mistaken for complete profiles", () => {
   assert.equal(needsContactInfo(projects[0]), true);

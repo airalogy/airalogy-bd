@@ -1,6 +1,7 @@
 import {
   followUpStatusLabels,
   priorityLabels,
+  projectOwnerLabel,
   projectRelationshipLabel,
   recordTypeLabels,
   stageLabels,
@@ -101,7 +102,7 @@ export function buildLeadershipReport({
       priorityLabel: `${priorityLabels[project.priority] ?? project.priority}优先级`,
       followUpLabel: followUpStatusLabels[project.follow_up_status],
       relationshipLabel: projectRelationshipLabel(project),
-      owner: project.owner,
+      owner: projectOwnerLabel(project.owner),
       latestDate: event?.date ?? project.last_activity,
       latestTitle: event?.title ?? "暂无事件",
       latestSummary: event?.summary ?? project.summary,

@@ -1,7 +1,7 @@
 "use client";
 import { Children, cloneElement, isValidElement, useId, useState, type ReactElement, type ReactNode } from "react";
 import type { DashboardData } from "./lib/types";
-import { followUpStatusLabels, priorityLabels, recordTypeLabels, relationshipLabels, roleLabels, stageLabels } from "./lib/labels";
+import { followUpStatusLabels, priorityLabels, projectOwnerLabel, recordTypeLabels, relationshipLabels, roleLabels, stageLabels } from "./lib/labels";
 import type { EditableEvent, EditablePerson, EditableProgress, EditableProject, Relation } from "./lib/workspace-types";
 
 export const fieldLabels: Record<string, string> = {name: "名称", primary_counterparty_id:"归档对接方", counterparty_ids:"参与对接方", new_counterparty:"新建对接方", short_name:"简称", people:"共用联系人", kind:"对接方类型", affiliation: "单位及职位", phone: "电话", wechat: "微信", email: "邮箱", counterparties: "对方单位", record_type: "事项类型", category: "分类", stage: "阶段", relationship: "关系", priority: "优先级", owner: "负责人", first_contact: "首次接触日期", first_contact_certainty: "日期依据", sourced_by: "来源人员", source_certainty: "来源依据", source_note: "来源说明", follow_up_status: "跟进状态", next_action: "下一步", next_action_due: "下一步期限", target_investment_amount_cny: "目标投资金额（元）", date: "实际日期", type: "事件类型", title: "标题", summary: "进展摘要", importance: "重要程度", participants: "参与人", organizers: "主办方", location: "地点", body: "正文", metadata: "事项信息", event: "进展信息", document: "记录信息", contacts: "事项联系人", events: "历史进展", documents: "沟通记录", id: "标识", person_id: "姓名", side: "关系", project_roles: "角色", notes: "备注"};
@@ -93,7 +93,7 @@ export function ProgressForm({draft, onChange, data, contacts = [], company = fa
 
 export type ProjectDraft = Record<string, unknown> & {body: string; contacts: Relation[]; initial_event?: ProgressDraft};
 export function projectDraft(record: EditableProject | null): ProjectDraft {
-  return record ? {...record.metadata, body:record.body, contacts:record.contacts} : {name:"",primary_counterparty_id:"",counterparty_ids:[],new_counterparty:{name:"",kind:"organization"},additional_counterparties:[],record_type:"cooperation",category:[],stage:"initial_contact",relationship:"active",priority:"medium",owner:"",first_contact:"",first_contact_certainty:"confirmed",sourced_by:[],source_certainty:"confirmed",source_note:"",follow_up_status:"proactive_contact",next_action:"",next_action_due:null,body:"# 新事项\n\n## 管理摘要\n\n",contacts:[],initial_event:newEvent()};
+  return record ? {...record.metadata, body:record.body, contacts:record.contacts} : {name:"",primary_counterparty_id:"",counterparty_ids:[],new_counterparty:{name:"",kind:"organization"},additional_counterparties:[],record_type:"cooperation",category:[],stage:"initial_contact",relationship:"active",priority:"medium",owner:"待确认",first_contact:"",first_contact_certainty:"confirmed",sourced_by:[],source_certainty:"confirmed",source_note:"",follow_up_status:"proactive_contact",next_action:"",next_action_due:null,body:"# 新事项\n\n## 管理摘要\n\n",contacts:[],initial_event:newEvent()};
 }
 export function ProjectForm({draft, onChange, data, isNew}: {draft: ProjectDraft; onChange: (draft: ProjectDraft) => void; data: DashboardData; isNew: boolean}) {
   const update = (key: string, value: unknown) => onChange({...draft,[key]:value});
@@ -115,7 +115,7 @@ export function ProjectForm({draft, onChange, data, isNew}: {draft: ProjectDraft
       <Field label="跟进状态"><Choice value={text("follow_up_status")} options={followUpStatusLabels} onChange={value => update("follow_up_status",value)} /></Field>
       <Field label="关系策略"><Choice value={text("relationship")} options={relationshipLabels} onChange={value => update("relationship",value)} /></Field>
       <Field label="优先级"><Choice value={text("priority")} options={priorityLabels} onChange={value => update("priority",value)} /></Field>
-      <Field label="负责人"><Choice value={text("owner")} options={{待确认:"待确认",...people}} required onChange={value => update("owner",value)} /></Field>
+      <Field label="负责人" hint="负责持续推动此事项的人，可暂不分配。录入者和交流参与人分别记录。"><Choice value={projectOwnerLabel(text("owner")) === "未分配" ? "待确认" : text("owner")} options={{待确认:"未分配",...people}} required onChange={value => update("owner",value)} /></Field>
       {draft.record_type === "investment" && <Field label="目标投资金额（人民币元，可选）"><input type="number" min={1} step={1} value={draft.target_investment_amount_cny as number || ""} onChange={e => update("target_investment_amount_cny",e.target.value ? Number(e.target.value) : null)} /></Field>}
       <Field label="首次接触日期"><input type="date" required={draft.first_contact_certainty !== "unknown"} disabled={draft.first_contact_certainty === "unknown"} value={text("first_contact")} onChange={e => update("first_contact",e.target.value)} /></Field>
       <Field label="首次接触日期依据"><Choice value={text("first_contact_certainty")} options={{confirmed:"有明确依据",provisional:"暂定",unknown:"日期未知"}} onChange={value => onChange({...draft,first_contact_certainty:value,...(value === "unknown" ? {first_contact:null} : {})})} /></Field>

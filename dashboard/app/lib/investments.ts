@@ -1,5 +1,6 @@
 import type { Contact, ContactChannels, Project } from "./types";
 import type { LibraryFile } from "./file-library";
+import { projectOwnerLabel } from "./labels";
 
 export type InvestmentFilters = {
   query: string;
@@ -46,7 +47,7 @@ export function filterInvestments(projects: Project[], filters: InvestmentFilter
     if (filters.missingContact && !needsContactInfo(project)) return false;
     if (filters.bpStatus && filters.bpStatus !== "all" && (bpSendings(project.id, files).length > 0) !== (filters.bpStatus === "sent")) return false;
     const text = [
-      project.name, ...project.counterparties, project.owner, project.summary,
+      project.name, ...project.counterparties, project.owner, projectOwnerLabel(project.owner), project.summary,
       project.next_action, project.source_note, ...project.sourced_by,
       ...externalContacts(project).flatMap((contact) => [
         contact.name, contact.affiliation, contact.phone, contact.wechat, contact.email, contact.notes,

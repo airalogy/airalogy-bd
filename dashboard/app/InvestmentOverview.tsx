@@ -2,7 +2,7 @@
 
 import { Fragment, useState } from "react";
 import type { Project } from "./lib/types";
-import { followUpStatusLabels, priorityLabels, roleLabels, stageLabels } from "./lib/labels";
+import { followUpStatusLabels, priorityLabels, projectOwnerLabel, roleLabels, stageLabels } from "./lib/labels";
 import { bpSendings, csvCell, externalContacts, filterInvestments, hasContactChannel, needsContactInfo, type InvestmentFilters } from "./lib/investments";
 import type { LibraryFile } from "./lib/file-library";
 import BpStatus from "./BpStatus";
@@ -38,7 +38,7 @@ export default function InvestmentOverview({ projects, files, people, onOpenProj
           project.name, project.counterparties.join("、"), stageLabels[project.stage] ?? project.stage,
           followUpStatusLabels[project.follow_up_status], priorityLabels[project.priority],
           bp.length ? "已发送" : "暂无发送记录", bp.map(record => `${record.date} · ${record.title} · ${record.versionLabel} · ${record.filename} · ${record.people.map(id => people.find(person => person.id === id)?.name || id).join("、")} · ${record.channel}`).join("\n"), project.last_activity,
-          project.summary, project.next_action, project.next_action_due ?? "", project.owner,
+          project.summary, project.next_action, project.next_action_due ?? "", projectOwnerLabel(project.owner),
           contact?.name ?? "", contact ? (contact.side === "advisor" ? "引荐 / 顾问" : "机构 / 对方") : "",
           contact?.affiliation ?? "", contact?.project_roles.map((role) => roleLabels[role] ?? role).join("、") ?? "",
           contact?.phone ?? "", contact?.wechat ?? "", contact?.email ?? "", contact?.last_activity ?? "", contact?.notes ?? "",
@@ -116,7 +116,7 @@ export default function InvestmentOverview({ projects, files, people, onOpenProj
                 <td><time>{project.last_activity}</time><p>{latest?.summary || project.summary || "暂无进展摘要"}</p>
                   <button className="history-trigger" type="button" onClick={() => onOpenProject(project)}>查看完整进展</button></td>
                 <td><p>{project.next_action || "未记录"}</p>{project.next_action_due && <small>期限：{project.next_action_due}</small>}</td>
-                <td>{project.owner || "未记录"}</td>
+                <td>{projectOwnerLabel(project.owner)}</td>
               </tr>
               <tr id={"investment-contacts-" + project.id} hidden={!open} className="investment-contact-row"><td colSpan={7}>
                 {contacts.length > 0 ? <table className="investment-contacts">

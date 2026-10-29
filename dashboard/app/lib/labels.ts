@@ -1,5 +1,10 @@
 import type { Project } from "./types";
 
+export function projectOwnerLabel(owner?: string | null): string {
+  const name = owner?.trim();
+  return !name || name === "待确认" ? "未分配" : name;
+}
+
 export const stageLabels: Record<string, string> = {
   initial_contact: "初步接触",
   opportunity_assessment: "机会评估",

@@ -33,6 +33,7 @@ import { companyCategoryLabel } from "./lib/company-events";
 import {
   followUpStatusLabels,
   priorityLabels,
+  projectOwnerLabel,
   projectRelationshipLabel,
   recordTypeLabels,
   relationshipLabels,
@@ -261,6 +262,7 @@ function projectMatchesQuery(project: Project, query: string) {
   return [
     project.name,
     project.owner,
+    projectOwnerLabel(project.owner),
     project.counterparties.join(" "),
     project.next_action,
   ]
@@ -915,7 +917,7 @@ function ProjectDrawer({
             <section className="drawer-section detail-grid">
               <div>
                 <span>负责人</span>
-                <strong>{project.owner}</strong>
+                <strong>{projectOwnerLabel(project.owner)}</strong>
               </div>
               <div>
                 <span>首次接触</span>
@@ -1703,6 +1705,7 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
           {sortedProjects.map((project) => {
             const latestEvent = [...project.events].sort(eventSort)[0];
             const inactiveDays = daysBetween(project.last_activity, data.updated_at);
+            const ownerLabel = projectOwnerLabel(project.owner);
             return (
               <div
                 className="project-row"
@@ -1785,8 +1788,8 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
                   {project.next_action}
                 </span>
                 <span className="owner-cell" role="cell">
-                  <span className="owner-avatar">{project.owner.slice(-1)}</span>
-                  {project.owner}
+                  <span className="owner-avatar" aria-hidden="true">{ownerLabel === "未分配" ? "—" : ownerLabel.slice(-1)}</span>
+                  {ownerLabel}
                   <button
                     type="button"
                     className="project-details-button"
