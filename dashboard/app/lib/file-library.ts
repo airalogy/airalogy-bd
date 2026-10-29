@@ -31,6 +31,13 @@ export function filesForEvent(files: LibraryFile[], projectId: string, eventId: 
     && file.records.some(record => record.project_id === projectId && record.event_id === eventId));
 }
 
+// A progress entry refers to the version used then, not the file's current version.
+export function fileVersionsForEvent(files: LibraryFile[], projectId: string, eventId: string) {
+  return filesForEvent(files, projectId, eventId).flatMap(file => file.versions.flatMap((version, index) =>
+    file.records.some(record => record.project_id === projectId && record.event_id === eventId && record.version_id === version.id)
+      ? [{file, version, number: index + 1}] : []));
+}
+
 export function fileTypeLabel(file: LibraryFile) {
   const type = file.agreement_type;
   return file.category === "agreement" && type && type !== "unspecified" && agreementTypes[type]

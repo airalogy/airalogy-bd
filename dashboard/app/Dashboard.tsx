@@ -17,7 +17,7 @@ import ExportDialog from "./ExportDialog";
 import WeeklyReportDialog from "./WeeklyReportDialog";
 import ToolbarActions from "./ToolbarActions";
 import FileLibraryDialog, { type FileTarget } from "./FileLibrary";
-import { filesForEvent } from "./lib/file-library";
+import type { LibraryFile } from "./lib/file-library";
 import OverviewActivity from "./OverviewActivity";
 import { collectActivityEvents, type ScopedActivityEvent } from "./lib/activity-calendar";
 import CompanyActivity from "./CompanyActivity";
@@ -75,6 +75,7 @@ type PeopleSort = "recent" | "name" | "projects";
 type EventPeriod = "all" | "7d" | "30d" | "90d" | "custom";
 type ScopedEvent = ScopedActivityEvent;
 type RecordSelection = {
+  projectId?: string;
   event: ProjectEvent;
   sourceLabel: string;
 };
@@ -557,8 +558,12 @@ function EventRecordDialog({
   workspace,
   onClose,
   onFiles,
+  files,
+  snapshot,
 }: {
   selection: RecordSelection | null;
+  files: LibraryFile[];
+  snapshot?: string;
   workspace: Workspace;
   onFiles?: () => void;
   onClose: () => void;
@@ -591,7 +596,6 @@ function EventRecordDialog({
             </Dialog.Close>
           </header>
           <div className="record-dialog-scroll">
-            {onFiles && <button className="admin-button" type="button" onClick={onFiles}>查看本次交流资料</button>}
             <article className="markdown-record">
               {document ? <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
@@ -600,6 +604,7 @@ function EventRecordDialog({
                 {document.markdown}
               </ReactMarkdown> : <p>{selection.event.summary}</p>}
             </article>
+            {selection.projectId && <EventAttachments key={`${selection.projectId}:${selection.event.id}`} files={files} matter={selection.projectId} event={selection.event.id} snapshot={snapshot} onDetails={onFiles} />}
           </div>
         </Dialog.Content>
       </Dialog.Portal>
@@ -1000,8 +1005,7 @@ function ProjectDrawer({
                     workspace={workspace}
                     compact
                     onOpenRecord={onOpenRecord}
-                    attachments={<EventAttachments files={data.files || []} matter={project.id} event={event.id} snapshot={fileSnapshot}/>}
-                    actions={filesForEvent(data.files || [],project.id,event.id).length > 0 ? <button type="button" className="event-secondary-trigger" aria-label={`关联资料：${event.title}`} onClick={() => onFiles(event.id)}>相关资料 · {filesForEvent(data.files || [],project.id,event.id).length}</button> : undefined}
+                    attachments={<EventAttachments files={data.files || []} matter={project.id} event={event.id} snapshot={fileSnapshot} onDetails={() => onFiles(event.id)} compact/>}
                   />
                 ))}
               </div>
@@ -1376,9 +1380,9 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
         {!readOnly && <button type="button" onClick={()=>openFiles()}>事项资料</button>}{readOnly && <button type="button" onClick={()=>openFiles()}>历史资料</button>}
         {!readOnly && <button type="button" aria-pressed={page === "ai"} onClick={() => {setAiScope("");setPage("ai");}}>AI 助手</button>}
       </nav>
-      {!readOnly && page === "ai" && <AiAssistant key={aiScope} initialScope={aiScope} data={data} onSaved={saved} onSource={source => {const project = data.projects.find(p => p.id === source.projectId);const event = project?.events.find(e => e.id === source.eventId);if(project && event) setSelectedRecord({event,sourceLabel:project.name});}} />}
+      {!readOnly && page === "ai" && <AiAssistant key={aiScope} initialScope={aiScope} data={data} onSaved={saved} onSource={source => {const project = data.projects.find(p => p.id === source.projectId);const event = project?.events.find(e => e.id === source.eventId);if(project && event) setSelectedRecord({event,sourceLabel:project.name,projectId:project.id});}} />}
       {!readOnly && canAdmin && backupStatus?.error && <div className="admin-alert" role="alert">最近自动备份未完成，当前资料和已有版本仍然保留。<Link className="admin-button" href="/admin?section=backup">查看备份情况</Link></div>}
-      {!readOnly && canAdmin && page === "admin" && <WorkspaceAdmin data={data} onEdit={setEditTarget} onHistory={openHistory} onFiles={openFiles} onNdaFiles={() => setFilesTarget({agreementType:"nda"})} onOpenRecord={(event,sourceLabel) => setSelectedRecord({event,sourceLabel})} />}
+      {!readOnly && canAdmin && page === "admin" && <WorkspaceAdmin data={data} onEdit={setEditTarget} onHistory={openHistory} onFiles={openFiles} onNdaFiles={() => setFilesTarget({agreementType:"nda"})} onOpenRecord={(event,sourceLabel,projectId) => setSelectedRecord({event,sourceLabel,projectId})} />}
       {!readOnly && canAdmin && page === "history" && <VersionHistory onBrowse={onBrowseHistory} initialVersion={historyTarget ? null : initialHistoryVersion} key={historyTarget ? `${historyTarget.kind}:${historyTarget.id}` : "all"} data={data} initialTarget={historyTarget} onRestored={saved} />}
       <div hidden={page !== "investments"}>
         <InvestmentOverview projects={data.projects} files={data.files || []} people={data.people} onOpenProject={setSelectedProject} onOpenBp={(projectId,fileId) => setFilesTarget({projectId,fileId,category:"bp",usageKind:"sent"})} />
@@ -1494,10 +1498,10 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
       <OverviewActivity key={JSON.stringify([viewMode,projectScope,stageFilter,priorityFilter,followUpFilter,relationshipFilter,projectQuery])}
         events={allEvents} timezone={data.workspace.timezone} includeCompanyEvents={includeCompanyEvents} scopeLabel={scopeLabel}
         historyAction={<EventHistoryDialog events={allEvents} workspace={data.workspace} scopeLabel={scopeLabel}
-          referenceDate={data.updated_at ?? ""} onOpenRecord={event => setSelectedRecord({event, sourceLabel:event.sourceLabel})} />}
+          referenceDate={data.updated_at ?? ""} onOpenRecord={event => setSelectedRecord({event, sourceLabel:event.sourceLabel,projectId:event.projectId})} />}
         renderEvent={event => <EventItem event={event} workspace={data.workspace} sourceLabel={event.sourceLabel}
-          onOpenRecord={() => setSelectedRecord({event,sourceLabel:event.sourceLabel})}
-          actions={!event.related_document ? <button type="button" className="event-secondary-trigger" onClick={() => setSelectedRecord({event,sourceLabel:event.sourceLabel})}>查看进展</button> : undefined} />} />
+          onOpenRecord={() => setSelectedRecord({event,sourceLabel:event.sourceLabel,projectId:event.projectId})}
+          actions={!event.related_document ? <button type="button" className="event-secondary-trigger" onClick={() => setSelectedRecord({event,sourceLabel:event.sourceLabel,projectId:event.projectId})}>查看进展</button> : undefined} />} />
 
       <section
         className="filter-hub"
@@ -1920,7 +1924,7 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
           onFollowUpFilter={(value) => { setPage("projects"); selectFollowUp(value); }}
           onRelationshipFilter={(value) => { setPage("projects"); selectRelationship(value); }}
           onOpenRecord={(event) =>
-            setSelectedRecord({ event, sourceLabel: selectedProject.name })
+            setSelectedRecord({ event, sourceLabel: selectedProject.name, projectId: selectedProject.id })
           }
           recordTypeActive={viewMode === selectedProject.record_type}
           stageActive={stageFilter === selectedProject.stage}
@@ -1934,7 +1938,9 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
       {!readOnly && filesTarget && <FileLibraryDialog data={data} target={filesTarget} onClose={() => setFilesTarget(null)} onChanged={onWorkspaceRefresh} onHistory={openHistory} />}
       <EventRecordDialog
         selection={selectedRecord}
-        onFiles={selectedRecord && data.projects.some(project => filesForEvent(data.files || [],project.id,selectedRecord.event.id).length > 0) ? () => openFiles(data.projects.find(project => project.events.some(event => event.id === selectedRecord.event.id))?.id,selectedRecord.event.id) : undefined}
+        files={data.files || []}
+        snapshot={readOnly ? historicalVersion : undefined}
+        onFiles={selectedRecord?.projectId ? () => openFiles(selectedRecord.projectId,selectedRecord.event.id) : undefined}
         workspace={data.workspace}
         onClose={() => setSelectedRecord(null)}
       />

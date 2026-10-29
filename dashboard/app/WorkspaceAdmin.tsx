@@ -4,7 +4,6 @@ import { useState } from "react";
 import type { DashboardData, ProjectEvent } from "./lib/types";
 import type { RecordTarget } from "./lib/workspace-types";
 import { companyCategoryLabel } from "./lib/company-events";
-import { filesForEvent } from "./lib/file-library";
 import { recordTypeLabels, stageLabels } from "./lib/labels";
 
 export default function WorkspaceAdmin({data, onEdit, onHistory, onFiles, onNdaFiles, onOpenRecord}: {
@@ -13,7 +12,7 @@ export default function WorkspaceAdmin({data, onEdit, onHistory, onFiles, onNdaF
   onHistory: (target: RecordTarget) => void;
   onFiles: (projectId?: string, eventId?: string) => void;
   onNdaFiles: () => void;
-  onOpenRecord: (event: ProjectEvent, sourceLabel: string) => void;
+  onOpenRecord: (event: ProjectEvent, sourceLabel: string, projectId: string) => void;
 }) {
   const [kind, setKind] = useState<"project" | "person" | "company">("project");
   const [query, setQuery] = useState("");
@@ -49,13 +48,11 @@ export default function WorkspaceAdmin({data, onEdit, onHistory, onFiles, onNdaF
             <div className="admin-progress-heading"><div><h3 id="admin-progress-title">沟通进展</h3><span>{project.events.length} 条记录 · 最近在前</span></div><button type="button" className="admin-button admin-primary" onClick={() => onEdit({kind:"progress",id:"",project_id:selected})}>新增沟通进展</button></div>
             {!project.events.length && <p className="panel-empty-state">暂无沟通进展，添加第一次交流记录。</p>}
             <div className="admin-progress-items">{[...project.events].sort((a,b) => b.date.localeCompare(a.date)).map(event => {
-              const fileCount = filesForEvent(data.files || [],project.id,event.id).length;
               return <article className="admin-progress-item" key={event.id}>
                 <time dateTime={event.date}>{event.date}</time><h4>{event.title}</h4>{event.summary && <p>{event.summary}</p>}
-                <EventAttachments files={data.files || []} matter={project.id} event={event.id}/>
+                <EventAttachments files={data.files || []} matter={project.id} event={event.id} onDetails={() => onFiles(project.id,event.id)} compact/>
                 <div className="admin-context-links">
-                  {event.related_document && <button type="button" className="event-secondary-trigger" onClick={() => onOpenRecord(event,project.name)}>阅读完整记录</button>}
-                  {fileCount > 0 && <button type="button" className="event-secondary-trigger" onClick={() => onFiles(selected,event.id)} aria-label={`关联资料：${event.title}`}>相关资料 · {fileCount}</button>}
+                  {event.related_document && <button type="button" className="event-secondary-trigger" onClick={() => onOpenRecord(event,project.name,project.id)}>阅读完整记录</button>}
                   <button type="button" className="event-secondary-trigger" onClick={() => onEdit({kind:"progress",id:event.id,project_id:selected})} aria-label={`编辑进展：${event.title}`}>编辑进展</button>
                 </div>
               </article>;
