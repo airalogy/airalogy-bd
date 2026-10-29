@@ -104,7 +104,7 @@ export default function RemoteAccess({ user, mode, endpoint = "" }: { user: Team
       {mode !== "drafts" && <>
       <h3>{manage ? "全部个人凭据" : "我的凭据"}</h3>
       {!status.tokens.length && <p className="settings-empty">暂无凭据。</p>}
-      <ul className="remote-items">{status.tokens.map(token => <li key={token.id}><div><strong>{token.label}</strong>{manage && <span> · {status.members?.find(member => member.id === token.owner)?.name || "成员"}</span>}<p>{token.can_save ? "直接保存进展及附件 · 可查询和提交草稿" : token.can_draft ? "查询和提交草稿" : "仅查询"}{token.can_intake && " · 可新建事项及维护业务档案"} · {when(token.expires)} 到期</p></div>
+      <ul className="remote-items">{status.tokens.map(token => <li key={token.id}><div><strong>{token.label}</strong>{manage && <span> · {status.members?.find(member => member.id === token.owner)?.name || "成员"}</span>}<p>{token.can_save ? "直接保存进展及附件 · 可查询和提交草稿" : token.can_draft ? "查询和提交草稿" : "仅查询"}{!!token.can_intake && " · 可新建事项及维护业务档案"} · {when(token.expires)} 到期</p></div>
         {user.role === "admin" && token.owner === user.id && token.can_draft && !token.can_intake && <button className="admin-button" disabled={busy} onClick={() => {if(window.confirm(`允许“${token.label}”读取完整人员档案，新建、修改人员、对接方和事项，并处理进展及附件？${token.can_save ? "此连接可直接正式保存这些修改。" : "正式保存仍需网页确认。"}`)) void act("allow_intake", {tokenId:token.id,confirmed:true}, "此连接已获准维护业务档案。");}}>授权业务档案维护</button>}
         <button className="admin-button" disabled={busy} onClick={() => void act("revoke", { tokenId: token.id }, "凭据及其待确认草稿已撤销。")}>撤销</button></li>)}</ul>
       </>}
