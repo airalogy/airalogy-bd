@@ -15,6 +15,7 @@ from team_policy import Policy
 from content_paths import counterparties
 from file_library import LibraryError, index_from
 from staged_uploads import UploadStore
+from remote_intake import Intake, require_intake
 
 MATTER_FIELDS = {"body", "stage", "follow_up_status", "next_action", "next_action_due"}
 PROGRESS_FIELDS = {"date", "type", "title", "summary", "importance", "participants", "body", "location"}
@@ -39,6 +40,8 @@ class RemoteAccess:
         self.workspace, self.accounts, self.db = workspace, accounts, accounts.db
         self.db.executescript("""
             PRAGMA secure_delete=ON;
+            CREATE TABLE IF NOT EXISTS remote_intakes (id TEXT PRIMARY KEY, owner TEXT NOT NULL, token_id TEXT NOT NULL,
+                binding TEXT NOT NULL, value TEXT NOT NULL, expires INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS remote_settings (id INTEGER PRIMARY KEY CHECK(id=1), enabled INTEGER NOT NULL, revision TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS remote_grants (owner TEXT PRIMARY KEY);
             CREATE TABLE IF NOT EXISTS remote_tokens (id TEXT PRIMARY KEY, digest TEXT UNIQUE NOT NULL, owner TEXT NOT NULL,
@@ -55,7 +58,10 @@ class RemoteAccess:
         """)
         if "can_save" not in {row["name"] for row in self.db.execute("PRAGMA table_info(remote_tokens)")}:
             self.db.execute("ALTER TABLE remote_tokens ADD COLUMN can_save INTEGER NOT NULL DEFAULT 0")
+        if "can_intake" not in {row["name"] for row in self.db.execute("PRAGMA table_info(remote_tokens)")}:
+            self.db.execute("ALTER TABLE remote_tokens ADD COLUMN can_intake INTEGER NOT NULL DEFAULT 0")
         with self.db:
+            self.db.execute("DELETE FROM remote_intakes WHERE expires<=?", (int(time.time()),))
             self.db.execute("DELETE FROM remote_attempts WHERE at<?", (int(time.time()) - 60,))
             # Keep consumed request IDs until expiry for replay protection, but clear their contents.
             self.db.execute("DELETE FROM remote_drafts WHERE expires<=?", (int(time.time()),))
@@ -65,6 +71,7 @@ class RemoteAccess:
 
     def upload_context(self, actor, token):
         self.workspace.policy = Policy(self.workspace, actor)
+        self.workspace.authorize_intake_upload = Intake(self, actor, token).authorize_upload
         self.workspace.upload_scope = {"owner": actor["id"], "binding": actor["revision"], "channel": "remote", "token": token["id"], "expires": token["expires"]}
 
     def settings(self):
@@ -85,6 +92,7 @@ class RemoteAccess:
         self.db.execute(f"DELETE FROM remote_tokens WHERE {clause}", values)
         self.db.execute(f"DELETE FROM remote_drafts WHERE {clause}", values)
         self.db.execute(f"DELETE FROM remote_writes WHERE {clause}", values)
+        self.db.execute(f"DELETE FROM remote_intakes WHERE {clause}", values)
 
     def authenticate(self, token):
         self.enabled()
@@ -113,7 +121,7 @@ class RemoteAccess:
     def status(self, actor, manage=False):
         result = self.settings() | {"granted": self.accounts.remote_allowed(actor["id"])}
         result["tokens"] = [dict(row) for row in self.db.execute(
-            "SELECT id,owner,label,can_draft,can_save,expires,created FROM remote_tokens WHERE " + ("1=1" if manage else "owner=?") + " ORDER BY created DESC",
+            "SELECT id,owner,label,can_draft,can_save,can_intake,expires,created FROM remote_tokens WHERE " + ("1=1" if manage else "owner=?") + " ORDER BY created DESC",
             () if manage else (actor["id"],))]
         if manage:
             result["members"] = [{"id": row["id"], "name": row["name"], "role": row["role"], "active": bool(row["active"]),
@@ -162,6 +170,9 @@ class RemoteAccess:
             if mode not in ("read", "draft", "direct"):
                 raise AuthError("连接权限无效。", "invalid")
             if mode == "direct": self.accounts.require_admin(actor)
+            intake = request.get("canIntake", False)
+            if type(intake) is not bool or (intake and (actor["role"] != "admin" or mode == "read")):
+                raise AuthError("业务档案维护仅限管理员明确授权的可写连接。", "invalid")
             days, writable = request.get("days", 7), mode != "read"
             if type(days) is not int or not 1 <= days <= 30 or (writable and actor["role"] == "viewer"):
                 raise AuthError("有效期须为 1–30 天；只读成员不能提交草稿。", "invalid")
@@ -171,9 +182,19 @@ class RemoteAccess:
             label = text(request.get("label"), 80)
             token, identity = "bdr_" + secrets.token_urlsafe(32), secrets.token_hex(16)
             with self.db:
-                self.db.execute("INSERT INTO remote_tokens(id,digest,owner,binding,label,can_draft,expires,created,can_save) VALUES(?,?,?,?,?,?,?,?,?)", (identity, fingerprint(token), actor["id"], actor["revision"], label, int(writable), now + days * 86400, now, int(mode == "direct")))
+                self.db.execute("INSERT INTO remote_tokens(id,digest,owner,binding,label,can_draft,expires,created,can_save,can_intake) VALUES(?,?,?,?,?,?,?,?,?,?)", (identity, fingerprint(token), actor["id"], actor["revision"], label, int(writable), now + days * 86400, now, int(mode == "direct"), int(intake)))
             self.accounts.audit(actor, "remote.issue_direct" if mode == "direct" else "remote.issue", identity)
             return {"id": identity, "token": token, "expires": now + days * 86400, "accessMode": mode}
+        if op == "allow_intake":
+            self.accounts.require_admin(actor)
+            self.grant(actor)
+            row = self.db.execute("SELECT * FROM remote_tokens WHERE id=? AND owner=?", (text(request.get("tokenId")), actor["id"])).fetchone()
+            if not row or not row["can_draft"] or request.get("confirmed") is not True:
+                raise AuthError("请本人明确确认允许此连接维护业务档案。", "invalid")
+            self.token_actor(row)
+            with self.db: self.db.execute("UPDATE remote_tokens SET can_intake=1 WHERE id=?", (row["id"],))
+            self.accounts.audit(actor, "remote.allow_intake", row["id"])
+            return {"allowed": True}
         if op == "revoke":
             identity = text(request.get("tokenId"))
             row = self.db.execute("SELECT * FROM remote_tokens WHERE id=?", (identity,)).fetchone()
@@ -182,6 +203,7 @@ class RemoteAccess:
                 self.db.execute("DELETE FROM remote_tokens WHERE id=?", (identity,))
                 self.db.execute("DELETE FROM remote_drafts WHERE token_id=?", (identity,))
                 self.db.execute("DELETE FROM remote_writes WHERE token_id=?", (identity,))
+                self.db.execute("DELETE FROM remote_intakes WHERE token_id=?", (identity,))
             self.accounts.audit(actor, "remote.revoke", identity)
             return {"revoked": True}
         if op == "drafts":
@@ -214,7 +236,7 @@ class RemoteAccess:
             self.ready()
             Policy(self.workspace, actor).authorize(saved)
             try:
-                self.workspace.save(saved, preview=True)
+                self.save_request(saved, actor, token, preview=True)
             except Exception as exc:
                 if getattr(exc, "code", None) in {"conflict", "attachment_conflict", "upload_expired"}:
                     with self.db: self.db.execute("UPDATE remote_drafts SET state='failed',value='' WHERE id=?", (row["id"],))
@@ -228,7 +250,7 @@ class RemoteAccess:
             with self.db: self.db.execute("UPDATE remote_drafts SET state='processing',value='' WHERE id=?", (row["id"],))
             self.accounts.audit(actor, "remote.confirm", row["id"], "started")
             try:
-                result = self.workspace.save(saved)
+                result = self.save_request(saved, actor, token)
             except Exception as exc:
                 with self.db: self.db.execute("UPDATE remote_drafts SET state='failed' WHERE id=?", (row["id"],))
                 self.accounts.audit(actor, "remote.confirm", row["id"], "failed")
@@ -256,7 +278,11 @@ class RemoteAccess:
         token = self.db.execute("SELECT * FROM remote_tokens WHERE id=?", (row["token_id"],)).fetchone()
         self.token_actor(token)
         if actor["role"] == "viewer" or not token["can_draft"]: raise AuthError("此账号不能确认草稿。")
-        policy.project(row["matter"])
+        saved = json.loads(row["value"])["request"]
+        if saved.get("kind") == "intake":
+            Intake(self, actor, token).read(saved["intake_id"])
+        else:
+            policy.project(row["matter"])
         for attachment in json.loads(row["value"])["request"].get("attachments", []):
             if attachment.get("file_id"):
                 item = policy.file(attachment["file_id"])
@@ -271,8 +297,8 @@ class RemoteAccess:
         if self.db.execute("SELECT COUNT(*) FROM remote_attempts WHERE owner=? AND at>=?", (actor["id"], now - 60)).fetchone()[0] >= 60:
             raise AuthError("远程请求过于频繁，请稍后再试。", "rate_limited")
         with self.db: self.db.execute("INSERT INTO remote_attempts VALUES(?,?)", (actor["id"], now))
-        if op == "access": return {"canDraft": bool(token["can_draft"]) and actor["role"] != "viewer", "canSave": bool(token["can_save"]) and actor["role"] == "admin"}
-        if op not in {"search_matters", "read_matter", "read_progress", "list_files", "read_file", "prepare_upload", "upload_status", "discard_upload", "upload_bytes", "submit_draft", "save_progress"}: raise AuthError("远程接口不提供此操作。")
+        if op == "access": return {"canDraft": bool(token["can_draft"]) and actor["role"] != "viewer", "canSave": bool(token["can_save"]) and actor["role"] == "admin", "canIntake": bool(token["can_intake"]) and actor["role"] == "admin"}
+        if op not in {"search_entities", "read_entity", "prepare_intake", "discard_intake", "submit_intake", "save_intake", "search_matters", "read_matter", "read_progress", "list_files", "read_file", "prepare_upload", "upload_status", "discard_upload", "upload_bytes", "submit_draft", "save_progress"}: raise AuthError("远程接口不提供此操作。")
         policy = Policy(self.workspace, actor)
         self.upload_context(actor, token)
         self.ready()
@@ -284,16 +310,35 @@ class RemoteAccess:
         self.accounts.audit(actor, "remote." + op, token["id"])
         return result
 
+    def save_request(self, saved, actor, token, preview=False):
+        if saved.get("kind") == "intake":
+            return Intake(self, actor, token).save(saved, preview=preview)
+        return self.workspace.save(saved, preview=preview)
+
     def tool(self, op, args, actor, token, policy):
+        if op in {"prepare_intake", "discard_intake", "submit_intake", "save_intake"}:
+            require_intake(actor, token)
+            intake = Intake(self, actor, token)
+            if op == "prepare_intake": return intake.prepare(args)
+            if op == "discard_intake":
+                exact(args, {"intake_id"}, {"intake_id"})
+                intake.read(text(args["intake_id"]))
+                if self.db.execute("SELECT 1 FROM remote_drafts WHERE state='pending' AND token_id=? AND json_extract(CASE WHEN json_valid(value) THEN value ELSE '{}' END,'$.request.intake_id')=?", (token["id"], args["intake_id"])).fetchone():
+                    raise AuthError("方案已用于待确认草稿，请在网页驳回。", "conflict")
+                with self.db: self.db.execute("DELETE FROM remote_intakes WHERE id=?", (args["intake_id"],))
+                return {"discarded": True}
+            return self.submit_intake(op, args, actor, token)
+        if op in {"search_entities", "read_entity"}:
+            return self.entities(op, args, actor, token, policy)
         if op in {"prepare_upload", "upload_status", "discard_upload", "upload_bytes"}:
             if not token["can_draft"] or actor["role"] == "viewer":
                 raise AuthError("此凭据只允许查询。")
             store = UploadStore(self.workspace)
             if op == "prepare_upload":
-                exact(args, {"matter_id", "filename", "size", "sha256"}, {"matter_id", "filename", "size", "sha256"})
-                value = store.prepare(text(args["matter_id"]), args["filename"], args["size"], args["sha256"])
+                exact(args, {"matter_id", "filename", "size", "sha256", "intake_id"}, {"matter_id", "filename", "size", "sha256"})
+                value = store.prepare(text(args["matter_id"]), args["filename"], args["size"], args["sha256"], args.get("intake_id"))
                 return {**value, "upload_path": "/api/mcp/uploads", "method": "POST", "multipart_fields": ["upload_id", "file"],
-                        "instructions": "Upload actual local file bytes with multipart/form-data using the same Bearer credential, outside model context. Resolve this path against this MCP server origin only. Never send the credential or file bytes into the conversation. A local path alone is not an upload. Then use upload_id in attachments on submit_draft or save_progress."}
+                        "instructions": "Upload actual local file bytes with multipart/form-data using the same Bearer credential, outside model context. Resolve this path against this MCP server origin only. Never send the credential or file bytes into the conversation. A local path alone is not an upload. Then use upload_id in attachments on submit_draft/save_progress, or submit_intake/save_intake for an intake plan."}
             exact(args, {"upload_id", "filename", "data"} if op == "upload_bytes" else {"upload_id"}, {"upload_id", "filename", "data"} if op == "upload_bytes" else {"upload_id"})
             value = store.read(args["upload_id"])
             if op == "upload_bytes":
@@ -315,7 +360,7 @@ class RemoteAccess:
             if type(offset) is not int or not 0 <= offset <= 100000: raise AuthError("页码无效。", "invalid")
             matches = []
             for identity, (_, metadata, _) in sorted(self.workspace.projects(files).items()):
-                if identity in policy.allowed and query in metadata["name"].casefold():
+                if identity in policy.allowed and any(query in name.casefold() for name in [metadata["name"], party_name(metadata)] + [parties[p][1].get("short_name") or "" for p in metadata.get("counterparty_ids", []) if p in parties]):
                     matches.append({**{key: metadata.get(key) for key in ("id", "name", "stage", "follow_up_status")}, "counterparty": party_name(metadata)})
             return {"matters": matches[offset:offset + 20], "nextOffset": offset + 20 if len(matches) > offset + 20 else None}
         matter = text(args.get("matter_id"))
@@ -351,6 +396,7 @@ class RemoteAccess:
                     "counterparty": party_name(record["metadata"]),
                     "fields": {key: record["body"] if key == "body" else record["metadata"].get(key) for key in sorted(MATTER_FIELDS)},
                     "participant_ids": [c["person_id"] for c in record["contacts"]],
+                    **({"record": {"metadata": record["metadata"], "body": record["body"], "contacts": record["contacts"]}} if token["can_intake"] and actor["role"] == "admin" else {}),
                     "events": [{k: e.get(k) for k in ("id", "date", "type", "title", "summary")} for e in events[offset:offset + 20]],
                     "nextOffset": offset + 20 if len(events) > offset + 20 else None}
         progress_id = text(args.get("progress_id", ""), 160, True)
@@ -467,3 +513,78 @@ class RemoteAccess:
     def receipt(row):
         return {"draftId": row["id"], "status": row["state"], "expires": row["expires"], "reviewPath": "/remote#draft-" + row["id"],
                 "message": "草稿尚未写入业务资料，请本人登录 BD 核对并确认。" if row["state"] == "pending" else "此草稿已处理，不会再次保存。请在 BD 查看结果。"}
+
+    def entities(self, op, args, actor, token, policy):
+        from workspace_service import parse_yaml
+        files = self.workspace.read_files()
+        exact(args, {"kind", "id"} if op == "read_entity" else {"kind", "query", "offset"}, {"kind", "id"} if op == "read_entity" else {"kind"})
+        kind = args["kind"]
+        if kind not in {"person", "counterparty"}: raise AuthError("请选择人员或对接方。", "invalid")
+        if op == "read_entity":
+            require_intake(actor, token)
+            result = self.workspace.get_record({"kind": kind, "id": text(args["id"])})
+            if not result["record"]: raise AuthError("未找到这条档案。", "not_found")
+            return result
+        query, offset = text(args.get("query", ""), 100, True).casefold(), args.get("offset", 0)
+        if type(offset) is not int or not 0 <= offset <= 100000: raise AuthError("页码无效。", "invalid")
+        projects = {k: v for k, v in self.workspace.projects(files).items() if k in policy.allowed}
+        linked = {}
+        for identity, (_, metadata, _) in projects.items():
+            record = self.workspace.record(files, "project", identity)
+            ids = metadata.get("counterparty_ids", []) if kind == "counterparty" else set(metadata.get("sourced_by", []) + [c["person_id"] for c in record["contacts"]] + [p for e in record["events"] for p in e.get("participants", [])])
+            for entity in ids: linked.setdefault(entity, []).append(identity)
+        if kind == "person":
+            values = [{k: p.get(k, "") for k in ("id", "name", "affiliation")} for p in parse_yaml(files["people.yaml"])["people"]]
+        else:
+            values = [{k: v[1].get(k, "") for k in ("id", "name", "short_name", "kind")} for v in counterparties(files).values()]
+        values = [{**v, "matter_ids": linked.get(v["id"], [])} for v in values if (actor["role"] == "admin" or v["id"] in linked) and any(query in str(x).casefold() for k, x in v.items() if k != "id")]
+        values.sort(key=lambda v: (v["name"], v["id"]))
+        return {"entities": values[offset:offset+20], "nextOffset": offset+20 if len(values)>offset+20 else None,
+                "instructions": "Matches are candidates, not proof of identity. Read related matters before creating a new one. Ask the user when multiple candidates remain plausible."}
+
+    def submit_intake(self, op, args, actor, token):
+        direct = op == "save_intake"
+        if direct and not token["can_save"]: raise AuthError("此连接只允许提交草稿，请在网页确认。")
+        exact(args, {"intake_id", "request_id", "attachments"}, {"intake_id", "request_id"})
+        request_id = text(args["request_id"], 80)
+        if not re.fullmatch(r"[A-Za-z0-9_-]{16,80}", request_id): raise AuthError("请提供至少 16 位唯一请求编号。", "invalid")
+        signature = hashlib.sha256(json.dumps(args, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+        table, other = ("remote_writes", "remote_drafts") if direct else ("remote_drafts", "remote_writes")
+        if self.db.execute(f"SELECT 1 FROM {other} WHERE token_id=? AND request_id=?", (token["id"], request_id)).fetchone():
+            raise AuthError("此请求编号已用于其他操作，请先核对原操作结果。", "conflict")
+        old = self.db.execute(f"SELECT * FROM {table} WHERE token_id=? AND request_id=?", (token["id"], request_id)).fetchone()
+        if old:
+            if old["fingerprint"] != signature: raise AuthError("同一请求编号不能提交不同内容。", "conflict")
+            return self.write_receipt(old) if direct else self.receipt(old)
+        intake = Intake(self, actor, token)
+        row, plan = intake.read(text(args["intake_id"]))
+        save = {"action": "save", "kind": "intake", "intake_id": args["intake_id"], "attachments": args.get("attachments", [])}
+        preview = intake.save(save, preview=True)
+        if self.db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] >= 2000 or (not direct and self.db.execute("SELECT COUNT(*) FROM remote_drafts WHERE owner=? AND state='pending'", (actor["id"],)).fetchone()[0] >= 20):
+            raise AuthError("请求记录已达上限，请先处理待确认修改或等待到期。", "rate_limited")
+        identity, created = secrets.token_hex(16), int(time.time())
+        upload_ids = [a["upload_id"] for a in save["attachments"] if a.get("upload_id")]
+        if direct:
+            with self.db:
+                self.db.execute("INSERT INTO remote_writes VALUES(?,?,?,?,?,?,?,'processing','',?,?)", (identity, actor["id"], token["id"], actor["revision"], request_id, signature, plan["matter_id"], created, token["expires"]))
+            self.workspace.actor = {key: actor[key] for key in ("id", "name", "email")}
+            self.accounts.audit(actor, "remote.save_intake", identity, "started")
+            try:
+                receipt = {**intake.save(save), "write_id": identity, "request_id": request_id}
+                with self.db: self.db.execute("UPDATE remote_writes SET state='saved',result=? WHERE id=?", (json.dumps(receipt, ensure_ascii=False), identity))
+            except Exception as exc:
+                with self.db: self.db.execute("UPDATE remote_writes SET state='uncertain' WHERE id=?", (identity,))
+                self.accounts.audit(actor, "remote.save_intake", identity, "failed")
+                raise AuthError("保存结果需要核对，请保留原请求编号并查询最新资料和修改历史，不要重新编号重复保存。", "uncertain") from exc
+            self.accounts.audit(actor, "remote.save_intake", identity, "success")
+            return receipt
+        expires = min([row["expires"]] + [UploadStore(self.workspace).read(i)["expires"] for i in upload_ids])
+        review = {**plan["review"], "attachments": preview["attachments"]}
+        UploadStore(self.workspace).claim(upload_ids, identity)
+        try:
+            with self.db:
+                self.db.execute("INSERT INTO remote_drafts VALUES(?,?,?,?,?,?,?,?,'pending',?,?)", (identity, actor["id"], token["id"], actor["revision"], request_id, signature, plan["matter_id"], json.dumps({"request": save, "review": review}, ensure_ascii=False), created, expires))
+        except Exception:
+            UploadStore(self.workspace).claim(upload_ids, None)
+            raise
+        return self.receipt(self.db.execute("SELECT * FROM remote_drafts WHERE id=?", (identity,)).fetchone())

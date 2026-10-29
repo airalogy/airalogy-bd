@@ -273,7 +273,7 @@ test("server HTTP enforces invitations, scope, roles, CSRF, concurrent saves, do
     local({action:"restore_backup",archive:archive.path,destination:restored});
     assert.equal(existsSync(path.join(restored,".bd-ai")),false,"AI credentials and pending drafts must not be restored with business backups");
     const restoredDB=new DatabaseSync(path.join(restored,".bd-auth/accounts.sqlite3"));
-    for(const table of ["ba_session","ba_verification","ba_rate_limit","invitations","remote_tokens","remote_drafts","remote_grants","remote_settings","remote_attempts"]) assert.equal(restoredDB.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n,0);
+    for(const table of ["ba_session","ba_verification","ba_rate_limit","invitations","remote_tokens","remote_drafts","remote_writes","remote_intakes","remote_grants","remote_settings","remote_attempts"]) assert.equal(restoredDB.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n,0);
     const restoredMember=restoredDB.prepare("SELECT * FROM users WHERE id=?").get(recovered.user.id);
     assert.equal(restoredMember.username,"editor");assert.equal(restoredMember.role,"editor");assert.equal(restoredMember.project_ids,JSON.stringify([project]));
     assert.ok(restoredDB.prepare("SELECT password FROM ba_account LIMIT 1").get().password);

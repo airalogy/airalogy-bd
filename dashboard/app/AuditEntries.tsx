@@ -11,6 +11,7 @@ export type Audit = {
 const actionNames:Record<string,string>={
   "account.invite":"邀请成员","account.activate":"激活账号","account.login":"登录","account.username":"设置用户名","account.email_verified":"验证邮箱",
   "account.permissions":"调整权限","account.reset":"重新签发登录邀请","remote.grant":"允许外部 AI 工具","remote.ungrant":"取消外部 AI 工具权限",
+  "remote.allow_intake":"授权外部工具维护业务档案","remote.prepare_intake":"外部工具准备业务录入","remote.submit_intake":"外部工具提交业务录入草稿","remote.save_intake":"外部工具正式录入业务资料","remote.search_entities":"外部工具查询人员及对接方","remote.read_entity":"外部工具读取业务档案","remote.discard_intake":"外部工具丢弃录入方案",
   "remote.configure":"调整外部 AI 全局开关","remote.issue":"生成个人接入凭据","remote.issue_direct":"生成可直接保存的接入凭据","remote.revoke":"撤销接入凭据",
   "remote.search_matters":"外部工具查询事项","remote.read_matter":"外部工具读取事项","remote.read_progress":"外部工具读取进展",
   "remote.submit_draft":"外部工具提交草稿","remote.confirm":"确认修改草稿","remote.reject":"驳回修改草稿","remote.save_progress":"外部工具直接保存进展",

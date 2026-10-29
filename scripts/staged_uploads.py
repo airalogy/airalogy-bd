@@ -50,7 +50,7 @@ class UploadStore:
                 self.path(path.stem, ".bin").unlink()
         return records
 
-    def prepare(self, matter, filename, size, sha256):
+    def prepare(self, matter, filename, size, sha256, intake_id=None):
         filename = text(filename, "文件名", limit=180)
         if "/" in filename or "\\" in filename or Path(filename).suffix.lower() not in EXTENSIONS:
             raise LibraryError("请选择 PDF、Office 文档、图片、文本或 ZIP 文件。")
@@ -58,9 +58,11 @@ class UploadStore:
             raise LibraryError("单个文件须非空且不超过 50 MB。", "too_large")
         if not isinstance(sha256, str) or not re.fullmatch(r"[a-f0-9]{64}", sha256):
             raise LibraryError("请提供文件的 SHA-256 指纹。")
-        if matter not in self.workspace.projects(self.workspace.read_files()):
+        if intake_id:
+            self.workspace.authorize_intake_upload(intake_id, matter)
+        elif matter not in self.workspace.projects(self.workspace.read_files()):
             raise LibraryError("请选择现有事项。")
-        if self.workspace.policy:
+        if self.workspace.policy and not intake_id:
             self.workspace.policy.project(matter)
         records = self.cleanup()
         owned = [v for v in records if v["scope"]["owner"] == self.scope["owner"]]
@@ -70,6 +72,8 @@ class UploadStore:
         value = {"upload_id": "upload-" + secrets.token_hex(16), "scope": self.scope, "matter_id": matter,
                  "filename": filename, "size": size, "sha256": sha256, "ready": False,
                  "expires": min(now + 86400, self.scope.get("expires", now + 86400))}
+        if intake_id:
+            value["intake_id"] = intake_id
         self.workspace.atomic(self.path(value["upload_id"], ".json"), json.dumps(value))
         return self.public(value)
 
@@ -81,7 +85,9 @@ class UploadStore:
         value = json.loads(path.read_text())
         if value["scope"] != self.scope or (matter is not None and value["matter_id"] != matter):
             raise LibraryError("不能访问其他账号、连接或事项的上传。", "forbidden")
-        if self.workspace.policy:
+        if value.get("intake_id"):
+            self.workspace.authorize_intake_upload(value["intake_id"], value["matter_id"])
+        elif self.workspace.policy:
             self.workspace.policy.project(value["matter_id"])
         return value
 

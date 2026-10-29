@@ -272,15 +272,16 @@ class AccountTests(unittest.TestCase):
             with accounts.db:
                 accounts.db.execute("INSERT INTO remote_settings VALUES(1,1,'settings-revision')")
                 accounts.db.execute("INSERT INTO remote_grants VALUES('member')")
-                accounts.db.execute("INSERT INTO remote_tokens VALUES('token-id','hash','member','revision','laptop',1,9999999999,1,0)")
+                accounts.db.execute("INSERT INTO remote_tokens(id,digest,owner,binding,label,can_draft,expires,created,can_save,can_intake) VALUES('token-id','hash','member','revision','laptop',1,9999999999,1,0,1)")
                 accounts.db.execute("INSERT INTO remote_drafts VALUES('draft','member','token-id','revision','request-id','fingerprint','matter',?,'pending',1,9999999999)", (marker,))
                 accounts.db.execute("INSERT INTO remote_writes VALUES('write','member','token-id','revision','write-request','fingerprint','matter','saved',?,1,9999999999)", (marker,))
+                accounts.db.execute("INSERT INTO remote_intakes VALUES('intake','member','token-id','revision',?,9999999999)", (marker,))
                 accounts.db.execute("INSERT INTO remote_attempts VALUES('member',?)", (int(time.time()),))
             self.assertTrue(remote.settings()['enabled'])
             target = Path(temp) / 'remote-backup.sqlite3'
             self.assertTrue(backup_accounts(content, target))
             with sqlite3.connect(target) as backup:
-                for table in ('remote_settings', 'remote_grants', 'remote_tokens', 'remote_drafts', 'remote_writes', 'remote_attempts'):
+                for table in ('remote_settings', 'remote_grants', 'remote_tokens', 'remote_drafts', 'remote_writes', 'remote_intakes', 'remote_attempts'):
                     self.assertEqual(backup.execute('SELECT COUNT(*) FROM ' + table).fetchone()[0], 0)
             self.assertNotIn(marker.encode(), target.read_bytes())
             self.assertTrue(remote.settings()['enabled'], 'Backing up must not disable the live instance')
@@ -541,6 +542,28 @@ class RemoteWriteTests(unittest.TestCase):
             if action == 'disable':
                 self.remote.browser({'operation': 'configure', 'enabled': True, 'revision': self.remote.settings()['revision']}, self.actor)
 
+    def test_intake_backend_requires_opt_in_and_lost_ack_does_not_repeat(self):
+        from remote_intake import Intake
+        operations = {'operations': [{'ref': 'person', 'kind': 'person', 'changes': {'name': '录入收据测试', 'affiliation': '示例团队'}}]}
+        with self.assertRaises(AuthError): self.call('prepare_intake', operations)
+        self.remote.browser({'operation': 'allow_intake', 'tokenId': self.token['id'], 'confirmed': True}, self.actor)
+        plan = self.call('prepare_intake', operations)
+        args = {'intake_id': plan['intake_id'], 'request_id': uuid.uuid4().hex}
+        original = Intake.save
+        def lost_ack(intake, request, preview=False):
+            result = original(intake, request, preview=preview)
+            if not preview: raise OSError('simulated lost acknowledgement')
+            return result
+        with patch.object(Intake, 'save', new=lost_ack):
+            with self.assertRaises(AuthError) as caught: self.call('save_intake', args)
+        self.assertEqual(caught.exception.code, 'uncertain')
+        self.assertIsNotNone(self.workspace.get_record({'kind': 'person', 'id': '录入收据测试'})['record'])
+        version = self.workspace.observe()['version']
+        self.remote = RemoteAccess(self.workspace, self.accounts)
+        self.assertEqual(self.call('save_intake', args)['status'], 'uncertain')
+        self.assertEqual(self.workspace.observe()['version'], version)
+        self.assertEqual(self.accounts.db.execute('SELECT COUNT(*) FROM remote_intakes').fetchone()[0], 0)
+
     def test_existing_tokens_never_gain_direct_write_capability(self):
         with self.accounts.db:
             self.accounts.db.execute('DROP TABLE remote_tokens')
@@ -551,6 +574,7 @@ class RemoteWriteTests(unittest.TestCase):
             old = self.accounts.db.execute("SELECT * FROM remote_tokens WHERE id='old'").fetchone()
             self.assertEqual(old['can_draft'], 1)
             self.assertEqual(old['can_save'], 0)
+            self.assertEqual(old['can_intake'], 0)
 
 
 class BackupTests(unittest.TestCase):

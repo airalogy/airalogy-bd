@@ -585,8 +585,9 @@ class Workspace:
         files[directory + "/contacts.yaml"] = dump({"counterparty": identity, "people": []})
         return identity
 
-    def save(self, request: dict, *, preview=False) -> dict:
-        before = self.read_files()
+    def save(self, request: dict, *, preview=False, candidate=None) -> dict:
+        # Internal candidate mode composes validated transactions without writing to disk.
+        before = self.read_files() if candidate is None else candidate
         files = dict(before)
         kind, identity, project = request["kind"], request.get("id", ""), request.get("project_id", "")
         if request.get("revision") != self.record_revision(before, kind, identity, project):
@@ -665,6 +666,8 @@ class Workspace:
             identity, title = self.write_progress(files, kind, identity, project, payload)
         else:
             raise ServiceError("未知的资料类型。")
+        if candidate is not None:
+            return {"files": files, "id": identity, "title": title}
         attachments = request.get("attachments", [])
         if not isinstance(attachments, list):
             raise ServiceError("附件列表格式无效。")

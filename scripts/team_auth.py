@@ -188,7 +188,7 @@ class Accounts:
         return bool(self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='ba_session'").fetchone())
 
     def revoke(self, identity):
-        for table in ("remote_tokens", "remote_drafts", "remote_writes"):
+        for table in ("remote_tokens", "remote_drafts", "remote_writes", "remote_intakes"):
             if self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone():
                 self.db.execute("DELETE FROM " + table + " WHERE owner=?", (identity,))
         if self.has_provider():
@@ -256,7 +256,7 @@ class Accounts:
             # Never persist an administrator's implicit access as an ordinary member grant.
             self.db.execute("DELETE FROM remote_grants WHERE owner=?", (identity,))
         if not allowed and not administrator:
-            for table in ("remote_tokens", "remote_drafts", "remote_writes"):
+            for table in ("remote_tokens", "remote_drafts", "remote_writes", "remote_intakes"):
                 if self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone():
                     self.db.execute("DELETE FROM " + table + " WHERE owner=?", (identity,))
 
@@ -425,6 +425,6 @@ def validate_account_backup(path):
 def clear_transient_access(db):
     tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     for table in ('invitations', 'ba_session', 'ba_verification', 'ba_rate_limit',
-                  'remote_tokens', 'remote_drafts', 'remote_writes', 'remote_attempts', 'remote_grants', 'remote_settings'):
+                  'remote_tokens', 'remote_drafts', 'remote_writes', 'remote_intakes', 'remote_attempts', 'remote_grants', 'remote_settings'):
         if table in tables:
             db.execute('DELETE FROM ' + table)

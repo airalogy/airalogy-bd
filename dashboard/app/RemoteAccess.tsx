@@ -7,20 +7,21 @@ import {SettingsPanelHeader,SettingsStatus} from "./SettingsUI";
 import type { TeamUser } from "./lib/team-client";
 import { stageLabels, followUpStatusLabels } from "./lib/labels";
 
-type Token = { id: string; owner: string; label: string; can_draft: boolean; can_save: boolean; expires: number };
+type Token = { id: string; owner: string; label: string; can_draft: boolean; can_save: boolean; can_intake: boolean; expires: number };
 type Member = { id: string; name: string; role: string; active: boolean; granted: boolean };
 type Status = { enabled: boolean; granted: boolean; revision: string; tokens: Token[]; members?: Member[] };
 type DraftAttachment = {mode:"upload"|"version"|"existing";file_id:string;version_id:string;upload_id?:string;title:string;filename:string;size:number;version_number:number;status:keyof typeof fileStatuses;agreement_date?:string;signing_completed_date?:string;note?:string};
 type Draft = { attachments?:DraftAttachment[]; id: string; matterName: string; counterparty: string; progressTitle: string; progressDate: string; operation: string; expires: number; changes: { field: string; label: string; before: unknown; after: unknown }[] };
 type AccessMode = "read" | "draft" | "direct";
-const operations: Record<string, string> = { add_progress: "新增进展", update_progress: "修改进展", update_matter: "修改事项" };
+const operations: Record<string, string> = { intake: "业务资料录入", add_progress: "新增进展", update_progress: "修改进展", update_matter: "修改事项" };
 function display(field: string, value: unknown) {
   if (value === null || value === undefined || value === "") return "（空）";
   if (typeof value === "string" && field === "stage") return stageLabels[value] || value;
   if (typeof value === "string" && field === "follow_up_status") return followUpStatusLabels[value as keyof typeof followUpStatusLabels] || value;
   if (typeof value === "string" && field === "importance") return value === "key" ? "关键进展" : "普通进展";
   if (typeof value === "string" && field === "type") return ({ contact: "联系沟通", meeting: "会议", proposal: "方案", agreement: "协议", administrative: "行政手续", decision: "决定", payment: "付款", milestone: "里程碑", status_change: "状态变化", other: "其他" } as Record<string, string>)[value] || value;
-  return Array.isArray(value) ? value.join("、") || "（无）" : String(value);
+  if (typeof value === "object") return JSON.stringify(value, null, 2);
+  return String(value);
 }
 const when = (value: number) => new Date(value * 1000).toLocaleString("zh-CN");
 
@@ -29,6 +30,7 @@ export default function RemoteAccess({ user, mode, endpoint = "" }: { user: Team
   const [status, setStatus] = useState<Status | null>(null), [drafts, setDrafts] = useState<Draft[]>([]);
   const [error, setError] = useState(""), [notice, setNotice] = useState(""), [busy, setBusy] = useState(false);
   const [secret, setSecret] = useState(""), [label, setLabel] = useState("我的 AI 工具"), [days, setDays] = useState(7), [accessMode, setAccessMode] = useState<AccessMode>(user.role === "viewer" ? "read" : "draft");
+  const [canIntake, setCanIntake] = useState(false);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const request = useCallback(async <T,>(action: string, input?: Record<string, unknown>): Promise<T> => {
     const response = await fetch(input ? "/api/remote" : `/api/remote?action=${action}`, {
@@ -71,16 +73,17 @@ export default function RemoteAccess({ user, mode, endpoint = "" }: { user: Team
       {mode !== "drafts" && <div className="remote-state"><div><SettingsStatus tone={status.enabled?"success":"neutral"}>{status.enabled?"工作区已开启":"工作区未开启"}</SettingsStatus><p className="admin-help">{manage?"管理员默认具备接入权限，普通成员在“成员与权限”中单独授权。":user.role==="admin"&&status.granted?"管理员默认具备接入权限，无需为自己单独授权；连接仍需本人生成凭据。":status.granted?"你的账号已获授权，访问范围与事项权限一致。":"你的账号尚未获授权，请联系管理员调整成员权限。"}</p></div>{manage&&<button className="admin-button" disabled={busy} onClick={()=>{if(status.enabled&&!window.confirm("关闭外部 AI 工具接入？全部个人凭据和待确认草稿将失效，成员授权设置保留。"))return;void act("configure",{enabled:!status.enabled,revision:status.revision},status.enabled?"已关闭，旧凭据和草稿已失效。":"已开启，已获授权的成员可自行连接工具。");}}>{status.enabled?"关闭外部工具接入":"开启外部工具接入"}</button>}</div>}
       {manage && <p className="admin-help">在 <Link href="/admin?section=members">成员与权限</Link> 邀请或编辑普通成员时分配权限，管理员无需单独授权。关闭全局开关会撤销全部凭据和草稿，保留成员授权；重新开启后，由成员生成新凭据。</p>}
       {mode === "connection" && <>
-        <p className="admin-help">返回给外部工具的业务资料会进入你所使用的模型上下文，请按公司要求选择模型。文件内容不会自动发送给模型，文件元数据可按事项权限查询；联系方式不单独开放，模型费用由对应工具账号承担。</p>
+        <p className="admin-help">返回给外部工具的业务资料会进入你所使用的模型上下文，请按公司要求选择模型。文件内容不会自动发送给模型，文件元数据可按事项权限查询；只有明确授权业务档案维护的管理员连接可读取完整人员档案，模型费用由对应工具账号承担。</p>
         {!status.enabled || !status.granted ? <p className="settings-empty">{!status.enabled?<>工作区尚未开启外部工具接入。{user.role==="admin"&&<>请前往 <Link href="/admin?section=ai#external-ai">AI 设置</Link> 开启，再回来生成个人凭据。</>}</>:"请联系管理员允许你的账号连接外部 AI 工具。"}</p> : <>
-          <form onSubmit={event => { event.preventDefault(); void act("issue", { label, days, accessMode }, "凭据已生成，仅显示这一次。请保存在自己的电脑中。"); }}>
+          <form onSubmit={event => { event.preventDefault(); void act("issue", { label, days, accessMode, canIntake: user.role === "admin" && accessMode !== "read" && canIntake }, "凭据已生成，仅显示这一次。请保存在自己的电脑中。"); }}>
             <div className="remote-form"><label>凭据名称<input required maxLength={80} value={label} onChange={e => setLabel(e.target.value)} /></label>
               <label>有效期<select value={days} onChange={e => setDays(Number(e.target.value))}><option value={1}>1 天</option><option value={7}>7 天（默认）</option><option value={14}>14 天</option><option value={30}>30 天</option></select></label>
               <label className="remote-access-mode">连接权限<select value={accessMode} onChange={e => setAccessMode(e.target.value as AccessMode)} aria-describedby="remote-access-mode-help">
                 <option value="read">仅查询</option>
                 {user.role !== "viewer" && <option value="draft">提交草稿（默认）</option>}
                 {user.role === "admin" && <option value="direct">允许直接保存进展及附件</option>}
-              </select><span id="remote-access-mode-help" className="admin-help">{accessMode === "direct" ? "此连接可以直接新增、修改已有事项的进展，并保存关联附件，无需逐条网页确认。主动提交的草稿仍需网页确认；修改事项信息仍须提交草稿，不能新建或删除事项、修改账号权限。每次保存留存历史，可在“修改历史”中恢复单条进展。" : accessMode === "draft" ? "可以查询、暂存附件并提交修改草稿，由你在网页核对进展和文件后一并正式保存。" : "只能查询获授权资料，不能提交草稿或保存修改。"}</span></label></div>
+              </select><span id="remote-access-mode-help" className="admin-help">{accessMode === "direct" ? "此连接可以直接新增、修改已有事项的进展，并保存关联附件，无需逐条网页确认。主动提交的草稿仍需网页确认；新建事项、直接修改事项信息和维护业务档案需另行勾选授权；不能删除资料或修改账号权限。每次保存留存历史，可在“修改历史”中恢复单条进展。" : accessMode === "draft" ? "可以查询、暂存附件并提交修改草稿，由你在网页核对进展和文件后一并正式保存。" : "只能查询获授权资料，不能提交草稿或保存修改。"}</span></label></div>
+            {user.role === "admin" && accessMode !== "read" && <label className="team-check"><input type="checkbox" checked={canIntake} onChange={event => setCanIntake(event.target.checked)} /><span>允许新建事项及维护业务档案<span className="admin-help">可读取完整人员档案，新增、修改人员、对接方和事项，并连同进展及附件一并处理。{accessMode === "direct" ? "此连接可以直接正式保存。" : "正式保存仍需网页确认。"}不包含删除、账号权限或系统配置。</span></span></label>}
             <button className="admin-button" disabled={busy || !!secret}>生成个人凭据</button>
           </form>
           {secret && <div className="admin-notice"><p>仅本次显示，请勿发送到聊天、提交到代码仓库或与他人共用。</p>
@@ -101,7 +104,8 @@ export default function RemoteAccess({ user, mode, endpoint = "" }: { user: Team
       {mode !== "drafts" && <>
       <h3>{manage ? "全部个人凭据" : "我的凭据"}</h3>
       {!status.tokens.length && <p className="settings-empty">暂无凭据。</p>}
-      <ul className="remote-items">{status.tokens.map(token => <li key={token.id}><div><strong>{token.label}</strong>{manage && <span> · {status.members?.find(member => member.id === token.owner)?.name || "成员"}</span>}<p>{token.can_save ? "直接保存进展及附件 · 可查询和提交草稿" : token.can_draft ? "查询和提交草稿" : "仅查询"} · {when(token.expires)} 到期</p></div>
+      <ul className="remote-items">{status.tokens.map(token => <li key={token.id}><div><strong>{token.label}</strong>{manage && <span> · {status.members?.find(member => member.id === token.owner)?.name || "成员"}</span>}<p>{token.can_save ? "直接保存进展及附件 · 可查询和提交草稿" : token.can_draft ? "查询和提交草稿" : "仅查询"}{token.can_intake && " · 可新建事项及维护业务档案"} · {when(token.expires)} 到期</p></div>
+        {user.role === "admin" && token.owner === user.id && token.can_draft && !token.can_intake && <button className="admin-button" disabled={busy} onClick={() => {if(window.confirm(`允许“${token.label}”读取完整人员档案，新建、修改人员、对接方和事项，并处理进展及附件？${token.can_save ? "此连接可直接正式保存这些修改。" : "正式保存仍需网页确认。"}`)) void act("allow_intake", {tokenId:token.id,confirmed:true}, "此连接已获准维护业务档案。");}}>授权业务档案维护</button>}
         <button className="admin-button" disabled={busy} onClick={() => void act("revoke", { tokenId: token.id }, "凭据及其待确认草稿已撤销。")}>撤销</button></li>)}</ul>
       </>}
       {mode === "drafts" && <>
