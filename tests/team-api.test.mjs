@@ -197,6 +197,11 @@ test("server HTTP enforces invitations, scope, roles, CSRF, concurrent saves, do
     for(const action of ["history","historical","compare","backup_status"]){assert.equal((await request(`/api/workspace?action=${action}`,null,viewer)).status,403);}
     for(const kind of ["project","progress"]){assert.equal((await request(`/api/workspace?${new URLSearchParams({action:"record",kind,id:restricted,project_id:restricted})}`,null,editor)).status,403);}
     const endpoint="/api/workspace";
+    const newPerson=await okay(await request(endpoint+"?action=record&kind=person&id=",null,admin));
+    for(const member of [editor,viewer]) {
+      assert.equal((await request(endpoint+"?action=record&kind=person&id=",null,member)).status,403);
+      assert.equal((await request(endpoint,{action:"save",kind:"person",id:"",revision:newPerson.revision,payload:{name:"无权创建人员",affiliation:"示例单位"}},member)).status,403);
+    }
     const opened=await okay(await request(endpoint+`?action=record&kind=project&id=${project}`,null,editor));
     const edit={action:"save",kind:"project",id:project,revision:opened.revision,payload:{...opened.record.metadata,contacts:opened.record.contacts,body:"团队编辑测试正文"}};
     assert.equal((await request(endpoint,edit,viewer)).status,403);

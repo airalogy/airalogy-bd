@@ -77,11 +77,11 @@
 .admin-dialog-footer { padding:14px 24px; border-top:1px solid var(--line); background:var(--canvas); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; flex-shrink:0; }
 .admin-dialog-footer > span { color:var(--muted); font-size:var(--text-small); }
 .edit-fields { margin:0; padding:0; border:0; min-width:0; }
-.edit-form-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px 20px; }
+.edit-form-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; gap:16px 20px; }
 .edit-field { display:grid; gap:6px; min-width:0; margin-bottom:4px; font-size:var(--text-body); font-weight:500; }
 .edit-field-wide { grid-column:1 / -1; }
 .edit-field > span,.edit-field > label { color:var(--muted); }
-.edit-field input,.edit-field select,.edit-field textarea,.edit-people-picker > input { border:1px solid var(--line); padding:9px 11px; border-radius:7px; background:white; width:100%; min-width:0; font-weight:400; font-size:var(--text-body); line-height:var(--leading-body); color:var(--ink); }
+.edit-field input,.edit-field select,.edit-field textarea,.edit-people-toolbar > input { border:1px solid var(--line); padding:9px 11px; border-radius:7px; background:white; width:100%; min-width:0; font-weight:400; font-size:var(--text-body); line-height:var(--leading-body); color:var(--ink); }
 .edit-field select,.edit-field input { min-height:40px; }
 .edit-field textarea { resize:vertical; }
 .edit-field small { color:var(--muted); font-size:var(--text-caption); line-height:var(--leading-body); font-weight:400; }
@@ -89,13 +89,32 @@
 .edit-body { font-family:inherit; }
 .edit-people-picker { margin:22px 0; padding:12px; border:1px solid var(--line); border-radius:10px; }
 .edit-people-picker legend { padding:0 6px; font-size:var(--text-body); color:var(--muted); }
+.edit-people-toolbar { display:flex; align-items:center; gap:10px; }
+.edit-people-toolbar > input { flex:1; min-height:42px; }
+.edit-people-toolbar > button { flex-shrink:0; min-height:42px; }
 .edit-people-selected { display:flex; gap:6px; flex-wrap:wrap; margin:10px 0; font-size:var(--text-small); color:var(--muted); }
+.edit-people-selected > span { align-self:center; margin-right:4px; }
 .edit-people-selected button { padding:4px 8px; border-radius:5px; background:var(--blue-soft); color:var(--blue); cursor:pointer; }
-.edit-people-options { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); max-height:200px; overflow:auto; gap:5px; }
+.edit-people-results { max-height:260px; overflow:auto; overscroll-behavior:contain; }
+.edit-people-group { margin:12px 7px 4px; color:var(--muted); font-size:var(--text-caption); font-weight:600; }
+.edit-people-group:first-child { margin-top:0; }
+.edit-people-empty { margin:8px; color:var(--muted); font-size:var(--text-small); line-height:var(--leading-body); }
+.edit-people-options { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:5px; }
 .edit-people-options label { display:flex; align-items:flex-start; padding:7px; gap:8px; min-width:0; font-size:var(--text-body); cursor:pointer; }
+.edit-people-options label:has(input:checked) { background:var(--blue-soft); border-radius:6px; }
 .edit-people-options input,.edit-roles input { accent-color:var(--navy); margin-top:4px; }
 .edit-people-options span { min-width:0; }
 .edit-people-options small { display:block; font-size:var(--text-caption); color:var(--muted); line-height:var(--leading-compact); }
+.person-create-overlay { z-index:90; }
+.person-create-dialog { z-index:91; inset:50% max(20px,calc((100vw - 680px) / 2)) auto; transform:translateY(-50%); max-height:calc(100dvh - 40px); }
+.person-create-dialog .admin-dialog-head { gap:16px; }
+.person-create-dialog .admin-dialog-footer > span { display:block; }
+.person-create-dialog .admin-alert { margin-bottom:16px; }
+.person-contact-details summary { cursor:pointer; color:var(--muted); font-size:var(--text-small); }
+.person-contact-details[open] summary { margin-bottom:16px; }
+.person-existing { padding:12px 16px; margin-bottom:18px; border:1px solid var(--line); background:var(--canvas); border-radius:8px; font-size:var(--text-small); }
+.person-existing p { margin:6px 0 12px; color:var(--muted); }
+.person-create-dialog .admin-confirm { margin:0 0 18px; }
 .edit-relation { border:1px solid var(--line); border-radius:9px; padding:12px; margin:12px 0; }
 .edit-relation-title { display:flex; gap:12px; align-items:center; justify-content:space-between; }
 .edit-relation-title > strong { font-size:var(--text-body); }
@@ -146,6 +165,9 @@
   .admin-dialog-footer > span { display:none; }
   .admin-dialog-footer { justify-content:flex-end; }
   .edit-people-options { grid-template-columns:1fr; }
+  .edit-people-toolbar { flex-wrap:wrap; }
+  .edit-people-toolbar > input { flex-basis:100%; }
+  .person-create-dialog { inset:20px 10px auto; transform:none; max-height:calc(100dvh - 40px); }
   .edit-relation-title { flex-wrap:wrap; }
   .version-change-values > div:first-child { border-right:0; border-bottom:1px solid var(--line); }
   .workspace-admin .section-heading,.version-history .section-heading { flex-wrap:wrap; gap:14px; }

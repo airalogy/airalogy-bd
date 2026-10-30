@@ -1936,7 +1936,7 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
           relationshipActive={relationshipFilter === selectedProject.relationship}
         />
       )}
-      {!readOnly && canEdit && editTarget && <RecordEditor key={`${editTarget.kind}:${editTarget.id}:${editTarget.project_id || ""}`} target={editTarget} data={data} onTargetChange={setEditTarget} onClose={() => setEditTarget(null)} onSaved={saved} onSavedWithFiles={async result => {const target=editTarget;await onWorkspaceRefresh();setSaveNotice(result.message);setEditTarget(null);openFiles(target.kind === "project" ? result.id : target.project_id,target.kind === "progress" ? result.id : undefined);}} />}
+      {!readOnly && canEdit && editTarget && <RecordEditor key={`${editTarget.kind}:${editTarget.id}:${editTarget.project_id || ""}`} target={editTarget} data={data} onPeopleChanged={onWorkspaceRefresh} onTargetChange={setEditTarget} onClose={() => setEditTarget(null)} onSaved={saved} onSavedWithFiles={async result => {const target=editTarget;await onWorkspaceRefresh();setSaveNotice(result.message);setEditTarget(null);openFiles(target.kind === "project" ? result.id : target.project_id,target.kind === "progress" ? result.id : undefined);}} />}
       {readOnly && historicalVersion && filesTarget && <HistoricalFiles data={data} target={filesTarget} version={historicalVersion} onClose={()=>setFilesTarget(null)}/> }
       {!readOnly && filesTarget && <FileLibraryDialog data={data} target={filesTarget} onClose={() => setFilesTarget(null)} onChanged={onWorkspaceRefresh} onHistory={openHistory} />}
       <EventRecordDialog

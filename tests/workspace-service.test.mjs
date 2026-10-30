@@ -137,6 +137,34 @@ test("new people, companies and projects can be created without inventing next s
   } finally {w.close();}
 });
 
+test("creating a participant during progress entry preserves the open revision and still detects concurrent progress edits",()=>{
+  const w=setup();
+  try {
+    const project_id="project-demo-partnership";
+    const open=w.ok({action:"record",kind:"progress",id:"",project_id});
+    const empty=w.ok({action:"record",kind:"person",id:""});
+    const profile={name:"许沐",affiliation:"示例实验室研究员",phone:"001-234",wechat:null,email:null};
+    w.ok({action:"save",kind:"person",id:"",revision:empty.revision,payload:profile});
+    assert.equal(w.ok({action:"record",kind:"progress",id:"",project_id}).revision,open.revision);
+    const payload={date:"2026-10-30",type:"meeting",title:"新增人员的交流",summary:"讨论部署需求。",importance:"normal",participants:["许沐"],body:"## 交流记录\n\n讨论部署需求。",location:"线上",new_contacts:[{person_id:"许沐",side:"counterparty",project_roles:["participant"],notes:""}]};
+    const saved=w.ok({action:"save",kind:"progress",id:"",project_id,revision:open.revision,payload});
+    const read=w.ok({action:"record",kind:"progress",id:saved.id,project_id}).record;
+    assert.deepEqual(read.event.participants,["许沐"]);
+    assert.equal(read.body,payload.body);
+    assert.equal(read.document.location,payload.location);
+    const contacts=w.ok({action:"record",kind:"project",id:project_id}).record.contacts;
+    assert.ok(contacts.some(item=>item.person_id==="许沐"&&item.side==="counterparty"));
+    const duplicate=w.call({action:"save",kind:"person",id:"",revision:empty.revision,payload:{...profile,affiliation:"不应覆盖原档案"}});
+    assert.equal(duplicate.code,"duplicate");
+    assert.equal(w.ok({action:"record",kind:"person",id:"许沐"}).record.affiliation,profile.affiliation);
+    // Another person can be saved independently, but must not refresh away a real conflict.
+    w.ok({action:"save",kind:"person",id:"",revision:empty.revision,payload:{...profile,name:"许晗"}});
+    const stale=w.call({action:"save",kind:"progress",id:"",project_id,revision:open.revision,payload:{...payload,title:"保留待比较的草稿"}});
+    assert.equal(stale.code,"conflict");
+    assert.equal(w.ok({action:"workspace"}).status.errors.length,0);
+  } finally {w.close();}
+});
+
 test("invalid direct file edits are archived and a validated full restore recovers them",()=>{
   const w=setup();
   try {

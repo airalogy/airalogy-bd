@@ -3,7 +3,7 @@ import ProgressAttachments from "./ProgressAttachments";
 import { discardUpload, prepareProgressFiles, type ProgressFile } from "./lib/progress-files";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useEffect, useRef, useState } from "react";
-import type { DashboardData } from "./lib/types";
+import type { DashboardData, Person } from "./lib/types";
 import type { EditableCounterparty, EditablePerson, EditableProgress, EditableProject, EditableRecord, RecordResponse, RecordTarget, SavedResponse } from "./lib/workspace-types";
 import { WorkspaceError, workspaceRequest } from "./lib/workspace-client";
 import { CounterpartyForm, type CounterpartyDraft, fieldLabels, PersonForm, ProjectForm, projectDraft, ProgressForm, progressDraft, readable, type ProjectDraft, type ProgressDraft } from "./RecordForms";
@@ -25,7 +25,7 @@ function showRecord(record: EditableRecord | null, kind: string): Record<string,
 }
 function renderValue(value: unknown) { return readable(typeof value === "string" ? value : JSON.stringify(value ?? "（未填写）")); }
 
-export default function RecordEditor({target, data, onTargetChange, onClose, onSaved, onSavedWithFiles}: {target: RecordTarget; data: DashboardData; onTargetChange:(target:RecordTarget) => void; onClose: () => void; onSaved: (result: SavedResponse) => void; onSavedWithFiles?: (result: SavedResponse) => Promise<void>}) {
+export default function RecordEditor({target, data, onTargetChange, onClose, onSaved, onSavedWithFiles, onPeopleChanged}: {target: RecordTarget; data: DashboardData; onTargetChange:(target:RecordTarget) => void; onClose: () => void; onSaved: (result: SavedResponse) => void; onSavedWithFiles?: (result: SavedResponse) => Promise<void>; onPeopleChanged?: () => Promise<void>}) {
   const [loaded, setLoaded] = useState<RecordResponse | null>(null);
   const [draft, setDraft] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState("");
@@ -33,6 +33,8 @@ export default function RecordEditor({target, data, onTargetChange, onClose, onS
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [attachments,setAttachments] = useState<ProgressFile[]>([]);
+  const [addedPeople, setAddedPeople] = useState<Person[]>([]);
+  const formData = {...data, people:[...new Map([...addedPeople,...data.people].map(person => [person.id,person])).values()]};
   const stagedIds = useRef(new Set<string>());
   useEffect(()=>{const ids=stagedIds.current;return ()=>{for(const id of ids) void discardUpload(id).catch(()=>{});};},[]);
   const [latest, setLatest] = useState<RecordResponse | null>(null);
@@ -54,6 +56,29 @@ export default function RecordEditor({target, data, onTargetChange, onClose, onS
     return () => { cancelled = true; };
   }, [target]);
   const change = (value: unknown) => { setDraft(value as Record<string,unknown>); setDirty(true); };
+  const rememberPerson = (person: EditablePerson, id: string) => {
+    setAddedPeople(people => [...people.filter(item => item.id !== id), {...person,id,last_activity:null,projects:[]}]);
+    void onPeopleChanged?.();
+  };
+  const createPerson = async (person: EditablePerson) => {
+    if (data.access && data.access.role !== "admin") throw new Error("新增人员档案请联系管理员。");
+    const target = {kind:"person",id:""};
+    const opened = await workspaceRequest<RecordResponse>("record", target);
+    try {
+      const result = await workspaceRequest<SavedResponse>("save", {...target, revision:opened.revision, payload:person}, true);
+      rememberPerson(person,result.id);
+      // Creating an independent person must not rebase the open record's revision:
+      // concurrent edits to that record still need the normal conflict review.
+      return result.id;
+    } catch (err) {
+      if (err instanceof WorkspaceError && err.code === "duplicate") {
+        const existing = await workspaceRequest<RecordResponse>("record", {kind:"person",id:person.name});
+        if (existing.record) rememberPerson(existing.record as EditablePerson,person.name);
+      }
+      throw err;
+    }
+  };
+  const onCreatePerson = !data.access || data.access.role === "admin" ? createPerson : undefined;
   const close = () => { if (busy) return;if (dirty) setDecision("close"); else onClose(); };
   const save = async (revision = loaded?.revision) => {
     if (!draft || !revision || busy) return;
@@ -95,10 +120,10 @@ export default function RecordEditor({target, data, onTargetChange, onClose, onS
         {target.kind === "progress" && !target.project_id ? <label className="edit-field"><span>选择事项</span><select value="" aria-label="新增进展的事项" onChange={event => onTargetChange({...target,project_id:event.target.value})}><option value="">请选择事项</option>{data.projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label> : !loaded && !error && <p>正在读取资料…</p>}
 
         {draft && <fieldset key={loaded?.revision} disabled={busy || !!decision} className="edit-fields">
-          {target.kind === "counterparty" && <CounterpartyForm draft={draft as CounterpartyDraft} data={data} onChange={change} />}
+          {target.kind === "counterparty" && <CounterpartyForm draft={draft as CounterpartyDraft} data={formData} onChange={change} onCreatePerson={onCreatePerson} />}
           {target.kind === "person" && <PersonForm record={draft as EditablePerson} isNew={!target.id} onChange={change} />}
-          {target.kind === "project" && <ProjectForm draft={draft as ProjectDraft} data={data} isNew={!target.id} onChange={change} />}
-          {(target.kind === "progress" || target.kind === "company") && <ProgressForm draft={draft as ProgressDraft} data={data} company={target.kind === "company"} contacts={project?.contacts.map(contact => ({person_id:contact.person_id,side:contact.side,project_roles:contact.project_roles,notes:contact.notes})) || []} onChange={change} />}
+          {target.kind === "project" && <ProjectForm draft={draft as ProjectDraft} data={formData} isNew={!target.id} onChange={change} onCreatePerson={onCreatePerson} />}
+          {(target.kind === "progress" || target.kind === "company") && <ProgressForm draft={draft as ProgressDraft} data={formData} company={target.kind === "company"} contacts={project?.contacts.map(contact => ({person_id:contact.person_id,side:contact.side,project_roles:contact.project_roles,notes:contact.notes})) || []} onChange={change} onCreatePerson={onCreatePerson} />}
           {target.kind==="progress"&&target.project_id&&<ProgressAttachments matter={target.project_id} eventId={target.id} items={attachments} onChange={items=>{setAttachments(items);setDirty(true);}}/>}
         </fieldset>}
       </div>
