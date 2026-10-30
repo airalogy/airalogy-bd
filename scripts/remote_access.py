@@ -114,7 +114,7 @@ class RemoteAccess:
         row = self.db.execute("SELECT * FROM users WHERE id=? AND active=1 AND revision=?", (token["owner"], token["binding"])).fetchone()
         if not row or not self.accounts.enrolled(row["id"]) or not self.accounts.email_allowed(row["id"]):
             raise AuthError("账号或权限已变化，请重新登录并生成凭据。", "unauthenticated")
-        actor = public_user(row) | {"qa_allowed": self.accounts.qa_allowed(row["id"])}
+        actor = public_user(row) | {"qa_allowed": self.accounts.qa_allowed(row["id"]), "qa_can_publish": self.accounts.qa_can_publish(row["id"])}
         self.grant(actor)
         return actor
 

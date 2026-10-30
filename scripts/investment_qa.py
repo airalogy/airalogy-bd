@@ -100,6 +100,7 @@ def check_files(files):
         if not match: raise QAError('投资问答目录包含不支持的文件结构。')
         value=parse(text)
         allowed=FIELDS|{'id','updated_at','updated_by','archived','needs_update'} if match[2]=='draft' else FIELDS|{'id','approved_at','approved_by'}
+        allowed |= {'edited_at','edited_by'}
         if set(value)-allowed or FIELDS-set(value) or value.get('id')!=match[1]: raise QAError('投资问答编号或资料字段无效。')
         validate_fields(fields(value),publish=match[2]=='recommended')
         stamp, author = ('updated_at','updated_by') if match[2]=='draft' else ('approved_at','approved_by')
@@ -108,6 +109,12 @@ def check_files(files):
         except ValueError as exc: raise QAError('问答修订时间无效。') from exc
         who=value.get(author)
         if not isinstance(who,dict) or set(who)!={'id','name'} or any(not isinstance(v,str) or not v or len(v)>200 for v in who.values()): raise QAError('问答修订人员信息无效。')
+        if 'edited_at' in value or 'edited_by' in value:
+            try:
+                if not isinstance(value.get('edited_at'), str) or not datetime.fromisoformat(value['edited_at']).tzinfo: raise ValueError()
+            except ValueError as exc: raise QAError('问答编辑时间无效。') from exc
+            editor=value.get('edited_by')
+            if not isinstance(editor,dict) or set(editor)!={'id','name'} or any(not isinstance(v,str) or not v or len(v)>200 for v in editor.values()): raise QAError('问答编辑人员信息无效。')
         for key in ('archived','needs_update'):
             if key in value and type(value[key]) is not bool: raise QAError('投资问答状态格式无效。')
         if match[2]=='recommended' and f'{ROOT}{match[1]}/draft.md' not in files: raise QAError('推荐回答缺少对应的问题档案。')
@@ -124,11 +131,15 @@ class InvestmentQA:
     @property
     def editor(self): return not self.actor or self.actor['role']!='viewer'
 
+    @property
+    def publisher(self): return self.admin or (self.editor and self.actor.get('qa_allowed', False) and self.actor.get('qa_can_publish', False))
+
     def authorize(self, operation):
         if self.actor and not (self.admin or self.actor.get('qa_allowed')): raise AuthError('尚未获授权访问投资问答库。')
         if operation not in READS|WRITES: raise QAError('未知的投资问答操作。')
         if operation in WRITES|{'history','version'} and not self.editor: raise AuthError('只读成员只能查看推荐回答。')
-        if operation in {'publish','archive','unarchive'} and not self.admin: raise AuthError('推荐版本确认和归档由管理员管理。')
+        if operation == 'publish' and not self.publisher: raise AuthError('尚未获授权确认投资问答的推荐回答。')
+        if operation in {'archive','unarchive'} and not self.admin: raise AuthError('问答归档由管理员管理。')
 
     def source_allowed(self, source):
         return self.admin or source['project_id'] in self.policy.allowed
@@ -209,13 +220,19 @@ class InvestmentQA:
                 if state=='changed' and (not self.editor or not raw['has_changes']): continue
                 items.append(view)
             items.sort(key=lambda x:x['updated_at'],reverse=True)
-            return {'items':items[offset:offset+30], 'total':len(items), 'next_offset':offset+30 if len(items)>offset+30 else None, 'can_edit':self.editor, 'can_publish':self.admin}
+            return {'items':items[offset:offset+30], 'total':len(items), 'next_offset':offset+30 if len(items)>offset+30 else None, 'can_edit':self.editor, 'can_publish':self.publisher}
         if op=='read':
             if identity and (not record or (record['archived'] and not self.editor)): raise QAError('未找到可访问的问答。','not_found')
-            return {'record':self.present(record,files), 'revision':digest(record), 'can_edit':self.editor, 'can_publish':self.admin}
+            return {'record':self.present(record,files), 'revision':digest(record), 'can_edit':self.editor, 'can_publish':self.publisher}
         if not record and op!='save': raise QAError('未找到问答。','not_found')
         if op=='history':
-            history=self.workspace.history({'kind':'qa','id':identity,'offset':request.get('offset',0)})
+            entries=self.workspace.history_entries({'kind':'qa','id':identity})
+            # A workspace baseline predating this question is not a question version.
+            entries=[entry for entry in entries if entry.get('origin')!='baseline' or
+                     f'{ROOT}{identity}/draft.md' in self.workspace.version_files(entry['version'])]
+            try: offset=max(0,int(request.get('offset',0)))
+            except (ValueError,TypeError) as exc: raise QAError('分页条件无效。') from exc
+            history={'versions':entries[offset:offset+40], 'has_more':len(entries)>offset+40, 'total':len(entries)}
             # Source file paths and account emails are not needed in the library history.
             for entry in history['versions']:
                 if not str(entry.get('origin','')).startswith('qa_'): entry['label']='资料快照'
@@ -252,9 +269,10 @@ class InvestmentQA:
             payload=self.references(payload,current,files)
             if record and fields(current)==payload: return {'saved':False,'id':identity,'revision':digest(record),'message':'内容没有变化。'}
             value.update(payload)
+            value.update(edited_at=now, edited_by=actor)
         elif op=='publish':
             validate_fields(fields(current),publish=True)
-            after[approved_path]=document({**fields(current),'id':identity,'approved_at':now,'approved_by':actor})
+            after[approved_path]=document({**fields(current), **{k:current[k] for k in ('edited_at','edited_by') if k in current}, 'id':identity,'approved_at':now,'approved_by':actor})
             value['needs_update']=False
         elif op=='mark_stale':
             if not record['recommended']: raise QAError('此问答尚无推荐回答，可继续完善修订稿。')

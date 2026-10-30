@@ -57,7 +57,7 @@ def tool(remote, op, args, actor, token):
         remote.accounts.audit(actor,'remote.save_investment_qa',identity,'started')
         try:
             result=library.execute(saved)
-            receipt={'write_id':identity,'request_id':request_id,'status':'saved','id':result['id'],'revision':result['revision'],'review_path':'/?qa='+result['id'],'message':'问答修订稿已保存并保留历史。推荐回答未改变，需由管理员在网页确认。'}
+            receipt={'write_id':identity,'request_id':request_id,'status':'saved','id':result['id'],'revision':result['revision'],'review_path':'/?qa='+result['id'],'message':'问答修订稿已保存并保留历史。推荐回答未改变，需由具备确认权限的成员在网页确认。'}
             with remote.db: remote.db.execute("UPDATE remote_writes SET state='saved',result=? WHERE id=?",(json.dumps(receipt,ensure_ascii=False),identity))
         except Exception as exc:
             with remote.db: remote.db.execute("UPDATE remote_writes SET state='uncertain' WHERE id=?",(identity,))

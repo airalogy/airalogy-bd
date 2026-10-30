@@ -110,7 +110,7 @@ class Policy:
         if not data:
             return data
         result = copy.deepcopy(data)
-        result["access"] = {"server": True, "role": self.actor["role"], "name": self.actor["name"], "all_projects": self.actor["all_projects"], "qa_allowed": self.admin or self.actor.get("qa_allowed", False)}
+        result["access"] = {"server": True, "role": self.actor["role"], "name": self.actor["name"], "all_projects": self.actor["all_projects"], "qa_allowed": self.admin or self.actor.get("qa_allowed", False), "qa_can_publish": self.admin or (self.actor["role"] == "editor" and self.actor.get("qa_allowed", False) and self.actor.get("qa_can_publish", False))}
         if self.admin:
             return result
         result["projects"] = [x for x in result["projects"] if x["id"] in self.allowed]

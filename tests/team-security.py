@@ -67,6 +67,35 @@ class ReleaseWorkflowTests(unittest.TestCase):
 
 
 class QuestionAuthorizationTests(unittest.TestCase):
+    def test_confirmation_preserves_editor_and_records_the_actual_confirmer(self):
+        from investment_qa import InvestmentQA
+        with tempfile.TemporaryDirectory() as temp:
+            content=Path(temp)/'content';shutil.copytree(ROOT/'fixtures/demo/content',content)
+            workspace=Workspace(content);workspace.observe()
+            editor={'id':'editor','name':'编辑甲','email':'editor@example.invalid','role':'editor','all_projects':False,'project_ids':[],'qa_allowed':True}
+            publisher={**editor,'id':'publisher','name':'确认乙','qa_can_publish':True}
+            def qa(actor):
+                workspace.policy=Policy(workspace,actor);workspace.actor=actor
+                return InvestmentQA(workspace)
+            first=qa(editor).execute({'operation':'save','revision':qa(editor).execute({'operation':'read'})['revision'],'payload':{'question':'示例问题','short_answer':'示例回答'}})
+            identity=first['id'];draft=qa(editor).execute({'operation':'read','id':identity})['record']['draft']
+            self.assertEqual(draft['edited_by'],{'id':'editor','name':'编辑甲'})
+            with self.assertRaises(AuthError):qa(editor).execute({'operation':'publish','id':identity,'revision':first['revision']})
+            confirmed=qa(publisher).execute({'operation':'publish','id':identity,'revision':first['revision']})
+            record=qa(publisher).execute({'operation':'read','id':identity})['record']
+            self.assertEqual(record['recommended']['approved_by'],{'id':'publisher','name':'确认乙'})
+            for value in (record['draft'],record['recommended']):
+                self.assertEqual(value['edited_by'],draft['edited_by']);self.assertEqual(value['edited_at'],draft['edited_at'])
+            with self.assertRaises(AuthError):qa(publisher).execute({'operation':'archive','id':identity,'revision':confirmed['revision']})
+            with self.assertRaises(AuthError):qa({**publisher,'role':'viewer'}).execute({'operation':'publish','id':identity,'revision':confirmed['revision']})
+            qa(publisher).execute({'operation':'mark_stale','id':identity,'revision':confirmed['revision']})
+            self.assertEqual(qa(editor).execute({'operation':'read','id':identity})['record']['draft']['edited_by'],draft['edited_by'])
+            historical=qa(publisher).execute({'operation':'version','id':identity,'version':confirmed['status']['version']})['record']
+            self.assertEqual(historical['recommended']['approved_by']['id'],'publisher')
+            history=qa(editor).execute({'operation':'history','id':identity})['versions']
+            self.assertTrue(any(e['origin']=='qa_publish' and e['actor']['id']=='publisher' for e in history))
+            self.assertTrue(any(e['origin']=='qa_save' and e['actor']['id']=='editor' for e in history))
+
     def test_file_sources_are_redacted_preserved_and_included_in_backups(self):
         from investment_qa import InvestmentQA, fields, raw_record
         from file_library import FileLibrary
@@ -100,6 +129,49 @@ class QuestionAuthorizationTests(unittest.TestCase):
 
 
 class AccountTests(unittest.TestCase):
+    def test_question_confirmation_grants_are_explicit_scoped_and_revoked(self):
+        with tempfile.TemporaryDirectory() as temp:
+            content=Path(temp)/'content';content.mkdir()
+            accounts=Accounts(content)
+            invited=accounts.invite({'name':'管理员','email':'admin@example.invalid','role':'admin'},None,set(),bootstrap=True)
+            admin_id=accounts.invitation(invited['token'])['user_id']
+            admin={'id':admin_id,'name':'管理员','role':'admin'}
+            self.assertTrue(accounts.qa_can_publish(admin_id))
+            invite=accounts.invite({'name':'编辑','role':'editor','qa_allowed':True},admin,set())
+            identity=accounts.invitation(invite['token'])['user_id']
+            self.assertFalse(accounts.qa_can_publish(identity))
+            def member():return accounts.member_info(accounts.db.execute('SELECT * FROM users WHERE id=?',(identity,)).fetchone())
+            for payload in ({'role':'viewer','qa_allowed':True,'qa_can_publish':True},{'role':'editor','qa_allowed':False,'qa_can_publish':True},{'role':'editor','qa_allowed':True,'qa_can_publish':1}):
+                with self.assertRaises(AuthError): accounts.invite({'name':'无效权限',**payload},admin,set())
+            with self.assertRaises(AuthError):accounts.update({**member(),'qa_can_publish':True}, {'id':identity,'role':'editor'},set())
+            accounts.update({**member(),'active':False,'qa_can_publish':True,'remote_allowed_before':False},admin,set())
+            self.assertTrue(member()['qa_can_publish'])
+            self.assertTrue(any(change['field']=='qa_can_publish' and change['after']=='允许' for entry in accounts.audit_entries({})['entries'] for change in (entry['changes'] or [])))
+            # A role downgrade clears confirmation even when an older client omits the new field.
+            payload={**member(),'role':'viewer','active':False,'remote_allowed_before':False};payload.pop('qa_can_publish')
+            accounts.update(payload,admin,set());self.assertFalse(accounts.qa_can_publish(identity))
+            payload={**member(),'role':'editor','active':False,'remote_allowed_before':False};payload.pop('qa_can_publish')
+            accounts.update(payload,admin,set());self.assertFalse(accounts.qa_can_publish(identity))
+            accounts.update({**member(),'active':False,'qa_can_publish':True,'remote_allowed_before':False},admin,set())
+            payload={**member(),'qa_allowed':False,'active':False,'remote_allowed_before':False};payload.pop('qa_can_publish')
+            accounts.update(payload,admin,set());self.assertFalse(accounts.qa_can_publish(identity))
+            self.assertEqual(accounts.db.execute('SELECT count(*) FROM qa_grants WHERE owner=?',(identity,)).fetchone()[0],0)
+            accounts.db.execute("UPDATE users SET role='editor' WHERE id=?",(admin_id,));accounts.db.commit()
+            self.assertFalse(accounts.qa_can_publish(admin_id),'Admin confirmation must not persist through demotion')
+            accounts.close()
+
+    def test_existing_library_grants_do_not_gain_confirmation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            content=Path(temp)/'content';content.mkdir()
+            accounts=Accounts(content)
+            accounts.db.execute('DROP TABLE qa_grants')
+            accounts.db.execute('CREATE TABLE qa_grants(owner TEXT PRIMARY KEY)')
+            accounts.db.execute("INSERT INTO qa_grants VALUES('existing-editor')")
+            accounts.db.commit();accounts.close()
+            accounts=Accounts(content)
+            self.assertEqual(tuple(accounts.db.execute('SELECT owner,can_publish FROM qa_grants').fetchone()),('existing-editor',0))
+            accounts.close()
+
     def test_question_grants_survive_backups_but_credentials_do_not(self):
         from team_auth import backup_accounts, validate_account_backup
         with tempfile.TemporaryDirectory() as temp:
@@ -109,13 +181,14 @@ class AccountTests(unittest.TestCase):
             identity=accounts.invitation(invitation['token'])['user_id']
             actor=accounts.member_info(accounts.db.execute('SELECT * FROM users WHERE id=?',(identity,)).fetchone())
             self.assertTrue(actor['qa_allowed'])
-            invitation=accounts.invite({'name':'编辑','role':'editor','qa_allowed':True},actor,set())
+            invitation=accounts.invite({'name':'编辑','role':'editor','qa_allowed':True,'qa_can_publish':True},actor,set())
             editor_id=accounts.invitation(invitation['token'])['user_id']
             self.assertTrue(accounts.qa_allowed(editor_id))
+            self.assertTrue(accounts.qa_can_publish(editor_id))
             destination=Path(temp)/'copy.sqlite3'
             backup_accounts(content,destination);validate_account_backup(destination)
             with sqlite3.connect(destination) as backup:
-                self.assertEqual(backup.execute('SELECT owner FROM qa_grants').fetchall(),[(editor_id,)])
+                self.assertEqual(backup.execute('SELECT owner,can_publish FROM qa_grants').fetchall(),[(editor_id,1)])
                 self.assertEqual(backup.execute('SELECT count(*) FROM invitations').fetchone()[0],0)
             accounts.db.execute("UPDATE users SET role='editor' WHERE id=?",(identity,));accounts.db.commit()
             self.assertFalse(accounts.qa_allowed(identity),'Implicit admin grants do not persist through demotion')
@@ -170,7 +243,7 @@ class AccountTests(unittest.TestCase):
                 if older_grant:
                     with accounts.db:accounts.db.execute('INSERT INTO remote_grants VALUES(?)',(identity,))
                 # A client omitting the separate permission must not carry the admin's access into a new role.
-                values={k:v for k,v in member().items() if k!='remote_allowed'}
+                values={k:v for k,v in member().items() if k not in {'remote_allowed','qa_allowed','qa_can_publish'}}
                 accounts.update({**values,'role':'editor','active':False},actor,set())
                 self.assertFalse(member()['remote_allowed'])
                 self.assertEqual(accounts.db.execute('SELECT COUNT(*) FROM remote_grants').fetchone()[0],0)
@@ -179,7 +252,7 @@ class AccountTests(unittest.TestCase):
                 self.assertTrue(member()['remote_allowed'])
                 accounts.update({**member(),'role':'admin','active':False,'remote_allowed_before':True},actor,set())
                 self.assertEqual(accounts.db.execute('SELECT COUNT(*) FROM remote_grants').fetchone()[0],0)
-                accounts.update({**member(),'role':'viewer','active':False,'remote_allowed':True,'remote_allowed_before':True},actor,set())
+                accounts.update({**member(),'role':'viewer','active':False,'qa_can_publish':False,'remote_allowed':True,'remote_allowed_before':True},actor,set())
                 self.assertTrue(member()['remote_allowed'])
                 self.assertEqual(accounts.invitation(invitation['token'])['user_id'],identity)
                 accounts.close()

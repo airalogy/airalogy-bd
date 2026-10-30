@@ -208,16 +208,55 @@
 .remote-state p { margin:8px 0 0; max-width:48em; }
 .remote-items { padding:0; list-style:none; }
 .remote-items > li > div,.remote-items > li > span { min-width:0; overflow-wrap:anywhere; }
-.remote-items > li > button { flex:none; }
+.remote-access .remote-items > li { display:block; padding:18px 0; }
+.remote-items > li:last-child { border-bottom:0; padding-bottom:0; }
+.remote-credential-info > strong { font-size:var(--text-body); font-weight:600; }
+.remote-credential-info > span { color:var(--muted); font-size:var(--text-small); }
+.remote-credential-scopes { display:flex; flex-wrap:wrap; gap:6px; margin:10px 0; }
+.remote-credential-scopes > span { padding:3px 8px; border-radius:5px; background:#f0f4f8; color:#48627b; font-size:var(--text-caption); line-height:var(--leading-body); }
+.remote-items .remote-credential-expiry { margin:0; color:var(--muted); font-size:var(--text-small); }
+.remote-credential-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; margin-top:14px; }
+.remote-credential-actions .admin-button { min-height:36px; font-size:var(--text-small); }
+.remote-credentials { margin-top:24px; padding-top:24px; border-top:1px solid var(--line); }
+.remote-section-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.remote-access .remote-section-heading h3 { margin:0; font-size:var(--text-body); font-weight:600; }
+.remote-section-heading > span { flex-shrink:0; color:var(--muted); font-size:var(--text-small); }
+.remote-connection-form { margin-top:24px; }
+.remote-connection-fields,.remote-permissions { min-width:0; margin:0; padding:0; border:0; }
+.remote-connection-fields > legend { padding:0; margin-bottom:16px; font-size:var(--text-body); font-weight:600; }
 .remote-access .remote-form { display:grid; grid-template-columns:minmax(0,1fr) 160px; gap:14px; align-items:start; }
-.remote-access .remote-form label { margin:0; font-size:var(--text-body); }
-.remote-form label:has(input[type=checkbox]) { grid-column:1/-1; }
+.remote-access .remote-form label { min-width:0; margin:0; font-size:var(--text-body); font-weight:500; }
 .remote-access .remote-form input:not([type=checkbox]), .remote-access .remote-form select { width:100%; min-height:42px; height:auto; margin-top:8px; }
-.remote-access .remote-form select { padding:8px 32px 8px 12px; }
+.remote-access .remote-form input:not([type=checkbox]) { padding:10px 12px; font-weight:400; }
+.remote-access .remote-form select { padding:8px 32px 8px 12px; font-weight:400; }
+.remote-access .remote-form input:focus-visible,.remote-access .remote-form select:focus-visible,.remote-guide input:focus-visible,.remote-secret textarea:focus-visible { outline:2px solid var(--blue); outline-offset:2px; }
+.remote-access .remote-form .admin-help { font-weight:400; }
+.remote-permissions { margin-top:24px; }
+.remote-permissions > legend { padding:0; font-size:var(--text-body); font-weight:500; }
+.remote-permissions > .admin-help { margin:6px 0 12px; }
+.remote-permission-options { display:grid; gap:10px; }
+.remote-access label.remote-permission { display:grid; grid-template-columns:18px minmax(0,1fr); align-items:start; column-gap:12px; margin:0; padding:16px; border:1px solid var(--line); border-radius:10px; cursor:pointer; background:var(--paper); }
+.remote-permission input[type=checkbox] { width:18px; height:18px; margin:3px 0 0; accent-color:var(--blue); cursor:pointer; }
+.remote-permission-copy { display:grid; gap:6px; min-width:0; }
+.remote-permission-copy > strong { font-size:var(--text-body); font-weight:600; line-height:var(--leading-body); }
+.remote-permission-description { display:block; color:var(--muted); font-size:var(--text-small); line-height:var(--leading-body); overflow-wrap:anywhere; }
+.remote-permission-rule { display:block; margin-top:4px; }
+.remote-access .remote-permission.is-selected { border-color:#9cbad2; background:#f2f7fb; }
+.remote-permission:focus-within { outline:2px solid var(--blue); outline-offset:2px; }
+.remote-permission:has(input:disabled) { cursor:default; opacity:.65; }
+.remote-form-actions { display:flex; flex-wrap:wrap; align-items:center; gap:10px 16px; margin-top:20px; }
+.remote-form-actions .admin-help { margin:0; }
+.remote-access .remote-secret { margin-top:20px; padding:16px; }
+.remote-secret textarea { margin-top:8px; font-size:var(--text-small); }
 .remote-guide input { width:100%; margin-top:8px; }
-.remote-access form > .admin-button { margin-top:16px; }
 .remote-access .remote-guide { padding:16px; background:#f7f9fb; border:1px solid var(--line); border-radius:9px; }
+.remote-guide summary { font-size:var(--text-body); line-height:var(--leading-body); }
+.remote-guide summary:focus-visible { outline:2px solid var(--blue); outline-offset:4px; }
+.remote-access .remote-guide p { margin:12px 0; font-size:var(--text-small); line-height:var(--leading-body); color:var(--muted); }
+.remote-guide details { margin-top:16px; }
 .remote-access .remote-guide pre { padding:12px; background:white; border:1px solid var(--line); border-radius:7px; }
+.remote-access .remote-draft-check { display:flex; align-items:flex-start; gap:10px; margin:18px 0 12px; font-size:var(--text-body); line-height:var(--leading-body); }
+.remote-draft-check input { flex-shrink:0; width:18px; height:18px; margin-top:3px; accent-color:var(--blue); }
 .admin-center .backup-settings { margin:0; padding:28px; max-width:none; }
 .admin-center .backup-header h2 { font-size:var(--text-section); line-height:var(--leading-heading); margin:0; font-weight:650; }
 .admin-center .backup-header p { font-size:var(--text-body); }

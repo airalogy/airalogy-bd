@@ -21,6 +21,7 @@ test('investment Q&A keeps recommended answers stable and restores working revis
  const w=setup();try{
  const meeting=readFileSync(path.join(w.content,'counterparties/星帆创投/matters/融资对接/events.yaml'),'utf8');
  const saved=w.write('',payload),id=saved.id;assert.match(id,/^qa-[a-f0-9]{32}$/);assert.equal(w.read(id).record.status,'draft');
+ assert.equal(w.ok({operation:'history',id}).total,1,'No question version before its creation');
  const version=saved.status.version;w.act('publish',id);const approved=w.read(id).record.recommended;
  const staleRevision=w.read(id).revision;
  w.write(id,{...payload,short_answer:'优化后的产品回答。'});const next=w.read(id);assert.deepEqual(next.record.recommended,approved);assert.equal(next.record.has_changes,true);
