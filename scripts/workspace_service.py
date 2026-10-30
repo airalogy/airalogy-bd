@@ -28,6 +28,7 @@ from typing import Any
 import yaml
 from file_library import FileLibrary, LibraryError, check_index, index_from
 from team_auth import Accounts, AuthError
+from investment_qa import InvestmentQA, QAError, raw_record as qa_record, identities as qa_identities
 
 SCRIPTS = Path(__file__).resolve().parent
 FRONTMATTER = re.compile(r"\A---[ \t]*\n(.*?)\n---[ \t]*(?:\n|\Z)", re.S)
@@ -232,7 +233,7 @@ class Workspace:
                 self.atomic(target, text)
         affected = sorted(set(self.changed_records(previous, files)))
         metadata = {"origin": origin if head else "baseline", "label": label if head else "开始留存：当前全部资料", "affected": affected, "valid": not errors}
-        if self.actor and origin in {"form", "restore", "recovery", "attachment"}:
+        if self.actor and origin in {"form", "restore", "recovery", "attachment", "qa_save", "qa_publish", "qa_mark_stale", "qa_archive", "qa_unarchive", "qa_restore"}:
             metadata["actor"] = {key: self.actor[key] for key in ("id", "name", "email")}
         self.git("add", "--all", "--", "content")
         self.git("commit", "--no-verify", "-m", json.dumps(metadata, ensure_ascii=False))
@@ -409,6 +410,8 @@ class Workspace:
         return projects
 
     def record(self, files: dict[str, str], kind: str, identity: str, project_id="") -> dict | None:
+        if kind == "qa":
+            return qa_record(files, identity)
         if kind == "counterparty":
             value = counterparties(files).get(identity)
             if not value:
@@ -462,12 +465,13 @@ class Workspace:
         keys = set()
         for files in (before, after):
             try:
+                keys.update("qa:" + identity for identity in qa_identities(files))
                 keys.update("file:" + item["id"] for item in index_from(files)["files"])
                 keys.update("person:" + item["id"] for item in parse_yaml(files.get("people.yaml", "people: []")).get("people", []))
                 keys.update("project:" + item for item in self.projects(files))
                 keys.update("counterparty:" + item for item in counterparties(files))
                 keys.update("company:" + item["id"] for item in parse_yaml(files.get("company/events.yaml", "events: []")).get("events", []))
-            except (ServiceError, LibraryError, KeyError, TypeError):
+            except (ServiceError, LibraryError, QAError, KeyError, TypeError):
                 pass
         changed = []
         for key in keys:
@@ -475,7 +479,7 @@ class Workspace:
             try:
                 if self.record(before, kind, identity) != self.record(after, kind, identity):
                     changed.append(key)
-            except (ServiceError, LibraryError, KeyError, TypeError):
+            except (ServiceError, LibraryError, QAError, KeyError, TypeError):
                 changed.append(key)
         for project in set(self.projects(before)) | set(self.projects(after)):
             event_ids = set()
@@ -837,7 +841,7 @@ class Workspace:
                     catalog["person:" + item["id"]] = {"kind": "person", "id": item["id"], "name": item.get("name", item["id"])}
                 for item in parse_yaml(files.get("company/events.yaml", "events: []")).get("events", []):
                     catalog["company:" + item["id"]] = {"kind": "company", "id": item["id"], "name": item.get("title", item["id"])}
-            except (ServiceError, LibraryError, KeyError, TypeError):
+            except (ServiceError, LibraryError, QAError, KeyError, TypeError):
                 pass
         if not kind or not identity or kind == "workspace":
             changes = [{"label": name, "before": historical.get(name, "（该版本中不存在）"), "after": current.get(name, "（当前不存在）")} for name in sorted(current.keys() | historical.keys()) if current.get(name) != historical.get(name)]
@@ -974,7 +978,7 @@ class Workspace:
                     try:
                         if self.record(old, kind, identity) == self.record(new, kind, identity):
                             continue
-                    except (ServiceError, LibraryError, KeyError, TypeError):
+                    except (ServiceError, LibraryError, QAError, KeyError, TypeError):
                         pass
                 entries.append({"version": "repo:" + sha, "at": at, "label": label, "origin": "git", "valid": True})
         # Stable sorting keeps the latest Git descendant first when saves share a second.
@@ -1090,8 +1094,8 @@ def main():
             workspace.upload_scope = {"owner": actor["id"], "binding": actor["revision"], "channel": "web"}
             policy.authorize(request)
             workspace.actor = {key: actor[key] for key in ("id", "name", "email")}
-            if action in {"save", "file_save", "restore", "backup_config", "backup_now", "file_backup"}:
-                accounts.audit(actor, action, request.get("id") or request.get("project_id", ""), "started")
+            if action in {"save", "file_save", "restore", "backup_config", "backup_now", "file_backup"} or (action == "qa" and request.get("operation") not in {"list", "read", "history", "version"}):
+                accounts.audit(actor, "qa." + request.get("operation", "") if action == "qa" else action, request.get("id") or request.get("project_id", ""), "started")
         if action == "migrate_layout":
             from workspace_layout import migrate_layout
             workspace.recover()
@@ -1125,6 +1129,8 @@ def main():
             elif action == "workspace":
                 data_file = workspace.root / "generated" / "dashboard.json"
                 result = {"status": status, "data": json.loads(data_file.read_text()) if data_file.exists() else None}
+            elif action == "qa":
+                result = InvestmentQA(workspace).execute(request)
             elif action == "files":
                 result = FileLibrary(workspace).list()
             elif action in {"upload_stage", "upload_discard"}:
@@ -1159,8 +1165,8 @@ def main():
                 raise ServiceError("未知操作。")
         if policy:
             result = policy.result(request, result)
-            if action in {"save", "file_save", "restore", "backup_config", "backup_now", "file_backup"}:
-                accounts.audit(actor, action, result.get("id") or request.get("id") or request.get("project_id", ""), "failed" if result.get("error") else "success")
+            if action in {"save", "file_save", "restore", "backup_config", "backup_now", "file_backup"} or (action == "qa" and request.get("operation") not in {"list", "read", "history", "version"}):
+                accounts.audit(actor, "qa." + request.get("operation", "") if action == "qa" else action, result.get("id") or request.get("id") or request.get("project_id", ""), "failed" if result.get("error") else "success")
             accounts.close()
         print(json.dumps({"ok": True, "result": result}, ensure_ascii=False))
 
@@ -1168,7 +1174,7 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (ServiceError, LibraryError, AuthError) as exc:
+    except (ServiceError, LibraryError, AuthError, QAError) as exc:
         details = exc.details
         if os.environ.get("BD_REQUEST_WEB") == "1" and os.environ.get("BD_MODE") == "server" and exc.code == "validation":
             # Candidate validation covers the whole workspace, including restricted matters.

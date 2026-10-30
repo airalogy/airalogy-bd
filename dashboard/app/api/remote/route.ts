@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   try {
     if (!request.headers.get("content-type")?.startsWith("application/json")) return denied();
     const input = JSON.parse(new TextDecoder().decode(await boundedBody(request, 4000)));
-    if (!input || typeof input !== "object" || !["configure", "grant", "issue", "allow_intake", "revoke", "confirm", "reject"].includes(input.operation)) return denied();
+    if (!input || typeof input !== "object" || !["configure", "grant", "issue", "allow_intake", "allow_qa", "revoke", "confirm", "reject"].includes(input.operation)) return denied();
     return serviceResponse(await invokeWorkspace({ ...input, action: "remote_browser" }, access.session));
   } catch (error) {
     return serviceResponse({ ok: false, code: error instanceof RangeError ? "too_large" : "invalid", error: "远程管理请求格式无效。" });

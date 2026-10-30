@@ -108,7 +108,7 @@ export type Project = {
 };
 
 export type DashboardData = {
-  access?: {server:boolean;role:"admin"|"editor"|"viewer";name:string;all_projects:boolean};
+  access?: {qa_allowed?:boolean;server:boolean;role:"admin"|"editor"|"viewer";name:string;all_projects:boolean};
   counterparties: Counterparty[];
   files?: LibraryFile[];
   workspace: Workspace;

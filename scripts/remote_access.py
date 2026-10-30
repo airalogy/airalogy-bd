@@ -16,6 +16,8 @@ from content_paths import counterparties
 from file_library import LibraryError, index_from
 from staged_uploads import UploadStore
 from remote_intake import Intake, require_intake
+from remote_qa import TOOLS as QA_TOOLS, require_qa, tool as qa_tool
+from investment_qa import InvestmentQA
 
 MATTER_FIELDS = {"body", "stage", "follow_up_status", "next_action", "next_action_due"}
 PROGRESS_FIELDS = {"date", "type", "title", "summary", "importance", "participants", "body", "location"}
@@ -62,6 +64,8 @@ class RemoteAccess:
             self.db.execute("ALTER TABLE remote_tokens ADD COLUMN can_save INTEGER NOT NULL DEFAULT 0")
         if "can_intake" not in {row["name"] for row in self.db.execute("PRAGMA table_info(remote_tokens)")}:
             self.db.execute("ALTER TABLE remote_tokens ADD COLUMN can_intake INTEGER NOT NULL DEFAULT 0")
+        if "can_qa" not in {row["name"] for row in self.db.execute("PRAGMA table_info(remote_tokens)")}:
+            self.db.execute("ALTER TABLE remote_tokens ADD COLUMN can_qa INTEGER NOT NULL DEFAULT 0")
         with self.db:
             self.db.execute("DELETE FROM remote_intakes WHERE expires<=?", (int(time.time()),))
             self.db.execute("DELETE FROM remote_attempts WHERE at<?", (int(time.time()) - 60,))
@@ -110,7 +114,7 @@ class RemoteAccess:
         row = self.db.execute("SELECT * FROM users WHERE id=? AND active=1 AND revision=?", (token["owner"], token["binding"])).fetchone()
         if not row or not self.accounts.enrolled(row["id"]) or not self.accounts.email_allowed(row["id"]):
             raise AuthError("账号或权限已变化，请重新登录并生成凭据。", "unauthenticated")
-        actor = public_user(row)
+        actor = public_user(row) | {"qa_allowed": self.accounts.qa_allowed(row["id"])}
         self.grant(actor)
         return actor
 
@@ -121,9 +125,9 @@ class RemoteAccess:
             raise AuthError("工作区资料需要管理员检查。", "unavailable")
 
     def status(self, actor, manage=False):
-        result = self.settings() | {"granted": self.accounts.remote_allowed(actor["id"])}
+        result = self.settings() | {"granted": self.accounts.remote_allowed(actor["id"]), "qa_allowed": self.accounts.qa_allowed(actor["id"])}
         result["tokens"] = [dict(row) for row in self.db.execute(
-            "SELECT id,owner,label,can_draft,can_save,can_intake,expires,created FROM remote_tokens WHERE " + ("1=1" if manage else "owner=?") + " ORDER BY created DESC",
+            "SELECT id,owner,label,can_draft,can_save,can_intake,can_qa,expires,created FROM remote_tokens WHERE " + ("1=1" if manage else "owner=?") + " ORDER BY created DESC",
             () if manage else (actor["id"],))]
         if manage:
             result["members"] = [{"id": row["id"], "name": row["name"], "role": row["role"], "active": bool(row["active"]),
@@ -175,6 +179,9 @@ class RemoteAccess:
             intake = request.get("canIntake", False)
             if type(intake) is not bool or (intake and (actor["role"] != "admin" or mode == "read")):
                 raise AuthError("业务档案维护仅限管理员明确授权的可写连接。", "invalid")
+            can_qa = request.get("canQa", False)
+            if type(can_qa) is not bool or (can_qa and not self.accounts.qa_allowed(actor["id"])):
+                raise AuthError("此账号尚未获准访问投资问答库。")
             days, writable = request.get("days", 7), mode != "read"
             if type(days) is not int or not 1 <= days <= 30 or (writable and actor["role"] == "viewer"):
                 raise AuthError("有效期须为 1–30 天；只读成员不能提交草稿。", "invalid")
@@ -184,9 +191,17 @@ class RemoteAccess:
             label = text(request.get("label"), 80)
             token, identity = "bdr_" + secrets.token_urlsafe(32), secrets.token_hex(16)
             with self.db:
-                self.db.execute("INSERT INTO remote_tokens(id,digest,owner,binding,label,can_draft,expires,created,can_save,can_intake) VALUES(?,?,?,?,?,?,?,?,?,?)", (identity, fingerprint(token), actor["id"], actor["revision"], label, int(writable), now + days * 86400, now, int(mode == "direct"), int(intake)))
+                self.db.execute("INSERT INTO remote_tokens(id,digest,owner,binding,label,can_draft,expires,created,can_save,can_intake,can_qa) VALUES(?,?,?,?,?,?,?,?,?,?,?)", (identity, fingerprint(token), actor["id"], actor["revision"], label, int(writable), now + days * 86400, now, int(mode == "direct"), int(intake), int(can_qa)))
             self.accounts.audit(actor, "remote.issue_direct" if mode == "direct" else "remote.issue", identity)
             return {"id": identity, "token": token, "expires": now + days * 86400, "accessMode": mode}
+        if op == "allow_qa":
+            self.grant(actor)
+            row=self.db.execute("SELECT * FROM remote_tokens WHERE id=? AND owner=?", (text(request.get('tokenId')),actor['id'])).fetchone()
+            if not row or request.get('confirmed') is not True or not self.accounts.qa_allowed(actor['id']): raise AuthError('请本人确认允许此连接访问投资问答库。')
+            self.token_actor(row)
+            with self.db: self.db.execute("UPDATE remote_tokens SET can_qa=1 WHERE id=?", (row['id'],))
+            self.accounts.audit(actor,'remote.allow_qa',row['id'])
+            return {'allowed':True}
         if op == "allow_intake":
             self.accounts.require_admin(actor)
             self.grant(actor)
@@ -281,7 +296,9 @@ class RemoteAccess:
         self.token_actor(token)
         if actor["role"] == "viewer" or not token["can_draft"]: raise AuthError("此账号不能确认草稿。")
         saved = json.loads(row["value"])["request"]
-        if saved.get("kind") == "intake":
+        if saved.get("kind") == "qa":
+            require_qa(actor, token)
+        elif saved.get("kind") == "intake":
             Intake(self, actor, token).read(saved["intake_id"])
         else:
             policy.project(row["matter"])
@@ -299,8 +316,8 @@ class RemoteAccess:
         if self.db.execute("SELECT COUNT(*) FROM remote_attempts WHERE owner=? AND at>=?", (actor["id"], now - 60)).fetchone()[0] >= 60:
             raise AuthError("远程请求过于频繁，请稍后再试。", "rate_limited")
         with self.db: self.db.execute("INSERT INTO remote_attempts VALUES(?,?)", (actor["id"], now))
-        if op == "access": return {"canDraft": bool(token["can_draft"]) and actor["role"] != "viewer", "canSave": bool(token["can_save"]) and actor["role"] == "admin", "canIntake": bool(token["can_intake"]) and actor["role"] == "admin"}
-        if op not in {"search_entities", "read_entity", "prepare_intake", "discard_intake", "submit_intake", "save_intake", "search_matters", "read_matter", "read_progress", "list_files", "read_file", "prepare_upload", "upload_status", "discard_upload", "upload_bytes", "submit_draft", "save_progress"}: raise AuthError("远程接口不提供此操作。")
+        if op == "access": return {"canQa": bool(token["can_qa"]) and self.accounts.qa_allowed(actor["id"]),"canDraft": bool(token["can_draft"]) and actor["role"] != "viewer", "canSave": bool(token["can_save"]) and actor["role"] == "admin", "canIntake": bool(token["can_intake"]) and actor["role"] == "admin"}
+        if op not in QA_TOOLS | {"search_entities", "read_entity", "prepare_intake", "discard_intake", "submit_intake", "save_intake", "search_matters", "read_matter", "read_progress", "list_files", "read_file", "prepare_upload", "upload_status", "discard_upload", "upload_bytes", "submit_draft", "save_progress"}: raise AuthError("远程接口不提供此操作。")
         policy = Policy(self.workspace, actor)
         self.upload_context(actor, token)
         self.ready()
@@ -313,11 +330,16 @@ class RemoteAccess:
         return result
 
     def save_request(self, saved, actor, token, preview=False):
+        if saved.get("kind") == "qa":
+            require_qa(actor, token)
+            return InvestmentQA(self.workspace).execute(saved, preview=preview)
         if saved.get("kind") == "intake":
             return Intake(self, actor, token).save(saved, preview=preview)
         return self.workspace.save(saved, preview=preview)
 
     def tool(self, op, args, actor, token, policy):
+        if op in QA_TOOLS:
+            return qa_tool(self, op, args, actor, token)
         if op in {"prepare_intake", "discard_intake", "submit_intake", "save_intake"}:
             require_intake(actor, token)
             intake = Intake(self, actor, token)

@@ -5,7 +5,7 @@ import type { Comparison, HistoryResponse, RecordKind, RecordTarget, SavedRespon
 import { workspaceRequest } from "./lib/workspace-client";
 import { readable } from "./RecordForms";
 
-const originLabels:Record<string,string> = {migration:"资料整理",attachment:"附件资料",baseline:"开始留存",form:"表单保存",external:"文件修改",restore:"恢复内容",git:"已有版本",checkpoint:"手动留存",before_save:"保存前留存",recovery:"中断恢复"};
+const originLabels:Record<string,string> = {qa_save:"问答修订",qa_publish:"推荐确认",qa_mark_stale:"问答待更新",qa_archive:"问答归档",qa_unarchive:"恢复问答",qa_restore:"恢复问答修订稿",migration:"资料整理",attachment:"附件资料",baseline:"开始留存",form:"表单保存",external:"文件修改",restore:"恢复内容",git:"已有版本",checkpoint:"手动留存",before_save:"保存前留存",recovery:"中断恢复"};
 type CatalogRecord = {kind:RecordKind; id:string; name:string};
 type VersionComparison = Comparison & {records?:CatalogRecord[]};
 

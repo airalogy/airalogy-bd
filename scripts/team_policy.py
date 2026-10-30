@@ -58,6 +58,10 @@ class Policy:
             if action == "upload_stage":
                 self.project(request.get("project_id"))
             return
+        if action == "qa":
+            from investment_qa import InvestmentQA
+            InvestmentQA(self.workspace).authorize(request.get("operation", "list"))
+            return
         if self.admin:
             return
         if action in {"workspace", "files"}:
@@ -106,7 +110,7 @@ class Policy:
         if not data:
             return data
         result = copy.deepcopy(data)
-        result["access"] = {"server": True, "role": self.actor["role"], "name": self.actor["name"], "all_projects": self.actor["all_projects"]}
+        result["access"] = {"server": True, "role": self.actor["role"], "name": self.actor["name"], "all_projects": self.actor["all_projects"], "qa_allowed": self.admin or self.actor.get("qa_allowed", False)}
         if self.admin:
             return result
         result["projects"] = [x for x in result["projects"] if x["id"] in self.allowed]

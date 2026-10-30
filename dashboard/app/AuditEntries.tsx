@@ -9,6 +9,8 @@ export type Audit = {
   note:string;
 };
 const actionNames:Record<string,string>={
+  "qa.save":"保存问答修订稿","qa.publish":"确认问答推荐版本","qa.restore":"恢复问答修订稿","qa.archive":"归档问答","qa.unarchive":"恢复已归档问答","qa.mark_stale":"标记问答待更新",
+  "remote.allow_qa":"授权外部工具访问投资问答","remote.search_investment_qa":"外部工具搜索投资问答","remote.read_investment_qa":"外部工具读取投资问答","remote.investment_qa_history":"外部工具查询问答历史","remote.submit_investment_qa":"外部工具提交问答修改草稿","remote.save_investment_qa":"外部工具保存问答修订稿",
   "account.invite":"邀请成员","account.activate":"激活账号","account.login":"登录","account.username":"设置用户名","account.email_verified":"验证邮箱",
   "account.permissions":"调整权限","account.reset":"重新签发登录邀请","remote.grant":"允许外部 AI 工具","remote.ungrant":"取消外部 AI 工具权限",
   "remote.allow_intake":"授权外部工具维护业务档案","remote.prepare_intake":"外部工具准备业务录入","remote.submit_intake":"外部工具提交业务录入草稿","remote.save_intake":"外部工具正式录入业务资料","remote.search_entities":"外部工具查询人员及对接方","remote.read_entity":"外部工具读取业务档案","remote.discard_intake":"外部工具丢弃录入方案",

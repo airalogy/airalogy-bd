@@ -1107,6 +1107,8 @@ try:
         if candidate.is_file() and candidate.suffix in {".yaml", ".yml", ".md"} and "generated" not in candidate.relative_to(CONTENT_ROOT).parts and not is_attachment_path(candidate.relative_to(CONTENT_ROOT)):
             file_sources[candidate.relative_to(CONTENT_ROOT).as_posix()] = candidate.read_text(encoding="utf-8")
     check_index(file_sources)
+    from investment_qa import check_files as check_qa
+    check_qa(file_sources)
 except Exception as exc:
     errors.append(f"content/files.yaml: {exc}")
 

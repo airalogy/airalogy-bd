@@ -63,6 +63,7 @@ class Accounts:
                 role TEXT NOT NULL, all_projects INTEGER NOT NULL, project_ids TEXT NOT NULL,
                 active INTEGER NOT NULL DEFAULT 0, credential_revision TEXT NOT NULL DEFAULT '', revision TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS remote_grants (owner TEXT PRIMARY KEY);
+            CREATE TABLE IF NOT EXISTS qa_grants (owner TEXT PRIMARY KEY);
             CREATE TABLE IF NOT EXISTS invitations (
                 digest TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id),
                 expires INTEGER NOT NULL);
@@ -138,11 +139,12 @@ class Accounts:
         state = {"active":"已启用", "email":"待验证邮箱", "setup":"待绑定验证器", "invited":"待接受邀请", "expired":"邀请已过期", "disabled":"已停用"}[self.member_info(row)["status"]]
         return {"role": ROLE_LABELS[row["role"]],
                 "scope": scope,
+                "qa_allowed": "允许" if self.qa_allowed(row["id"]) else "不允许",
                 "remote_allowed": "允许（管理员默认）" if row["role"] == "admin" else "允许" if self.remote_allowed(row["id"]) else "不允许",
                 "status": state}
 
     def member_audit(self, actor, action, row, before, after, note=""):
-        labels = {"role": "成员角色", "scope": "事项范围", "remote_allowed": "外部 AI 工具", "status": "账号状态"}
+        labels = {"role": "成员角色", "qa_allowed": "投资问答库", "scope": "事项范围", "remote_allowed": "外部 AI 工具", "status": "账号状态"}
         changes = [{"field": key, "label": labels[key], "before": before.get(key), "after": value}
                    for key, value in after.items() if before.get(key) != value]
         self.audit(actor, action, row["id"], details={"subject": self.audit_subject(row), "changes": changes, "note": note}, commit=False)
@@ -182,7 +184,7 @@ class Accounts:
             AND b.credentialRevision=u.credential_revision""", (token, int(time.time()))).fetchone()
         if not row or (email_verification_required() and not row["email_verified"]):
             raise AuthError("登录已失效，请重新登录。", "unauthenticated")
-        return public_user(row) | {"csrf": row["csrf"], "expires": row["expires"], "email_verified": bool(row["email_verified"])}
+        return public_user(row) | {"qa_allowed": self.qa_allowed(row["id"]), "csrf": row["csrf"], "expires": row["expires"], "email_verified": bool(row["email_verified"])}
 
     def has_provider(self):
         return bool(self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='ba_session'").fetchone())
@@ -229,6 +231,22 @@ class Accounts:
             all_projects, projects = True, []
         return role, all_projects, sorted(set(projects)) if not all_projects else []
 
+    def qa_allowed(self, identity):
+        row=self.db.execute("SELECT role FROM users WHERE id=?", (identity,)).fetchone()
+        return bool(row and (row['role']=='admin' or self.db.execute("SELECT 1 FROM qa_grants WHERE owner=?", (identity,)).fetchone()))
+
+    def qa_permission(self, payload, default=False):
+        value=payload.get('qa_allowed',default)
+        if type(value) is not bool: raise AuthError('投资问答库权限无效。','invalid')
+        return value
+
+    def set_qa_allowed(self, identity, allowed):
+        row=self.db.execute("SELECT role FROM users WHERE id=?", (identity,)).fetchone()
+        if allowed and row and row['role']!='admin':
+            self.db.execute("INSERT OR IGNORE INTO qa_grants VALUES(?)", (identity,))
+        else:
+            self.db.execute("DELETE FROM qa_grants WHERE owner=?", (identity,))
+
     def remote_allowed(self, identity):
         # Role-derived eligibility is separate from activation, the global switch and credentials.
         return bool(self.db.execute("""SELECT 1 FROM users u WHERE u.id=? AND
@@ -270,6 +288,7 @@ class Accounts:
         if not 1 <= len(name) <= 100:
             raise AuthError("请填写成员姓名（不超过 100 个字符）。", "invalid")
         role, all_projects, projects = self.permissions(payload, known)
+        qa_allowed = self.qa_permission(payload)
         remote_allowed = self.remote_permission(payload)
         remote_allowed = role == "admin" or remote_allowed
         with self.db:
@@ -281,6 +300,7 @@ class Accounts:
             self.db.execute("INSERT INTO users(id,email,name,role,all_projects,project_ids,revision,credential_revision) VALUES(?,?,?,?,?,?,?,?)",
                             (identity, email, name, role, int(all_projects), json.dumps(projects), secrets.token_hex(16), secrets.token_hex(16)))
             self.set_remote_allowed(identity, remote_allowed)
+            self.set_qa_allowed(identity, qa_allowed)
             invitation = self.new_invitation(identity)
             row = self.db.execute("SELECT * FROM users WHERE id=?", (identity,)).fetchone()
             self.member_audit(actor, "account.invite", row, {}, self.permission_snapshot(row, known), "邀请有效期 48 小时，需由成员本人激活。")
@@ -311,7 +331,7 @@ class Accounts:
             ('invited' if invitation['expires'] > time.time() else 'expired') if invitation else 'disabled')
         if row['active'] and not self.email_allowed(row['id']):
             status = 'email'
-        return public_user(row) | {'status': status, 'invitation_expires': invitation['expires'] if invitation else None, 'remote_allowed': self.remote_allowed(row['id'])}
+        return public_user(row) | {'status': status, 'invitation_expires': invitation['expires'] if invitation else None, 'remote_allowed': self.remote_allowed(row['id']), 'qa_allowed': self.qa_allowed(row['id'])}
 
     def update(self, payload, actor, known):
         self.require_admin(actor)
@@ -322,6 +342,7 @@ class Accounts:
             row = self.db.execute("SELECT * FROM users WHERE id=?", (payload.get("id"),)).fetchone()
             if not row or payload.get("revision") != row["revision"]:
                 raise AuthError("成员信息已变化，请刷新后重试。", "conflict")
+            qa_allowed = self.qa_permission(payload, self.qa_allowed(row["id"]) if row["role"] != "admin" else False)
             before = self.permission_snapshot(row, known)
             was_allowed = self.remote_allowed(row["id"])
             # Demotion requires a deliberate grant; even an older explicit admin grant must not carry over.
@@ -338,6 +359,7 @@ class Accounts:
                             (role, int(all_projects), json.dumps(projects), int(payload["active"]), secrets.token_hex(16), row["id"]))
             self.revoke(row["id"])
             self.set_remote_allowed(row["id"], remote_allowed)
+            self.set_qa_allowed(row["id"], qa_allowed)
             # Editing an unaccepted invitation must not silently cancel its link.
             if row["active"] or payload["active"]:
                 self.db.execute("DELETE FROM invitations WHERE user_id=?", (row["id"],))

@@ -8,7 +8,7 @@ import type {HistoricalSnapshot, Version, BackupStatus} from "./lib/workspace-ty
 
 import * as Dialog from "@radix-ui/react-dialog";
 import * as ToggleGroup from "@radix-ui/react-toggle-group";
-import { useMemo, useState, type ReactNode } from "react";
+import { useSyncExternalStore, useMemo, useState, type ReactNode } from "react";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
 import ReactMarkdown from "react-markdown";
@@ -22,6 +22,7 @@ import OverviewActivity from "./OverviewActivity";
 import { collectActivityEvents, type ScopedActivityEvent } from "./lib/activity-calendar";
 import CompanyActivity from "./CompanyActivity";
 import InvestmentOverview from "./InvestmentOverview";
+import InvestmentQa, {type QaSource} from "./InvestmentQa";
 import BpStatus from "./BpStatus";
 import ContactChannels from "./ContactChannels";
 import CounterpartyContext from "./CounterpartyContext";
@@ -562,7 +563,9 @@ function EventRecordDialog({
   onFiles,
   files,
   snapshot,
+  onQa,
 }: {
+  onQa?:()=>void;
   selection: RecordSelection | null;
   files: LibraryFile[];
   snapshot?: string;
@@ -606,6 +609,7 @@ function EventRecordDialog({
                 {document.markdown}
               </ReactMarkdown> : <p>{selection.event.summary}</p>}
             </article>
+            {onQa&&<div className="qa-actions"><button className="admin-button" type="button" onClick={onQa}>整理到投资问答</button></div>}
             {selection.projectId && <EventAttachments key={`${selection.projectId}:${selection.event.id}`} files={files} matter={selection.projectId} event={selection.event.id} snapshot={snapshot} onDetails={onFiles} />}
           </div>
         </Dialog.Content>
@@ -1019,10 +1023,16 @@ function ProjectDrawer({
   );
 }
 
+const subscribeLocation=(notify:()=>void)=>{window.addEventListener("popstate",notify);return()=>window.removeEventListener("popstate",notify);};
+
 export default function Dashboard({ data, workspaceStatus, workspaceError, onWorkspaceRefresh, readOnly = false, historicalVersion, onBrowseHistory, initialHistoryVersion, backupStatus }: { data: DashboardData; workspaceStatus: WorkspaceStatus | null; workspaceError: string; onWorkspaceRefresh: () => Promise<void>; readOnly?:boolean; historicalVersion?:string; onBrowseHistory?:(snapshot:HistoricalSnapshot)=>void; initialHistoryVersion?:Version|null; backupStatus?:BackupStatus|null; }) {
   const canAdmin=!data.access || data.access.role==="admin";
   const canEdit=!data.access || data.access.role!=="viewer";
-  const [page, setPage] = useState<"projects" | "company" | "investments" | "admin" | "history" | "ai">(initialHistoryVersion ? "history" : "projects");
+  const canQa=canAdmin||!!data.access?.qa_allowed;
+  const [qaSource,setQaSource]=useState<QaSource|null>(null);
+  const qaId=useSyncExternalStore(subscribeLocation,()=>new URLSearchParams(window.location.search).get("qa")||"",()=>"");
+  const [chosenPage, setPage] = useState<"projects" | "company" | "investments" | "admin" | "history" | "ai" | "qa" | null>(initialHistoryVersion ? "history" : null);
+  const page=chosenPage||(canQa&&!readOnly&&qaId?"qa":"projects");
   const [aiScope, setAiScope] = useState("");
   const [editTarget, setEditTarget] = useState<RecordTarget | null>(null);
   const [filesTarget, setFilesTarget] = useState<FileTarget | null>(null);
@@ -1374,6 +1384,7 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
         <button type="button" aria-pressed={page === "investments"} onClick={() => setPage("investments")}>
           投资总览 <span>{data.projects.filter((project) => project.record_type === "investment").length}</span>
         </button>
+        {!readOnly&&canQa&&<button type="button" aria-pressed={page==="qa"} onClick={()=>setPage("qa")}>投资问答</button>}
         <button type="button" aria-pressed={page === "company"} onClick={() => setPage("company")}>
           公司动态 <span>{data.company_events.length}</span>
         </button>
@@ -1382,6 +1393,7 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
         {!readOnly && <button type="button" onClick={()=>openFiles()}>事项资料</button>}{readOnly && <button type="button" onClick={()=>openFiles()}>历史资料</button>}
         {!readOnly && <button type="button" aria-pressed={page === "ai"} onClick={() => {setAiScope("");setPage("ai");}}>AI 助手</button>}
       </nav>
+      {!readOnly&&canQa&&page==="qa"&&<InvestmentQa data={data} initialId={qaId} source={qaSource} onClearSource={()=>setQaSource(null)} onSource={source=>{const project=data.projects.find(p=>p.id===source.project_id);const event=project?.events.find(e=>e.id===source.event_id);if(project&&event)setSelectedRecord({event,sourceLabel:project.name,projectId:project.id});else if(project)setSelectedProject(project);}}/>}
       {!readOnly && page === "ai" && <AiAssistant key={aiScope} initialScope={aiScope} data={data} onSaved={saved} onSource={source => {const project = data.projects.find(p => p.id === source.projectId);const event = project?.events.find(e => e.id === source.eventId);if(project && event) setSelectedRecord({event,sourceLabel:project.name,projectId:project.id});}} />}
       {!readOnly && canAdmin && backupStatus?.error && <div className="admin-alert" role="alert">最近自动备份未完成，当前资料和已有版本仍然保留。<Link className="admin-button" href="/admin?section=backup">查看备份情况</Link></div>}
       {!readOnly && canAdmin && page === "admin" && <WorkspaceAdmin data={data} onEdit={setEditTarget} onHistory={openHistory} onFiles={openFiles} onNdaFiles={() => setFilesTarget({agreementType:"nda"})} onOpenRecord={(event,sourceLabel,projectId) => setSelectedRecord({event,sourceLabel,projectId})} />}
@@ -1941,6 +1953,7 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
       {!readOnly && filesTarget && <FileLibraryDialog data={data} target={filesTarget} onClose={() => setFilesTarget(null)} onChanged={onWorkspaceRefresh} onHistory={openHistory} />}
       <EventRecordDialog
         selection={selectedRecord}
+        onQa={!readOnly&&canQa&&canEdit&&selectedRecord?.projectId?()=>{setQaSource({project_id:selectedRecord.projectId!,event_id:selectedRecord.event.id,matter_name:selectedRecord.sourceLabel,event_title:selectedRecord.event.title});setSelectedRecord(null);setSelectedProject(null);setPage("qa");}:undefined}
         files={data.files || []}
         snapshot={readOnly ? historicalVersion : undefined}
         onFiles={selectedRecord?.projectId ? () => openFiles(selectedRecord.projectId,selectedRecord.event.id) : undefined}

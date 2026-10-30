@@ -66,7 +66,61 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertNotIn('--deployment-only', final)
 
 
+class QuestionAuthorizationTests(unittest.TestCase):
+    def test_file_sources_are_redacted_preserved_and_included_in_backups(self):
+        from investment_qa import InvestmentQA, fields, raw_record
+        from file_library import FileLibrary
+        with tempfile.TemporaryDirectory() as temp:
+            content=Path(temp)/'content';shutil.copytree(ROOT/'fixtures/demo/content',content)
+            workspace=Workspace(content);workspace.observe()
+            library=FileLibrary(workspace)
+            library.save({'operation':'upload','id':'','payload':{'title':'受限融资附件','organization':'示例机构','category':'bp','project_ids':['project-demo-investment'],'home_counterparty_id':'counterparty-13414ee5502c4f23','filename':'private-bp.txt','data':base64.b64encode(b'private example').decode(),'status':'draft'}})
+            file=library.list()['files'][0]
+            qa=InvestmentQA(workspace)
+            saved=qa.execute({'operation':'save','revision':qa.execute({'operation':'read'})['revision'],'payload':{'question':'演示问题','short_answer':'共享回答','sources':[{'project_id':'project-demo-investment'}],'files':[{'file_id':file['id'],'version_id':file['current_version']}]}})
+            qa.execute({'operation':'publish','id':saved['id'],'revision':saved['revision']})
+            actor={'id':'editor','name':'编辑成员','email':'editor@example.invalid','role':'editor','all_projects':False,'project_ids':['project-demo-partnership'],'qa_allowed':True}
+            workspace.policy=Policy(workspace,actor);workspace.actor=actor
+            qa=InvestmentQA(workspace);view=qa.execute({'operation':'read','id':saved['id']})
+            self.assertEqual(view['record']['draft']['files'],[])
+            self.assertEqual(view['record']['recommended']['files'],[])
+            self.assertNotIn(file['id'],json.dumps(view))
+            self.assertNotIn('private-bp.txt',json.dumps(view))
+            draft=fields(view['record']['draft']);draft['short_answer']='可见内容的修订'
+            qa.execute({'operation':'save','id':saved['id'],'revision':view['revision'],'payload':draft})
+            self.assertEqual(raw_record(workspace.read_files(),saved['id'])['draft']['files'],[{'file_id':file['id'],'version_id':file['current_version']}])
+            with self.assertRaises(AuthError): workspace.policy.authorize({'action':'file_download','id':file['id']})
+            actor['qa_allowed']=False
+            with self.assertRaises(AuthError): InvestmentQA(workspace).execute({'operation':'read','id':saved['id']})
+            workspace.policy=None
+            backup=create_backup(workspace)
+            with zipfile.ZipFile(backup_download(workspace,backup['id'])['path']) as archive:
+                self.assertTrue(any(name.endswith('/'+saved['id']+'/draft.md') for name in archive.namelist()))
+                self.assertTrue(any(name.endswith('/'+saved['id']+'/recommended.md') for name in archive.namelist()))
+
+
 class AccountTests(unittest.TestCase):
+    def test_question_grants_survive_backups_but_credentials_do_not(self):
+        from team_auth import backup_accounts, validate_account_backup
+        with tempfile.TemporaryDirectory() as temp:
+            content=Path(temp)/'content';content.mkdir()
+            accounts=Accounts(content)
+            invitation=accounts.invite({'name':'管理员','email':'admin@example.invalid','role':'admin'},None,set(),bootstrap=True)
+            identity=accounts.invitation(invitation['token'])['user_id']
+            actor=accounts.member_info(accounts.db.execute('SELECT * FROM users WHERE id=?',(identity,)).fetchone())
+            self.assertTrue(actor['qa_allowed'])
+            invitation=accounts.invite({'name':'编辑','role':'editor','qa_allowed':True},actor,set())
+            editor_id=accounts.invitation(invitation['token'])['user_id']
+            self.assertTrue(accounts.qa_allowed(editor_id))
+            destination=Path(temp)/'copy.sqlite3'
+            backup_accounts(content,destination);validate_account_backup(destination)
+            with sqlite3.connect(destination) as backup:
+                self.assertEqual(backup.execute('SELECT owner FROM qa_grants').fetchall(),[(editor_id,)])
+                self.assertEqual(backup.execute('SELECT count(*) FROM invitations').fetchone()[0],0)
+            accounts.db.execute("UPDATE users SET role='editor' WHERE id=?",(identity,));accounts.db.commit()
+            self.assertFalse(accounts.qa_allowed(identity),'Implicit admin grants do not persist through demotion')
+            accounts.close()
+
     def test_admin_remote_eligibility_follows_persisted_role(self):
         with tempfile.TemporaryDirectory() as temp:
             content=Path(temp)/'content';content.mkdir()
@@ -458,6 +512,26 @@ class RemoteWriteTests(unittest.TestCase):
 
     def count(self):
         return len(self.workspace.get_record({'kind': 'project', 'id': self.matter})['record']['events'])
+
+    def test_question_opt_in_and_lost_acknowledgement_never_repeat(self):
+        from investment_qa import InvestmentQA
+        with self.assertRaises(AuthError): self.call('read_investment_qa',{'id':''})
+        self.remote.browser({'operation':'allow_qa','tokenId':self.token['id'],'confirmed':True},self.actor)
+        args={'request_id':uuid.uuid4().hex,'revision':self.call('read_investment_qa',{'id':''})['revision'],'changes':{'question':'故障注入示例问题','short_answer':'仅保存一次'}}
+        original=InvestmentQA.execute
+        def interrupted(library,request,*,preview=False):
+            result=original(library,request,preview=preview)
+            if request.get('operation')=='save' and not preview: raise RuntimeError('ack lost')
+            return result
+        with patch.object(InvestmentQA,'execute',interrupted):
+            with self.assertRaises(AuthError) as caught: self.call('save_investment_qa',args)
+            self.assertEqual(caught.exception.code,'uncertain')
+        self.assertEqual(self.call('search_investment_qa')['total'],1)
+        self.assertEqual(self.call('save_investment_qa',args)['status'],'uncertain')
+        self.assertEqual(self.call('search_investment_qa')['total'],1)
+        read_token=self.issue('read')
+        self.remote.browser({'operation':'allow_qa','tokenId':read_token['id'],'confirmed':True},self.actor)
+        with self.assertRaises(AuthError): self.call('submit_investment_qa',args,read_token)
 
     def test_receipt_survives_restart_and_draft_retention_window(self):
         args, before = self.arguments(), self.count()

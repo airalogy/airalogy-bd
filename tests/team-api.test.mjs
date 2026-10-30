@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { aiMockTransport, exerciseAi } from "./ai-http.mjs";
 import { exerciseAttachmentHttp } from "./attachment-http.mjs";
 import { exerciseProgressPeople } from "./progress-people-http.mjs";
+import {exerciseInvestmentQA} from "./investment-qa-http.mjs";
 import { exerciseRemote } from "./remote-http.mjs";
 import {spawn,spawnSync} from "node:child_process";
 import {createHmac,randomBytes} from "node:crypto";
@@ -187,6 +188,7 @@ test("server HTTP enforces invitations, scope, roles, CSRF, concurrent saves, do
     }
     await exerciseAi({directory,request,okay,admin,editor,viewer});
     await exerciseRemote({directory,request,okay,admin,editor,viewer,join});
+    await exerciseInvestmentQA({directory,request,okay,admin,editor,viewer,join});
     const workspace=await okay(await request("/api/workspace?action=workspace",null,viewer));
     assert.deepEqual(workspace.data.projects.map(x=>x.id),[project]);
     assert.equal(workspace.data.company_events.length,0);
