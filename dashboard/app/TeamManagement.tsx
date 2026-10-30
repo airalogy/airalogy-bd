@@ -12,7 +12,7 @@ import {SettingsIcon,SettingsPanelHeader,SettingsStatus} from "./SettingsUI";
 type MemberList={users:TeamUser[];remote_enabled:boolean};
 import AuditEntries, {type Audit} from "./AuditEntries";
 const roleNames={admin:"管理员",editor:"编辑成员",viewer:"只读成员"};
-const roleHelp={admin:"管理全部资料、成员权限和系统设置。",editor:"修改获授权事项和附件、补充进展。",viewer:"查看和导出获授权资料，不能修改。"};
+const roleHelp={admin:"管理全部资料、成员权限和系统设置。",editor:"修改获授权事项和附件、补充进展，并随进展新增人员。",viewer:"查看和导出获授权资料，不能修改。"};
 const statusNames={active:"已启用",email:"待验证邮箱",setup:"待绑定验证器",invited:"待接受邀请",expired:"邀请已过期",disabled:"已停用"};
 const isInvitation=(member:TeamUser)=>member.status==="invited"||member.status==="expired";
 
@@ -82,7 +82,7 @@ export default function TeamManagement({user,projects,timezone}:{user:TeamUser;p
         <div className="member-permissions"><span className="member-role">{roleNames[member.role]}</span><p>{member.role==="admin"||member.all_projects?"全部事项":member.project_ids.length?`指定事项 · ${member.project_ids.length} 项`:"尚未分配事项"}</p><small>{member.role==="admin"||member.all_projects?"自动包含新增事项":"新增事项需另行授权"}</small><small className="member-tool-access">外部 AI 工具 · {member.role==="admin"?(remoteEnabled?"管理员默认允许":"管理员默认允许，功能待开启"):member.remote_allowed?(remoteEnabled?"已允许":"已允许，功能待开启"):"未允许"}</small></div>
         <div className="member-actions"><button type="button" className="admin-button" disabled={busy} onClick={event=>select(member,event.currentTarget)}>调整权限</button>{member.id!==user.id&&<button type="button" disabled={busy} className="settings-text-button" onClick={()=>void reset(member)}>{isInvitation(member)?"重新邀请":"重置登录"}</button>}</div>
       </article>)}{!visibleMembers.length&&<p className="settings-empty">{members.length?"没有符合条件的成员，试试其他关键词或状态。":"尚无成员，可通过邀请链接加入团队。"}</p>}</div>}
-      <p className="member-policy-note">停用账号会撤销登录访问，保留已有业务记录和操作历史。人员总库维护、事项创建、全局历史和备份由管理员管理。</p>
+      <p className="member-policy-note">停用账号会撤销登录访问，保留已有业务记录和操作历史。编辑成员可随获授权事项的进展新增人员；已有人员档案维护、事项创建、全局历史和备份由管理员管理。</p>
     </section>
     <details className="settings-disclosure member-audit" onToggle={event=>{if(event.currentTarget.open&&!auditLoaded&&!auditBusy)void loadAudit();}}><summary><span>操作记录<small>查看操作人、目标成员与具体变更</small></span></summary><div className="settings-disclosure-body"><div className="settings-row-heading audit-toolbar"><label>记录范围<select value={auditScope} disabled={auditBusy} onChange={event=>{const scope=event.target.value;setAuditScope(scope);setAudit([]);setAuditNext(null);void loadAudit(false,scope);}}><option value="members">成员与权限</option><option value="all">全部操作</option></select></label><button type="button" className="admin-button" disabled={auditBusy} onClick={()=>void loadAudit()}>{auditBusy?"读取中…":"刷新记录"}</button></div>{auditScope==="all"&&<p className="admin-help">“开始”仅表示操作已发起，需结合后续完成或失败记录判断结果。</p>}<AuditEntries entries={audit} timezone={timezone}/>{auditLoaded&&!audit.length&&!auditBusy&&<p className="settings-empty">暂无操作记录。</p>}{auditNext!==null&&<button type="button" disabled={auditBusy} className="admin-button" onClick={()=>void loadAudit(true)}>加载更早记录</button>}</div></details>
     <Dialog.Root open={editorOpen} onOpenChange={open=>{if(!open)closeEditor();}}><Dialog.Portal><Dialog.Overlay className="admin-dialog-overlay"/><Dialog.Content className="admin-dialog member-dialog" onInteractOutside={event=>event.preventDefault()} onEscapeKeyDown={event=>{event.preventDefault();closeEditor();}} onCloseAutoFocus={event=>{event.preventDefault();(opener.current?.isConnected?opener.current:inviteButton.current)?.focus();}}>

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { notifyRemoteDraftsChanged } from "./lib/remote-events";
 import {SettingsPanelHeader,SettingsStatus} from "./SettingsUI";
 import type { TeamUser } from "./lib/team-client";
-import { stageLabels, followUpStatusLabels } from "./lib/labels";
+import { stageLabels, followUpStatusLabels, roleLabels } from "./lib/labels";
 
 type Token = { id: string; owner: string; label: string; can_draft: boolean; can_save: boolean; can_intake: boolean; expires: number };
 type Member = { id: string; name: string; role: string; active: boolean; granted: boolean };
@@ -20,6 +20,14 @@ function display(field: string, value: unknown) {
   if (typeof value === "string" && field === "follow_up_status") return followUpStatusLabels[value as keyof typeof followUpStatusLabels] || value;
   if (typeof value === "string" && field === "importance") return value === "key" ? "关键进展" : "普通进展";
   if (typeof value === "string" && field === "type") return ({ contact: "联系沟通", meeting: "会议", proposal: "方案", agreement: "协议", administrative: "行政手续", decision: "决定", payment: "付款", milestone: "里程碑", status_change: "状态变化", other: "其他" } as Record<string, string>)[value] || value;
+  if (Array.isArray(value) && field === "new_people") return value.length ? value.map(person => [
+    `姓名：${person.name}`, `单位及职位：${person.affiliation}`,
+    person.phone && `电话：${person.phone}`, person.wechat && `微信：${person.wechat}`, person.email && `邮箱：${person.email}`,
+  ].filter(Boolean).join("\n")).join("\n\n") : "（无）";
+  if (Array.isArray(value) && field === "new_contacts") return value.length ? value.map(relation => [
+    `人员：${relation.person_id}`, `关系：${({internal:"我方",counterparty:"对方",advisor:"顾问 / 引荐"} as Record<string,string>)[relation.side] || relation.side}`,
+    `角色：${(relation.project_roles as string[]).map(role => roleLabels[role] || role).join("、")}`, relation.notes && `备注：${relation.notes}`,
+  ].filter(Boolean).join("\n")).join("\n\n") : "（无）";
   if (typeof value === "object") return JSON.stringify(value, null, 2);
   return String(value);
 }

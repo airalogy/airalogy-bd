@@ -24,7 +24,7 @@ class Policy:
             raise AuthError("你没有访问这份资料的权限。")
         return item
 
-    def references(self, payload):
+    def references(self, payload, new_people=()):
         if self.actor["all_projects"]:
             return
         from file_library import index_from
@@ -39,12 +39,13 @@ class Policy:
             people.update(c["person_id"] for c in record["contacts"])
             people.update(p for e in record["events"] for p in e.get("participants", []))
         people.update(p for f in index_from(files)["files"] if self.file_allowed(f) for r in f["records"] for p in r["people"])
+        people.update(p["id"] for p in new_people)
         supplied = list(payload.get("participants", [])) + list(payload.get("sourced_by", [])) + list(payload.get("people", []))
         supplied += [c.get("person_id") for c in payload.get("contacts", []) + payload.get("new_contacts", [])]
         linked = list(payload.get("counterparty_ids", []))
         linked += [payload[k] for k in ("home_counterparty_id", "primary_counterparty_id") if payload.get(k)]
         if any(x not in people for x in supplied) or any(x not in parties for x in linked):
-            raise AuthError("只能关联获授权事项中已有的人员和对接方；新增关联请联系管理员。")
+            raise AuthError("只能关联有权查看的人员和对接方，或随本次进展新增人员；其他关联请联系管理员。")
 
     def authorize(self, request):
         action = "save" if request.get("action") == "preview" else request.get("action")
@@ -76,16 +77,22 @@ class Policy:
             payload = request.get("payload") or {}
             if not isinstance(payload, dict):
                 raise AuthError("资料格式无效。", "invalid")
-            self.references(payload)
             if action == "save":
                 kind = request.get("kind")
                 if kind not in {"project", "progress"}:
                     raise AuthError("共享档案和公司动态由管理员维护。")
                 self.project(request.get("project_id") if kind == "progress" else request.get("id"))
+                if kind != "progress" and payload.get("new_people"):
+                    raise AuthError("只能随获授权事项的进展新增人员。")
+                new_people = self.workspace.new_progress_people(self.workspace.read_files(), payload) if kind == "progress" else []
+                self.references(payload, new_people)
                 # An editor cannot create global counterparties via a project save.
                 if payload.get("additional_counterparties") or payload.get("new_counterparty"):
                     raise AuthError("新对接方由管理员创建。")
                 return
+            if payload.get("new_people"):
+                raise AuthError("只能随获授权事项的进展新增人员。")
+            self.references(payload)
             item = self.file(request["id"]) if request.get("id") else None
             links = payload.get("project_ids", item["project_ids"] if item else [])
             if not isinstance(links, list) or not links or any(not isinstance(x, str) or x not in self.allowed for x in links):

@@ -34,7 +34,8 @@ export default function RecordEditor({target, data, onTargetChange, onClose, onS
   const [dirty, setDirty] = useState(false);
   const [attachments,setAttachments] = useState<ProgressFile[]>([]);
   const [addedPeople, setAddedPeople] = useState<Person[]>([]);
-  const formData = {...data, people:[...new Map([...addedPeople,...data.people].map(person => [person.id,person])).values()]};
+  const [pendingPeople, setPendingPeople] = useState<EditablePerson[]>([]);
+  const formData = {...data, people:[...new Map([...addedPeople,...pendingPeople.map(person => ({...person,id:person.name,last_activity:null,projects:[]})),...data.people].map(person => [person.id,person])).values()]};
   const stagedIds = useRef(new Set<string>());
   useEffect(()=>{const ids=stagedIds.current;return ()=>{for(const id of ids) void discardUpload(id).catch(()=>{});};},[]);
   const [latest, setLatest] = useState<RecordResponse | null>(null);
@@ -78,14 +79,25 @@ export default function RecordEditor({target, data, onTargetChange, onClose, onS
       throw err;
     }
   };
-  const onCreatePerson = !data.access || data.access.role === "admin" ? createPerson : undefined;
+  const canStagePeople = target.kind === "progress" && !!target.project_id && (!data.access || ["admin","editor"].includes(data.access.role));
+  const stagePerson = async (person: EditablePerson, previousName?: string) => {
+    if (!canStagePeople) throw new Error("只能随获授权事项的进展新增人员。");
+    const name = person.name.trim();
+    if (!name || /[\s/\\]/.test(name) || !person.affiliation.trim()) throw new Error("请填写姓名、单位及职位；姓名不能包含空格或斜杠。");
+    if (!previousName && pendingPeople.length >= 30) throw new Error("每条进展最多新增 30 位人员。");
+    setPendingPeople(people => [...people.filter(item => item.name !== previousName), {...person,name,affiliation:person.affiliation.trim()}]);
+    setDirty(true);
+    return name;
+  };
+  const onCreatePerson = canStagePeople ? stagePerson : !data.access || data.access.role === "admin" ? createPerson : undefined;
   const close = () => { if (busy) return;if (dirty) setDecision("close"); else onClose(); };
   const save = async (revision = loaded?.revision) => {
     if (!draft || !revision || busy) return;
     setBusy(true); setError(""); setDetails([]);
     try {
       const files = await prepareProgressFiles(attachments, target.project_id || "", (key,uploaded)=>{stagedIds.current.add(uploaded.upload_id);setAttachments(items=>items.map(item=>item.key===key?{...item,uploaded}:item));});
-      const result = await workspaceRequest<SavedResponse>("save", {...target, revision, payload:draft, ...(files.length?{attachments:files}:{})}, true);
+      const payload = target.kind === "progress" ? {...draft,new_people:pendingPeople.filter(person => (draft.participants as string[]).includes(person.name))} : draft;
+      const result = await workspaceRequest<SavedResponse>("save", {...target, revision, payload, ...(files.length?{attachments:files}:{})}, true);
       stagedIds.current.clear();
       setDirty(false); if (attachAfterSave.current && onSavedWithFiles) await onSavedWithFiles(result); else onSaved(result);
     } catch (err) {
@@ -109,7 +121,7 @@ export default function RecordEditor({target, data, onTargetChange, onClose, onS
     onCloseAutoFocus={event => { event.preventDefault(); openerRef.current?.focus(); }}>
     <div className="admin-dialog-head"><div><Dialog.Title asChild><h2>{title}</h2></Dialog.Title><p>{project?.name || "保存后自动留存版本，可在修改历史中比较和恢复。"}</p></div><button type="button" className="close-button" aria-label={`关闭${title}`} disabled={busy} onClick={close}>×</button></div>
     <form onSubmit={event => { event.preventDefault(); if (!conflict && !decision) {attachAfterSave.current=false;void save();} }}>
-        {decision && <section className="admin-confirm" role="alertdialog" aria-labelledby="edit-confirm-title"><h3 id="edit-confirm-title">{decision === "close" ? "放弃本次草稿？" : decision === "reload" ? "载入最新内容？" : "按当前草稿保存？"}</h3><p>{decision === "close" ? "本次未保存的输入会丢失，已保存资料不会改变。" : decision === "reload" ? "最新资料会替换当前草稿，你可以在此基础上继续编辑。" : "已比较最新资料。保存前会保留最新版本，然后按当前草稿更新这条资料。"}</p><div className="admin-actions"><button type="button" className="admin-button" onClick={() => setDecision(null)}>继续编辑</button><button type="button" className="admin-button admin-primary" onClick={() => {const choice=decision;setDecision(null);if(choice === "close") onClose();else if(choice === "reload" && latest){setLoaded(latest);setDraft(draftFor(target,latest.record) as Record<string,unknown>);setConflict(false);setLatest(null);setDirty(false);setError("");}else if(choice === "overwrite" && latest) void save(latest.revision);}}>{decision === "close" ? "放弃草稿并关闭" : decision === "reload" ? "确认载入最新内容" : "确认按草稿保存"}</button></div></section>}
+        {decision && <section className="admin-confirm" role="alertdialog" aria-labelledby="edit-confirm-title"><h3 id="edit-confirm-title">{decision === "close" ? "放弃本次草稿？" : decision === "reload" ? "载入最新内容？" : "按当前草稿保存？"}</h3><p>{decision === "close" ? "本次未保存的输入会丢失，已保存资料不会改变。" : decision === "reload" ? "最新资料会替换当前草稿，你可以在此基础上继续编辑。" : "已比较最新资料。保存前会保留最新版本，然后按当前草稿更新这条资料。"}</p><div className="admin-actions"><button type="button" className="admin-button" onClick={() => setDecision(null)}>继续编辑</button><button type="button" className="admin-button admin-primary" onClick={() => {const choice=decision;setDecision(null);if(choice === "close") onClose();else if(choice === "reload" && latest){setLoaded(latest);setDraft(draftFor(target,latest.record) as Record<string,unknown>);setPendingPeople([]);setConflict(false);setLatest(null);setDirty(false);setError("");}else if(choice === "overwrite" && latest) void save(latest.revision);}}>{decision === "close" ? "放弃草稿并关闭" : decision === "reload" ? "确认载入最新内容" : "确认按草稿保存"}</button></div></section>}
       <div className="admin-dialog-scroll">
         {error && <div ref={errorRef} role="alert" className="admin-alert"><p>{error}</p>{details.length > 0 && <ul>{details.map((detail,index) => <li key={index}>{detail}</li>)}</ul>}</div>}
         {conflict && <section className="edit-conflict"><h3>资料发生了变化，草稿已保留</h3><button type="button" className="admin-button" disabled={busy} onClick={() => void compareLatest()}>比较最新内容</button>
@@ -123,7 +135,7 @@ export default function RecordEditor({target, data, onTargetChange, onClose, onS
           {target.kind === "counterparty" && <CounterpartyForm draft={draft as CounterpartyDraft} data={formData} onChange={change} onCreatePerson={onCreatePerson} />}
           {target.kind === "person" && <PersonForm record={draft as EditablePerson} isNew={!target.id} onChange={change} />}
           {target.kind === "project" && <ProjectForm draft={draft as ProjectDraft} data={formData} isNew={!target.id} onChange={change} onCreatePerson={onCreatePerson} />}
-          {(target.kind === "progress" || target.kind === "company") && <ProgressForm draft={draft as ProgressDraft} data={formData} company={target.kind === "company"} contacts={project?.contacts.map(contact => ({person_id:contact.person_id,side:contact.side,project_roles:contact.project_roles,notes:contact.notes})) || []} onChange={change} onCreatePerson={onCreatePerson} />}
+          {(target.kind === "progress" || target.kind === "company") && <ProgressForm draft={draft as ProgressDraft} data={formData} company={target.kind === "company"} contacts={project?.contacts.map(contact => ({person_id:contact.person_id,side:contact.side,project_roles:contact.project_roles,notes:contact.notes})) || []} onChange={change} onCreatePerson={onCreatePerson} deferredPeople={canStagePeople} pendingPeople={pendingPeople} onEditPending={canStagePeople ? (name,person) => stagePerson(person,name) : undefined} />}
           {target.kind==="progress"&&target.project_id&&<ProgressAttachments matter={target.project_id} eventId={target.id} items={attachments} onChange={items=>{setAttachments(items);setDirty(true);}}/>}
         </fieldset>}
       </div>

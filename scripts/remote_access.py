@@ -19,9 +19,11 @@ from remote_intake import Intake, require_intake
 
 MATTER_FIELDS = {"body", "stage", "follow_up_status", "next_action", "next_action_due"}
 PROGRESS_FIELDS = {"date", "type", "title", "summary", "importance", "participants", "body", "location"}
+PROGRESS_INPUT_FIELDS = PROGRESS_FIELDS | {"new_people", "new_contacts"}
 LABELS = {"body": "正文", "stage": "阶段", "follow_up_status": "跟进状态", "next_action": "下一步",
           "next_action_due": "下一步日期", "date": "实际日期", "type": "进展类型", "title": "标题",
-          "summary": "摘要", "importance": "重要程度", "participants": "参与人", "location": "地点"}
+          "summary": "摘要", "importance": "重要程度", "participants": "参与人", "location": "地点",
+          "new_people": "新增人员档案", "new_contacts": "新增事项关系"}
 
 
 def text(value, maximum=160, empty=False):
@@ -424,14 +426,16 @@ class RemoteAccess:
         if operation not in {"add_progress", "update_progress", "update_matter"}: raise AuthError("不支持此类修改。", "invalid")
         if direct and operation not in {"add_progress", "update_progress"}:
             raise AuthError("直接保存仅支持新增或修改已有事项的进展；事项信息请提交草稿。", "invalid")
-        exact(changes, MATTER_FIELDS if operation == "update_matter" else PROGRESS_FIELDS)
+        exact(changes, MATTER_FIELDS if operation == "update_matter" else PROGRESS_INPUT_FIELDS)
         attachments = args.get("attachments", [])
         if not isinstance(attachments, list) or len(attachments) > 10 or (attachments and operation == "update_matter"):
             raise AuthError("附件仅可随进展保存，每次最多 10 个。", "invalid")
         if not changes and not attachments: raise AuthError("请提供要修改的内容。", "invalid")
         for key, value in changes.items():
             if key == "participants":
-                if not isinstance(value, list) or len(value) > 30 or any(not isinstance(v, str) or v not in {c["person_id"] for c in record["contacts"]} for v in value): raise AuthError("只能引用当前事项已有参与人。", "invalid")
+                if not isinstance(value, list) or len(value) > 30 or any(not isinstance(v, str) for v in value): raise AuthError("参与人列表格式无效。", "invalid")
+            elif key in {"new_people", "new_contacts"}:
+                if not isinstance(value, list) or len(value) > 30 or any(not isinstance(v, dict) for v in value): raise AuthError("新增人员及事项关系列表格式无效。", "invalid")
             elif key == "next_action_due" and value is None: pass
             else: text(value, 8000 if key == "body" else 1000, True)
         if operation == "update_matter":
@@ -444,6 +448,8 @@ class RemoteAccess:
             if progress_id and not item: raise AuthError("未找到这条进展。", "not_found")
             before = self.progress_fields(item) if item else {"date": "", "type": "other", "title": "", "summary": "", "importance": "normal", "participants": [], "body": "", "location": ""}
         save = {"action": "save", **target, "revision": text(args["revision"]), "payload": {**before, **changes}, "attachments": attachments}
+        if operation != "update_matter":
+            self.workspace.new_progress_people(files, save["payload"])
         if not attachments and operation != "add_progress" and all(before.get(key) == value for key, value in changes.items()):
             raise AuthError("内容没有变化，无需提交修改。", "invalid")
         policy.authorize(save)

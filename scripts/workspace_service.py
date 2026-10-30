@@ -501,10 +501,45 @@ class Workspace:
         except ValueError as exc:
             raise ServiceError("请填写有效的实际日期。") from exc
 
+    def new_progress_people(self, files: dict[str, str], payload: dict) -> list[dict]:
+        """Validate fresh participants without writing or disclosing existing profiles."""
+        supplied = payload.get("new_people", [])
+        if not isinstance(supplied, list) or len(supplied) > 30:
+            raise ServiceError("每条进展最多新增 30 位人员。")
+        participants, relations = payload.get("participants", []), payload.get("new_contacts", [])
+        if not isinstance(participants, list) or any(not isinstance(p, str) for p in participants) or not isinstance(relations, list) or any(not isinstance(r, dict) for r in relations):
+            raise ServiceError("请核对参与人及事项关系。")
+        existing = parse_yaml(files["people.yaml"])["people"]
+        names = {name_key(p[key]) for p in existing for key in ("id", "name")}
+        result = []
+        for value in supplied:
+            if not isinstance(value, dict) or set(value) - PERSON_FIELDS:
+                raise ServiceError("新增人员只能填写姓名、单位及职位和联系方式。")
+            profile = {key: value.get(key) for key in PERSON_FIELDS}
+            for key, limit in (("name", 100), ("affiliation", 1000), ("phone", 100), ("wechat", 200), ("email", 254)):
+                item = profile[key]
+                if item is not None and (not isinstance(item, str) or len(item) > limit):
+                    raise ServiceError("新增人员信息格式或长度不正确。")
+            name = (profile["name"] or "").strip()
+            if not name or re.search(r"[\s/\\]", name) or not (profile["affiliation"] or "").strip():
+                raise ServiceError("请填写人员姓名、单位及职位；姓名不能包含空格或斜杠。")
+            if name_key(name) in names:
+                # Never return the colliding profile: it may belong to a restricted matter.
+                raise ServiceError("无法新增该人员，请选择有权查看的已有人员，或联系管理员核对。", "duplicate")
+            if name not in participants or sum(r.get("person_id") == name for r in relations) != 1:
+                raise ServiceError("新增人员须参与本次进展，并填写一条事项关系。")
+            names.add(name_key(name))
+            result.append({**profile, "id": name, "name": name, "affiliation": profile["affiliation"].strip()})
+        return result
+
     def write_progress(self, files: dict[str, str], kind: str, identity: str, project_id: str, payload: dict) -> tuple[str, str]:
         value = self.projects(files).get(project_id) if kind == "progress" else None
         if kind == "progress" and value is None:
             raise ServiceError("该事项已不存在，请刷新资料。", "conflict")
+        if kind != "progress" and payload.get("new_people"):
+            raise ServiceError("随进展新增人员仅适用于已有事项。")
+        for profile in self.new_progress_people(files, payload):
+            files["people.yaml"] = replace_item(files["people.yaml"], "people", "id", profile["id"], profile)
         directory = value[0] if value else "company"
         current = self.record(files, kind, identity, project_id) if identity else None
         event = {**(current or {}).get("event", {}), **{key: payload.get(key) for key in EVENT_FIELDS}}
@@ -595,6 +630,8 @@ class Workspace:
         payload = request.get("payload")
         if not isinstance(payload, dict):
             raise ServiceError("没有可保存的资料。")
+        if kind != "progress" and payload.get("new_people"):
+            raise ServiceError("随进展新增人员仅适用于已有事项。")
         if kind == "counterparty":
             current = counterparties(before).get(identity)
             if not current:

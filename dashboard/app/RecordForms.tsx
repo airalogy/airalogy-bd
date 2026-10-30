@@ -37,27 +37,27 @@ function LinesInput({values, onChange, required = false, id}: {values:string[]; 
 
 export type CreatePerson = (person: EditablePerson) => Promise<string>;
 
-function NewPersonButton({data, onCreate, onSelect, initialName = "", label = "新建人员并选中"}: {data: DashboardData; onCreate?: CreatePerson; onSelect: (id: string) => void; initialName?: string; label?: string}) {
+function NewPersonButton({data, onCreate, onSelect, initialName = "", label = "新建人员并选中", deferred = false, initialPerson}: {data: DashboardData; onCreate?: CreatePerson; onSelect: (id: string) => void; initialName?: string; label?: string; deferred?: boolean; initialPerson?: EditablePerson}) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
-  if (!onCreate || (data.access && data.access.role !== "admin")) return null;
+  if (!onCreate) return null;
   return <><button type="button" ref={trigger} className="admin-button" onClick={() => setOpen(true)}>{label}</button>
-    {open && <NewPersonDialog data={data} initialName={initialName} onCreate={onCreate} onClose={() => setOpen(false)} onReturnFocus={() => trigger.current?.focus()} onSelect={id => { onSelect(id); setOpen(false); }} />}
+    {open && <NewPersonDialog data={data} initialName={initialName} initialPerson={initialPerson} deferred={deferred} onCreate={onCreate} onClose={() => setOpen(false)} onReturnFocus={() => trigger.current?.focus()} onSelect={id => { onSelect(id); setOpen(false); }} />}
   </>;
 }
 
-function NewPersonDialog({data, initialName, onCreate, onClose, onSelect, onReturnFocus}: {data: DashboardData; initialName: string; onCreate: CreatePerson; onClose: () => void; onSelect: (id: string) => void; onReturnFocus: () => void}) {
-  const [person, setPerson] = useState<EditablePerson>({name:initialName,affiliation:"",phone:null,wechat:null,email:null});
+function NewPersonDialog({data, initialName, initialPerson, deferred, onCreate, onClose, onSelect, onReturnFocus}: {data: DashboardData; initialName: string; initialPerson?: EditablePerson; deferred: boolean; onCreate: CreatePerson; onClose: () => void; onSelect: (id: string) => void; onReturnFocus: () => void}) {
+  const [person, setPerson] = useState<EditablePerson>(initialPerson || {name:initialName,affiliation:"",phone:null,wechat:null,email:null});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [dirty, setDirty] = useState(false);
   const [discard, setDiscard] = useState(false);
-  const duplicate = data.people.find(item => item.id === person.name.trim() || item.name === person.name.trim());
+  const duplicate = data.people.find(item => item.id !== initialPerson?.name && (item.id.toLocaleLowerCase() === person.name.trim().toLocaleLowerCase() || item.name.toLocaleLowerCase() === person.name.trim().toLocaleLowerCase()));
   const close = () => { if (!busy) { if (dirty) setDiscard(true); else onClose(); } };
   return <Dialog.Root open onOpenChange={open => { if (!open) close(); }}><Dialog.Portal>
     <Dialog.Overlay className="admin-dialog-overlay person-create-overlay" />
     <Dialog.Content className="admin-dialog person-create-dialog" onInteractOutside={event => event.preventDefault()} onEscapeKeyDown={event => { event.preventDefault(); event.stopPropagation(); close(); }} onCloseAutoFocus={event => {event.preventDefault();onReturnFocus();}}>
-      <div className="admin-dialog-head"><div><Dialog.Title asChild><h2>新建人员</h2></Dialog.Title><Dialog.Description>保存到共用人员档案并选中，返回后可继续填写当前记录。</Dialog.Description></div><button type="button" className="close-button" aria-label="关闭新建人员" disabled={busy} onClick={close}>×</button></div>
+      <div className="admin-dialog-head"><div><Dialog.Title asChild><h2>{initialPerson ? "编辑待新增人员" : "新建人员"}</h2></Dialog.Title><Dialog.Description>{deferred ? "填写人员信息并选中，最后与本次进展一起保存。" : "保存到共用人员档案并选中，返回后可继续填写当前记录。"}</Dialog.Description></div><button type="button" className="close-button" aria-label="关闭新建人员" disabled={busy} onClick={close}>×</button></div>
       <form autoComplete="off" onSubmit={async event => {
         event.preventDefault(); event.stopPropagation();
         if (busy || duplicate || discard) return;
@@ -68,16 +68,16 @@ function NewPersonDialog({data, initialName, onCreate, onClose, onSelect, onRetu
         <div className="admin-dialog-scroll">
           {discard && <section className="admin-confirm" role="alert"><h3>放弃未保存的人员信息？</h3><p>当前进展及其他表单内容会保留。</p><div className="admin-actions"><button type="button" className="admin-button" onClick={() => setDiscard(false)}>继续填写人员</button><button type="button" className="admin-button" onClick={onClose}>放弃人员信息</button></div></section>}
           {error && <div className="admin-alert" role="alert">{error}</div>}
-          {duplicate && <section className="person-existing" role="status"><strong>已有同名人员，优先使用已有档案</strong><p>{duplicate.name} · {duplicate.affiliation}</p><button type="button" className="admin-button" disabled={busy || discard} onClick={() => onSelect(duplicate.id)}>选用已有人员</button></section>}
+          {duplicate && <section className="person-existing" role="status"><strong>已有同名人员，优先使用已有档案</strong><p>{duplicate.name} · {duplicate.affiliation}</p>{!initialPerson && <button type="button" className="admin-button" disabled={busy || discard} onClick={() => onSelect(duplicate.id)}>选用已有人员</button>}</section>}
           <fieldset className="edit-fields" disabled={busy || discard}><PersonForm record={person} isNew compact onChange={value => {setPerson(value);setDirty(true);setError("");}} /></fieldset>
         </div>
-        <div className="admin-dialog-footer"><span>此处只保存人员档案，当前记录另行保存。</span><div className="admin-actions"><button type="button" className="admin-button" disabled={busy} onClick={close}>返回继续填写</button><button className="admin-button admin-primary" type="submit" disabled={busy || !!duplicate || discard}>{busy ? "正在保存人员…" : "保存人员并选中"}</button></div></div>
+        <div className="admin-dialog-footer"><span>{deferred ? "尚未保存；取消本次进展不会新增人员档案。" : "此处只保存人员档案，当前记录另行保存。"}</span><div className="admin-actions"><button type="button" className="admin-button" disabled={busy} onClick={close}>返回继续填写</button><button className="admin-button admin-primary" type="submit" disabled={busy || !!duplicate || discard}>{busy ? "正在处理…" : deferred ? initialPerson ? "更新本次人员信息" : "加入本次进展" : "保存人员并选中"}</button></div></div>
       </form>
     </Dialog.Content>
   </Dialog.Portal></Dialog.Root>;
 }
 
-export function PeoplePicker({data, selected, onChange, label = "参与人", allowed, preferred = [], onCreatePerson}: {data: DashboardData; selected: string[]; onChange: (ids: string[]) => void; label?: string; allowed?: string[]; preferred?: string[]; onCreatePerson?: CreatePerson}) {
+export function PeoplePicker({data, selected, onChange, label = "参与人", allowed, preferred = [], onCreatePerson, deferredPeople = false}: {data: DashboardData; selected: string[]; onChange: (ids: string[]) => void; label?: string; allowed?: string[]; preferred?: string[]; onCreatePerson?: CreatePerson; deferredPeople?: boolean}) {
   const [query, setQuery] = useState("");
   const [notice, setNotice] = useState("");
   const needle = query.trim().toLocaleLowerCase();
@@ -87,14 +87,14 @@ export function PeoplePicker({data, selected, onChange, label = "参与人", all
   const options = (items: typeof people) => items.map(person => <label key={person.id}><input type="checkbox" checked={selected.includes(person.id)} onChange={e => {onChange(e.target.checked ? [...new Set([...selected,person.id])] : selected.filter(id => id !== person.id));setNotice("");}} /><span><strong>{person.name}</strong><small>{person.affiliation}</small></span></label>);
   return <fieldset className="edit-people-picker"><legend>{label}</legend>
     <div className="edit-people-toolbar"><input type="search" aria-label={`搜索${label}`} placeholder="搜索姓名、单位或职位" value={query} onChange={e => setQuery(e.target.value)} />
-      {!allowed && <NewPersonButton data={data} onCreate={onCreatePerson} initialName={query.trim()} onSelect={id => {onChange([...new Set([...selected,id])]);setQuery("");setNotice(`已选中${data.people.find(person => person.id === id)?.name || id}`);}} />}
+      {!allowed && <NewPersonButton data={data} deferred={deferredPeople} onCreate={onCreatePerson} initialName={query.trim()} onSelect={id => {onChange([...new Set([...selected,id])]);setQuery("");setNotice(id);}} />}
     </div>
     <div className="edit-people-selected"><span>已选 {selected.length} 人</span>{selected.map(id => {const person = data.people.find(item => item.id === id);return <button type="button" key={id} onClick={() => {onChange(selected.filter(item => item !== id));setNotice("");}} aria-label={`移除${label}${person?.name || id}`} title={person?.affiliation}>{person?.name || id} ×</button>;})}</div>
     <div className="edit-people-results">{related.length > 0 && <><p className="edit-people-group">本事项相关人员</p><div className="edit-people-options">{options(related)}</div></>}{other.length > 0 && <>{preferred.length > 0 && <p className="edit-people-group">其他可选人员</p>}<div className="edit-people-options">{options(other)}</div></>}
-      {!people.length && <p className="edit-people-empty">{needle ? `未找到“${query.trim()}”，可换个关键词搜索。` : "暂无可选人员。"}{onCreatePerson && !allowed && (!data.access || data.access.role === "admin") ? "也可以直接新建人员并选中。" : "需要新人员时，请联系管理员建立档案。"}</p>}
+      {!people.length && <p className="edit-people-empty">{needle ? `未找到“${query.trim()}”，可换个关键词搜索。` : "暂无可选人员。"}{onCreatePerson && !allowed ? "也可以直接新建人员并选中。" : "需要新人员时，请联系管理员建立档案。"}</p>}
     </div>
-    {data.access && data.access.role !== "admin" && <p className="admin-help">仅显示你有权访问的人员；新增人员档案请联系管理员。</p>}
-    {notice && <p className="admin-notice" role="status">{notice}</p>}
+    {data.access && data.access.role !== "admin" && <p className="admin-help">{onCreatePerson ? "仅显示你有权访问的人员；可随本次进展新增联系人，共用档案的修改与合并由管理员处理。" : "仅显示你有权访问的人员；可在新增沟通进展时添加新联系人。"}</p>}
+    {notice && selected.includes(notice) && <p className="admin-notice" role="status">已选中{data.people.find(person => person.id === notice)?.name || notice}</p>}
   </fieldset>;
 }
 
@@ -125,7 +125,7 @@ export function progressDraft(record: EditableProgress | null): ProgressDraft {
   const implicit = Object.values(record.document.participants || {}).flat();
   return {...newEvent(), ...record.event, participants:[...new Set([...record.event.participants || [], ...implicit])], body:record.body, location:record.document.location || "", new_contacts:[]};
 }
-export function ProgressForm({draft, onChange, data, contacts = [], company = false, onCreatePerson}: {draft: ProgressDraft; onChange: (value: ProgressDraft) => void; data: DashboardData; contacts?: Relation[]; company?: boolean; onCreatePerson?: CreatePerson}) {
+export function ProgressForm({draft, onChange, data, contacts = [], company = false, onCreatePerson, deferredPeople = false, pendingPeople = [], onEditPending}: {draft: ProgressDraft; onChange: (value: ProgressDraft) => void; data: DashboardData; contacts?: Relation[]; company?: boolean; onCreatePerson?: CreatePerson; deferredPeople?: boolean; pendingPeople?: EditablePerson[]; onEditPending?: (name: string, person: EditablePerson) => Promise<string>}) {
   const update = (key: string, value: unknown) => onChange({...draft,[key]:value});
   const missing = company ? [] : draft.participants.filter(id => !contacts.some(relation => relation.person_id === id));
   const selectParticipants = (participants: string[]) => onChange({...draft, participants, new_contacts: participants.filter(id => !contacts.some(relation => relation.person_id === id)).map(id => draft.new_contacts.find(item => item.person_id === id) || {person_id:id,side:"counterparty",project_roles:["participant"],notes:""})});
@@ -139,7 +139,8 @@ export function ProgressForm({draft, onChange, data, contacts = [], company = fa
       <Field label="地点（可选）"><input value={draft.location} onChange={e => update("location",e.target.value)} /></Field>
       {company && <><Field label="活动分类"><input required list="company-category-list" value={draft.category || ""} onChange={e => update("category",e.target.value)} /><datalist id="company-category-list">{[...new Set(data.company_events.map(event => event.category))].map(value => <option key={value} value={value} />)}</datalist></Field><Field label="主办方（可选，每行一个）"><LinesInput values={draft.organizers || []} onChange={value => update("organizers",value)} /></Field></>}
     </div>
-    <PeoplePicker data={data} selected={draft.participants} onChange={selectParticipants} preferred={contacts.map(relation => relation.person_id)} onCreatePerson={onCreatePerson} />
+    <PeoplePicker data={data} selected={draft.participants} onChange={selectParticipants} preferred={contacts.map(relation => relation.person_id)} onCreatePerson={onCreatePerson} deferredPeople={deferredPeople} />
+    {onEditPending && pendingPeople.some(person => draft.participants.includes(person.name)) && <section className="pending-people" aria-label="待新增人员"><h3>待新增人员</h3><p className="admin-help">以下人员与本次进展一起保存。取消勾选后，本次不会新增该人员。</p>{pendingPeople.filter(person => draft.participants.includes(person.name)).map(person => <div className="pending-person" key={person.name}><span><strong>{person.name}</strong><small>{person.affiliation}</small></span><NewPersonButton data={data} deferred initialPerson={person} label={`编辑${person.name}的信息`} onCreate={value => onEditPending(person.name,value)} onSelect={id => onChange({...draft,participants:draft.participants.map(value => value === person.name ? id : value),new_contacts:draft.new_contacts.map(relation => relation.person_id === person.name ? {...relation,person_id:id} : relation)})} /></div>)}</section>}
     {missing.length > 0 && <div><h3>新参与人的事项关系</h3><p className="admin-help">这些人员还未关联此事项，将和本次进展一起保存。请核对关系及角色。</p>{missing.map(id => <RelationEditor key={id} data={data} relation={draft.new_contacts.find(item => item.person_id === id) || {person_id:id,side:"counterparty",project_roles:["participant"],notes:""}} onChange={relation => onChange({...draft,new_contacts:[...draft.new_contacts.filter(item => item.person_id !== id),relation]})} />)}</div>}
     <Field label={company ? "完整活动记录（可选）" : "沟通记录"} wide hint="支持 Markdown；会议类型须填写沟通记录。不要粘贴原始逐字稿或私人评论。"><textarea className="edit-body" rows={9} required={draft.type === "meeting"} value={draft.body} onChange={e => update("body",e.target.value)} placeholder="整理后的记录，可按讨论内容、对方意见和已达成共识分段。" /></Field>
   </>;

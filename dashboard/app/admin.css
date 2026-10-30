@@ -115,6 +115,11 @@
 .person-existing { padding:12px 16px; margin-bottom:18px; border:1px solid var(--line); background:var(--canvas); border-radius:8px; font-size:var(--text-small); }
 .person-existing p { margin:6px 0 12px; color:var(--muted); }
 .person-create-dialog .admin-confirm { margin:0 0 18px; }
+.pending-people { border:1px solid var(--line); border-radius:10px; padding:16px; margin:0 0 20px; background:var(--canvas); }
+.pending-people h3 { margin:0; font-size:var(--text-body); }
+.pending-person { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; padding:10px 0; }
+.pending-person > span { min-width:0; overflow-wrap:anywhere; }
+.pending-person small { display:block; color:var(--muted); font-size:var(--text-small); }
 .edit-relation { border:1px solid var(--line); border-radius:9px; padding:12px; margin:12px 0; }
 .edit-relation-title { display:flex; gap:12px; align-items:center; justify-content:space-between; }
 .edit-relation-title > strong { font-size:var(--text-body); }

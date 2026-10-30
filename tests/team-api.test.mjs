@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { aiMockTransport, exerciseAi } from "./ai-http.mjs";
 import { exerciseAttachmentHttp } from "./attachment-http.mjs";
+import { exerciseProgressPeople } from "./progress-people-http.mjs";
 import { exerciseRemote } from "./remote-http.mjs";
 import {spawn,spawnSync} from "node:child_process";
 import {createHmac,randomBytes} from "node:crypto";
@@ -189,7 +190,7 @@ test("server HTTP enforces invitations, scope, roles, CSRF, concurrent saves, do
     const workspace=await okay(await request("/api/workspace?action=workspace",null,viewer));
     assert.deepEqual(workspace.data.projects.map(x=>x.id),[project]);
     assert.equal(workspace.data.company_events.length,0);
-    assert.equal(workspace.data.people.length,2);
+    assert.deepEqual(workspace.data.people.map(person=>person.id).sort(),["林岚","程冬","陈青"].sort());
     assert.doesNotMatch(JSON.stringify(workspace),/星帆创投|宋禾|顾远|project-demo-investment/);
     const rendered=await (await request("/",null,viewer)).text();
     assert.doesNotMatch(rendered,/星帆创投|宋禾|顾远|project-demo-investment/);
@@ -202,6 +203,7 @@ test("server HTTP enforces invitations, scope, roles, CSRF, concurrent saves, do
       assert.equal((await request(endpoint+"?action=record&kind=person&id=",null,member)).status,403);
       assert.equal((await request(endpoint,{action:"save",kind:"person",id:"",revision:newPerson.revision,payload:{name:"无权创建人员",affiliation:"示例单位"}},member)).status,403);
     }
+    await exerciseProgressPeople({directory,request,okay,admin,editor,viewer});
     const opened=await okay(await request(endpoint+`?action=record&kind=project&id=${project}`,null,editor));
     const edit={action:"save",kind:"project",id:project,revision:opened.revision,payload:{...opened.record.metadata,contacts:opened.record.contacts,body:"团队编辑测试正文"}};
     assert.equal((await request(endpoint,edit,viewer)).status,403);

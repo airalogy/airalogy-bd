@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
+import {exerciseRemotePeople} from "./remote-people-http.mjs";
 
 // Exercise the actual production HTTP, MFA-session, permission and workspace-file boundary.
 export async function exerciseRemote({ directory, request, okay, admin, editor, viewer, join }) {
@@ -186,6 +187,8 @@ export async function exerciseRemote({ directory, request, okay, admin, editor, 
   const db = new DatabaseSync(path.join(directory, ".bd-auth/accounts.sqlite3"));
   const clearRate = () => db.exec("DELETE FROM remote_attempts");
   clearRate();
+  await exerciseRemotePeople({directory,request,okay,web,rpc,call,newDraft,admin,editor,writable,readonly});
+  clearRate();
   for (const changes of [{ contacts: [] }, { new_counterparty: { name: "bad" } }, { name: "rename" }, { body: 123 }]) {
     const snapshot = await call("read_matter", { matter_id: matter }, writable.token);
     assert.equal((await call("submit_draft", { ...pending.args, revision: snapshot.revision, request_id: randomUUID(), operation: "update_matter", changes }, writable.token, true)).code, "invalid");
@@ -199,12 +202,13 @@ export async function exerciseRemote({ directory, request, okay, admin, editor, 
   await okay(await web("reject", { draftId: rejected.draft.draftId }, editor));
   assert.equal(await pendingCount(editor), 0);
   assert.equal((await web("confirm", { draftId: rejected.draft.draftId, confirmed: true }, editor)).status, 409);
-  const revoked = await newDraft(writable.token);
+  const revoked = await newDraft(writable.token, {changes:{date:"2026-10-30",type:"contact",title:"撤销权限阻止新增人员",summary:"讨论示例需求。",participants:["程撤销"],new_people:[{name:"程撤销",affiliation:"示例单位"}],new_contacts:[{person_id:"程撤销",side:"counterparty",project_roles:["participant"]}]}});
   await okay(await web("revoke", { tokenId: writable.id }, editor));
   assert.equal(await pendingCount(editor), 0);
   assert.equal((await rpc("tools/list", {}, writable.token)).status, 401);
   assert.equal((await web("confirm", { draftId: revoked.draft.draftId, confirmed: true }, editor)).status, 409);
   clearRate();
+  assert.doesNotMatch(readFileSync(path.join(directory,"content/people.yaml"),"utf8"), /程撤销/);
   const next = await issue(editor);
   const expiring = await newDraft(next.token);
   db.prepare("UPDATE remote_drafts SET expires=0 WHERE id=?").run(expiring.draft.draftId);
