@@ -217,9 +217,17 @@ test("server HTTP enforces invitations, scope, roles, CSRF, concurrent saves, do
     assert.deepEqual(concurrent.map(r=>r.status).sort(),[200,409]);
     for(const response of concurrent)await response.arrayBuffer();
     const progress=await okay(await request(endpoint+`?action=record&kind=progress&id=&project_id=${project}`,null,editor));
-    await okay(await request(endpoint,{action:"save",kind:"progress",id:"",project_id:project,revision:progress.revision,actor:{id:"spoof",name:"伪造录入者"},payload:{date:"2026-10-22",type:"meeting",title:"每日进展",summary:"仅测试事实",importance:"normal",participants:["林岚"],body:"# 每日进展\n完成演示。",location:"线上"}},editor));
+    const savedProgress=await okay(await request(endpoint,{action:"save",kind:"progress",id:"",project_id:project,revision:progress.revision,actor:{id:"spoof",name:"伪造录入者"},payload:{date:"2026-10-22",type:"meeting",title:"每日进展",summary:"仅测试事实",importance:"normal",participants:["林岚"],body:"# 每日进展\n完成演示。",location:"线上"}},editor));
     const history=await okay(await request(endpoint+`?action=history&kind=project&id=${project}`,null,admin));
     assert.equal(history.versions[0].actor.name,"editor");
+    const byline = endpoint + "?" + new URLSearchParams({action:"event_update",kind:"progress",project_id:project,id:savedProgress.id});
+    const recorded = await okay(await request(byline,null,viewer));
+    assert.deepEqual(recorded.update, {name:"editor",at:history.versions[0].at});
+    assert.equal((await request(byline)).status,401);
+    assert.equal((await request(byline.replace(project,restricted),null,viewer)).status,403);
+    assert.equal((await request(byline+"&snapshot="+history.versions[0].version,null,viewer)).status,403);
+    assert.equal((await request(endpoint+"?action=event_update&kind=company&id=missing",null,viewer)).status,403);
+
     const upload=async(ids,title,member=admin)=>{
       const form=new FormData();form.set("metadata",JSON.stringify({payload:{title,organization:"虚构机构",category:"bp",project_ids:ids,home_counterparty_id:ids[0]===project?"counterparty-917f1872213b3ab5":"counterparty-13414ee5502c4f23",status:"draft"}}));
       form.set("file",new File([title],"测试.txt",{type:"text/plain"}));

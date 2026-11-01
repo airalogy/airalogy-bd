@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
+import {exerciseRemoteCompany} from "./remote-company-http.mjs";
 import {exerciseRemotePeople} from "./remote-people-http.mjs";
 
 // Exercise the actual production HTTP, MFA-session, permission and workspace-file boundary.
@@ -265,7 +266,7 @@ export async function exerciseRemote({ directory, request, okay, admin, editor, 
   }
   assert.ok((await (await rpc("tools/call", {name:"save_progress",arguments:{}}, defaultToken.token)).json()).error);
   assert.ok((await (await rpc("tools/call", {name:"save_progress",arguments:{}}, rateToken.token)).json()).error);
-  assert.deepEqual((await (await rpc("tools/list", {}, direct.token)).json()).result.tools.map(t=>t.name), ["search_entities","search_matters","read_matter","read_progress","list_files","read_file","prepare_upload","upload_status","discard_upload","submit_draft","save_progress"]);
+  assert.deepEqual((await (await rpc("tools/list", {}, direct.token)).json()).result.tools.map(t=>t.name), ["search_company_events","read_company_event","search_entities","search_matters","read_matter","read_progress","list_files","read_file","prepare_upload","upload_status","discard_upload","submit_draft","save_progress"]);
   const directInit = (await (await rpc("initialize", {protocolVersion:"2025-11-25"}, direct.token)).json()).result;
   assert.match(directInit.instructions, /formally save progress/);
   const currentDirect = await call("read_matter", {matter_id:matter}, direct.token);
@@ -322,6 +323,7 @@ export async function exerciseRemote({ directory, request, okay, admin, editor, 
   assert.ok(directAudit.entries.some(e=>e.action==="remote.issue_direct"));
   assert.ok(directAudit.entries.some(e=>e.action==="remote.save_progress" && e.outcome==="success"));
   assert.doesNotMatch(JSON.stringify(directAudit), new RegExp(direct.token));
+  await exerciseRemoteCompany({rpc,call,web,request,okay,admin,editor,direct,draftToken:defaultToken,restricted:rateToken,clearRate});
   await okay(await web("revoke", {tokenId:direct.id}));
   assert.equal((await rpc("tools/list", {}, direct.token)).status, 401);
   assert.equal(db.prepare("SELECT COUNT(*) n FROM remote_writes WHERE token_id=?").get(direct.id).n, 0);

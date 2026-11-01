@@ -71,6 +71,15 @@ class Policy:
             if request.get("snapshot"):
                 raise AuthError("历史版本资料由管理员查看。")
             return
+        if action == "event_update":
+            if request.get("snapshot"):
+                raise AuthError("历史版本资料由管理员查看。")
+            if request.get("kind") == "progress":
+                self.project(request.get("project_id"))
+                return
+            if request.get("kind") == "company" and self.actor["all_projects"]:
+                return
+            raise AuthError("你没有访问这条记录的权限。")
         if action == "record":
             kind = request.get("kind")
             if kind in {"project", "progress"}:

@@ -66,6 +66,47 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertNotIn('--deployment-only', final)
 
 
+class EventUpdateTests(unittest.TestCase):
+    def test_event_and_document_use_their_own_last_account_at_the_selected_version(self):
+        with tempfile.TemporaryDirectory() as temp:
+            content = Path(temp) / 'content'
+            shutil.copytree(ROOT / 'fixtures/demo/content', content)
+            workspace = Workspace(content)
+            event_id = '2026-01-15-solution-meeting'
+            query = {'kind':'progress', 'project_id':'project-demo-partnership', 'id':event_id}
+            directory = 'counterparties/示例合作/matters/合作对接/'
+            other = 'counterparties/星帆创投/matters/融资对接/events.yaml'
+            # Event IDs are unique within each matter, not across all matters.
+            other_file = content / other
+            other_file.write_text(other_file.read_text().replace('2026-01-12-investment-contact', event_id))
+            baseline = workspace.observe()
+            self.assertIsNone(workspace.event_update(query, baseline)['update'])
+            def change(path, old, new, name):
+                before = workspace.read_files()
+                after = {**before, path:before[path].replace(old, new)}
+                self.assertNotEqual(before, after)
+                workspace.actor = {'id':name, 'name':name, 'email':'member@example.invalid'} if name else None
+                return workspace.commit(before, after, '修改示例记录', 'form' if name else 'external')['status']
+            first = change(directory+'events.yaml', '双方讨论虚构合作范围', '双方核对合作范围', '示例甲')
+            self.assertEqual(workspace.event_update(query, first)['update']['name'], '示例甲')
+            body_path = directory+'meetings/20260115.md'
+            text = (content/body_path).read_text()
+            second = change(body_path, text, text+'\n补充会议结论。\n', '示例乙')
+            self.assertEqual(workspace.event_update(query, second)['update']['name'], '示例乙')
+            change(directory+'events.yaml', '建立初步联系', '补充首次沟通', '其他编辑')
+            another = change(other, '建立投资对接', '补充投资对接', '受限账号')
+            update = workspace.event_update(query, another)['update']
+            self.assertEqual(set(update), {'name','at'})
+            self.assertEqual(update['name'], '示例乙')
+            self.assertEqual(workspace.event_update({**query,'snapshot':first['version']}, another)['update']['name'], '示例甲')
+            self.assertIsNone(workspace.event_update({**query,'snapshot':baseline['version']}, another)['update'])
+            company = change('company/events.yaml', '启动年度 BD 计划', '更新年度 BD 计划', '示例丙')
+            company_query = {'kind':'company','id':'2026-01-12-annual-bd-plan'}
+            self.assertEqual(workspace.event_update(company_query, company)['update']['name'], '示例丙')
+            external = change(body_path, '补充会议结论', '补充会议安排', None)
+            self.assertIsNone(workspace.event_update(query, external)['update'])
+
+
 class QuestionAuthorizationTests(unittest.TestCase):
     def test_confirmation_preserves_editor_and_records_the_actual_confirmer(self):
         from investment_qa import InvestmentQA
@@ -610,6 +651,8 @@ class RemoteWriteTests(unittest.TestCase):
         args, before = self.arguments(), self.count()
         saved = self.call('save_progress', args)
         self.assertEqual(saved['status'], 'saved')
+        update = self.workspace.event_update({'kind':'progress','project_id':self.matter,'id':saved['progress_id']}, self.workspace.observe())['update']
+        self.assertEqual(update['name'], self.actor['name'])
         self.assertEqual(self.count(), before + 1)
         self.assertEqual(self.call('save_progress', args), saved)
         with patch('remote_access.time.time', return_value=time.time() + 2 * 86400):
@@ -813,6 +856,154 @@ class BackupTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'校验失败'): upload(target,'bd-backups/example.zip','bad',bucket)
             with patch.dict(os.environ,{'BD_OSS_ENDPOINT':'https://attacker.invalid'}):
                 with self.assertRaises(ValueError): settings()
+
+
+class RemoteCompanyTests(unittest.TestCase):
+    setUp = RemoteWriteTests.setUp
+    issue = RemoteWriteTests.issue
+    call = RemoteWriteTests.call
+
+    def allow(self, token=None):
+        self.remote.browser({'operation':'allow_intake','tokenId':(token or self.token)['id'],'confirmed':True},self.actor)
+
+    def arguments(self, **changes):
+        self.call('search_company_events', {'query':'中心成立大会','from':'2026-10-31','to':'2026-10-31'})
+        return {'revision':self.call('read_company_event',{'id':''})['revision'], 'request_id':uuid.uuid4().hex,
+                'changes':{'date':'2026-10-31','title':'参加示例中心成立大会','category':'industry-recognition',
+                           'type':'milestone','summary':'示例公司被列为首期合作伙伴。','participants':['林岚','陈青'],
+                           'organizers':['示例大学'],'location':'示例会场',
+                           'body':'## 事件内容\n\n林岚参会，示例公司被列为首期合作伙伴。\n\n## 后续跟进\n\n建议联系对方争取官方证书或商谈框架协议。',**changes}}
+
+    def test_standalone_round_trip_partial_update_and_readback(self):
+        self.allow(); args=self.arguments(); before=self.workspace.read_files()
+        saved=self.call('save_company_event',args)
+        self.assertEqual(saved['status'],'saved')
+        self.assertNotIn('matter_id',saved)
+        after=self.workspace.read_files()
+        self.assertEqual({k:v for k,v in before.items() if not k.startswith('company/')},
+                         {k:v for k,v in after.items() if not k.startswith('company/')})
+        opened=self.call('read_company_event',{'id':saved['id']})
+        self.assertEqual(opened['revision'],saved['revision'])
+        self.assertEqual(opened['fields'],{**args['changes'],'importance':'normal'})
+        self.assertEqual([p['id'] for p in opened['participants']],['林岚','陈青'])
+        self.assertNotIn('email',json.dumps(opened));self.assertNotIn('related_record',json.dumps(opened))
+        self.assertEqual(self.call('save_company_event',args),saved)
+        for query in ('中心成立大会','官方证书','陈青','示例会场','行业活动'):
+            self.assertEqual(self.call('search_company_events',{'query':query})['events'][0]['id'],saved['id'])
+        update={'id':saved['id'],'revision':opened['revision'],'request_id':uuid.uuid4().hex,'changes':{'summary':'补充参会记录，已列为首期合作伙伴。'}}
+        changed=self.call('save_company_event',update)
+        reread=self.call('read_company_event',{'id':saved['id']})
+        self.assertEqual(reread['fields'],{**opened['fields'],**update['changes']})
+        self.assertEqual(reread['revision'],changed['revision'])
+        self.assertNotEqual(reread['revision'],opened['revision'])
+        self.assertEqual(self.workspace.event_update({'kind':'company','id':saved['id']},self.workspace.observe())['update']['name'],self.actor['name'])
+        with self.assertRaises(AuthError) as caught:
+            self.call('save_company_event',{**update,'request_id':uuid.uuid4().hex,'changes':{'summary':'过期更新'}})
+        self.assertEqual(caught.exception.code,'conflict')
+        with self.assertRaises(AuthError):self.call('read_company_event',{'id':'missing'})
+
+    def test_company_permissions_are_checked_in_backend(self):
+        args=self.arguments()
+        with self.assertRaises(AuthError):self.call('save_company_event',args)
+        self.allow()
+        draft=self.issue('draft');self.allow(draft)
+        with self.assertRaises(AuthError):self.call('save_company_event',args,draft)
+        readonly=self.issue('read')
+        with self.assertRaises(AuthError):self.call('submit_company_event',args,readonly)
+        for role in ('editor','viewer'):
+            with self.accounts.db:
+                self.accounts.db.execute('UPDATE users SET role=?,all_projects=1',(role,))
+                self.accounts.set_remote_allowed(self.actor['id'],True)
+            self.assertTrue(self.call('access')['canCompany'])
+            self.assertEqual(self.call('read_company_event',{'id':'2026-01-12-annual-bd-plan'})['fields']['title'],'启动年度 BD 计划')
+            for op in ('submit_company_event','save_company_event'):
+                with self.assertRaises(AuthError):self.call(op,args)
+            with self.accounts.db:self.accounts.db.execute('UPDATE users SET all_projects=0')
+            self.assertFalse(self.call('access')['canCompany'])
+            for op,params in [('search_company_events',{}),('read_company_event',{'id':'2026-01-12-annual-bd-plan'})]:
+                with self.assertRaises(AuthError):self.call(op,params)
+
+    def test_draft_review_conflict_revalidation_and_replay(self):
+        self.allow();args=self.arguments();before=self.workspace.read_files()
+        pending=self.call('submit_company_event',args)
+        self.assertEqual(self.workspace.read_files(),before)
+        self.assertEqual(self.call('submit_company_event',args),pending)
+        review=self.remote.browser({'operation':'drafts'},self.actor)['drafts'][0]
+        self.assertEqual(review['operation'],'add_company_event')
+        self.assertEqual(review['matterId'],'')
+        self.assertEqual(set(c['field'] for c in review['changes']),set(args['changes'])|{'importance'})
+        saved=self.remote.browser({'operation':'confirm','draftId':pending['draftId'],'confirmed':True},self.actor)
+        self.assertTrue(self.call('read_company_event',{'id':saved['id']})['fields']['body'].endswith('商谈框架协议。'))
+        self.assertEqual(self.call('submit_company_event',args)['status'],'saved')
+        with self.assertRaises(AuthError):self.call('save_company_event',args)
+        fresh=self.arguments(title='另一个活动')
+        pending=self.call('submit_company_event',fresh)
+        self.call('save_company_event',self.arguments(title='并发新增活动'))
+        with self.assertRaises(AuthError) as caught:
+            self.remote.browser({'operation':'confirm','draftId':pending['draftId'],'confirmed':True},self.actor)
+        self.assertEqual(caught.exception.code,'conflict')
+        self.assertEqual(self.call('submit_company_event',fresh)['status'],'failed')
+        next_draft=self.call('submit_company_event',self.arguments(title='授权撤销前的草稿'))
+        with self.accounts.db:self.accounts.db.execute('UPDATE remote_tokens SET can_intake=0')
+        with self.assertRaises(AuthError):
+            self.remote.browser({'operation':'confirm','draftId':next_draft['draftId'],'confirmed':True},self.actor)
+
+    def test_duplicate_checks_and_invalid_fields_leave_business_data_unchanged(self):
+        self.allow();saved=self.call('save_company_event',self.arguments())
+        baseline=self.workspace.read_files()
+        duplicate=self.arguments(title=' 参加示例中心 成立大会 ')
+        with self.assertRaises(AuthError) as caught:self.call('save_company_event',duplicate)
+        self.assertEqual(caught.exception.code,'duplicate')
+        from workspace_service import ServiceError
+        for changes in ({'participants':['不存在的人员']},{'participants':['林岚','林岚']},
+                        {'title':'字'*41},{'summary':'字'*201},{'date':'2026-02-30'},
+                        {'type':'award'},{'participants':[]},{'participants':[{}]},
+                        {'organizers':[{}]},{'category':''},{'actor':{'name':'伪造编辑'}}):
+            with self.assertRaises((AuthError,ServiceError)):
+                self.call('save_company_event',self.arguments(**{'title':'无效记录',**changes}))
+            self.assertEqual(self.workspace.read_files(),baseline)
+        for forbidden in ('matter_id','attachments','project_id'):
+            with self.assertRaises(AuthError):self.call('submit_company_event',{**self.arguments(title='错误范围'),forbidden:[]})
+        original=self.call('read_company_event',{'id':'2026-01-12-annual-bd-plan'})
+        with self.assertRaises(AuthError) as caught:
+            self.call('save_company_event',{'id':original['id'],'revision':original['revision'],'request_id':uuid.uuid4().hex,'changes':{'date':'2026-10-31','title':'参加示例中心成立大会'}})
+        self.assertEqual(caught.exception.code,'duplicate')
+        self.assertEqual(self.workspace.read_files(),baseline)
+
+    def test_location_round_trips_without_optional_body_and_search_pagination(self):
+        self.allow();saved=self.call('save_company_event',self.arguments(body='',location='会场 A',category='自定义类别'))
+        record=self.call('read_company_event',{'id':saved['id']})
+        self.assertEqual(record['fields']['body'],'');self.assertEqual(record['fields']['location'],'会场 A')
+        # Seed a representative calendar through the canonical fixture, then query pagination.
+        path=self.content/'company/events.yaml';contents=yaml.safe_load(path.read_text())
+        contents['events'].extend({'id':f'2026-10-31-page-{i}','date':'2026-10-31','category':'test',
+                                 'type':'milestone','title':f'分页活动 {i}','summary':'测试活动','participants':['林岚'],'importance':'normal'} for i in range(21))
+        path.write_text(yaml.safe_dump(contents,allow_unicode=True,sort_keys=False))
+        first=self.call('search_company_events',{'query':'分页活动','category':'test','from':'2026-10-31','to':'2026-10-31'})
+        self.assertEqual(first['total'],21);self.assertEqual(len(first['events']),20);self.assertEqual(first['nextOffset'],20)
+        last=self.call('search_company_events',{'query':'分页活动','offset':20})
+        self.assertEqual(len(last['events']),1);self.assertIsNone(last['nextOffset'])
+        self.assertNotIn(last['events'][0]['id'],[e['id'] for e in first['events']])
+        self.assertEqual(self.call('search_company_events',{'query':'nothing'})['total'],0)
+        for args in ({'offset':True},{'offset':-1},{'from':'2026-11-01','to':'2026-10-01'}):
+            with self.assertRaises(AuthError):self.call('search_company_events',args)
+
+    def test_lost_acknowledgement_and_connection_revocation(self):
+        self.allow();args=self.arguments();original=self.workspace.save
+        def interrupted(request,preview=False):
+            result=original(request,preview=preview)
+            if not preview:raise OSError('lost acknowledgement')
+            return result
+        with patch.object(self.workspace,'save',side_effect=interrupted):
+            with self.assertRaises(AuthError) as caught:self.call('save_company_event',args)
+        self.assertEqual(caught.exception.code,'uncertain')
+        before=self.workspace.observe()['version']
+        self.remote=RemoteAccess(self.workspace,self.accounts)
+        self.assertEqual(self.call('save_company_event',args)['status'],'uncertain')
+        self.assertEqual(self.workspace.observe()['version'],before)
+        self.assertEqual(self.call('search_company_events',{'query':'中心成立大会'})['total'],1)
+        self.remote.browser({'operation':'revoke','tokenId':self.token['id']},self.actor)
+        with self.assertRaises(AuthError):self.call('save_company_event',args)
 
 
 if __name__=='__main__': unittest.main(verbosity=2)

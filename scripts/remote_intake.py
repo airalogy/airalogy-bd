@@ -16,7 +16,7 @@ from team_auth import AuthError
 
 def require_intake(actor, token):
     if actor["role"] != "admin" or not token["can_intake"] or not token["can_draft"]:
-        raise AuthError("此连接尚未获准新建事项及维护人员、对接方档案，请在“我的账号”中明确授权。")
+        raise AuthError("此连接尚未获准维护业务档案（人员、对接方、事项及公司动态），请在“我的账号”中明确授权。")
 
 
 class Intake:

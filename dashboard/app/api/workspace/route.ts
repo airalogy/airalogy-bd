@@ -7,7 +7,7 @@ export async function GET(request: Request) {
   const access=await authorizedRequest(request);
   if(access instanceof Response) return access;
   const parameters=Object.fromEntries(new URL(request.url).searchParams);
-  if(!["workspace","record","history","compare","historical","backup_status","qa"].includes(parameters.action)) return denied();
+  if(!["workspace","record","event_update","history","compare","historical","backup_status","qa"].includes(parameters.action)) return denied();
   if(parameters.action==="qa" && !["list","read","history","version"].includes(parameters.operation || "list")) return denied();
   const result=await invokeWorkspace(parameters,access.session);
   if(result.ok && parameters.action==="workspace" && !serverMode()) (result.result as Record<string,unknown>).csrf=process.env.BD_CSRF_TOKEN || "";

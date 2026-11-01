@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useId, useState, type ReactNode } from "react";
 import {qaCategories} from "./InvestmentQa";
+import { companyCategoryLabel } from "./lib/company-events";
 import { fileStatuses } from "./lib/file-library";
 import Link from "next/link";
 import { notifyRemoteDraftsChanged } from "./lib/remote-events";
@@ -14,8 +15,8 @@ type Status = { qa_allowed:boolean; enabled: boolean; granted: boolean; revision
 type DraftAttachment = {mode:"upload"|"version"|"existing";file_id:string;version_id:string;upload_id?:string;title:string;filename:string;size:number;version_number:number;status:keyof typeof fileStatuses;agreement_date?:string;signing_completed_date?:string;note?:string};
 type Draft = { attachments?:DraftAttachment[]; id: string; matterName: string; counterparty: string; progressTitle: string; progressDate: string; operation: string; expires: number; changes: { field: string; label: string; before: unknown; after: unknown }[] };
 type AccessMode = "read" | "draft" | "direct";
-const operations: Record<string, string> = { investment_qa: "保存问答修订稿", intake: "业务资料录入", add_progress: "新增进展", update_progress: "修改进展", update_matter: "修改事项" };
-function display(field: string, value: unknown) {
+const operations: Record<string, string> = { add_company_event: "新增公司动态", update_company_event: "修改公司动态", investment_qa: "保存问答修订稿", intake: "业务资料录入", add_progress: "新增进展", update_progress: "修改进展", update_matter: "修改事项" };
+function display(field: string, value: unknown, operation: string) {
   if (value === null || value === undefined || value === "") return "（空）";
   if (typeof value === "string" && field === "stage") return stageLabels[value] || value;
   if (typeof value === "string" && field === "follow_up_status") return followUpStatusLabels[value as keyof typeof followUpStatusLabels] || value;
@@ -29,8 +30,8 @@ function display(field: string, value: unknown) {
     `人员：${relation.person_id}`, `关系：${({internal:"我方",counterparty:"对方",advisor:"顾问 / 引荐"} as Record<string,string>)[relation.side] || relation.side}`,
     `角色：${(relation.project_roles as string[]).map(role => roleLabels[role] || role).join("、")}`, relation.notes && `备注：${relation.notes}`,
   ].filter(Boolean).join("\n")).join("\n\n") : "（无）";
-  if (typeof value === "string" && field === "category") return qaCategories[value] || value;
-  if (Array.isArray(value) && ["aliases","sources","files"].includes(field)) return value.join("\n") || "（无）";
+  if (typeof value === "string" && field === "category") return operation.endsWith("company_event") ? companyCategoryLabel(value) : qaCategories[value] || value;
+  if (Array.isArray(value) && ["aliases","sources","files","participants","organizers"].includes(field)) return value.join("\n") || "（无）";
   if (typeof value === "object") return JSON.stringify(value, null, 2);
   return String(value);
 }
@@ -105,7 +106,7 @@ export default function RemoteAccess({ user, mode, endpoint = "" }: { user: Team
                 {user.role === "admin" && <option value="direct">允许直接保存进展及附件</option>}
               </select><span id="remote-access-mode-help" className="admin-help">{accessMode === "direct" ? "此连接可以直接新增、修改已有事项的进展，并保存关联附件，无需逐条网页确认。主动提交的草稿仍需网页确认；新建事项、直接修改事项信息和维护业务档案需另行勾选授权；不能删除资料或修改账号权限。每次保存留存历史，可在“修改历史”中恢复单条进展。" : accessMode === "draft" ? "可以查询、暂存附件并提交修改草稿，由你在网页核对进展和文件后一并正式保存。" : "只能查询获授权资料，不能提交草稿或保存修改。"}</span></label></div>
             {((user.role === "admin" && accessMode !== "read") || status.qa_allowed) && <fieldset className="remote-permissions"><legend>额外访问权限</legend><p className="admin-help">按需勾选，仅对当前连接生效。</p><div className="remote-permission-options">
-              {user.role === "admin" && accessMode !== "read" && <ConnectionPermission title="允许新建事项及维护业务档案" checked={canIntake} onChange={setCanIntake}>可读取完整人员档案，新增、修改人员、对接方和事项，并连同进展及附件一并处理。<span className="remote-permission-rule">{accessMode === "direct" ? "此连接可以直接正式保存。" : "正式保存仍需网页确认。"}不包含删除、账号权限或系统配置。</span></ConnectionPermission>}
+              {user.role === "admin" && accessMode !== "read" && <ConnectionPermission title="允许新建事项及维护业务档案" checked={canIntake} onChange={setCanIntake}>可读取完整人员档案，新增、修改人员、对接方、事项及公司动态，并连同进展及附件一并处理。<span className="remote-permission-rule">{accessMode === "direct" ? "此连接可以直接正式保存。" : "正式保存仍需网页确认。"}不包含删除、账号权限或系统配置。</span></ConnectionPermission>}
               {status.qa_allowed && <ConnectionPermission title="允许访问投资问答库" checked={canQa} onChange={setCanQa}>{accessMode==="read"?"仅查询获准查看的问答。":accessMode==="direct"?"可直接保存问答修订稿，推荐回答仍需具备确认权限的成员在网页确认。":"可查询并提交问答修改草稿，由本人在网页确认后保存修订稿。"}<span className="remote-permission-rule">来源资料仍按事项权限访问。</span></ConnectionPermission>}
             </div></fieldset>}
             <div className="remote-form-actions"><button className="admin-button admin-primary" type="submit">{busy ? "正在生成…" : "生成个人凭据"}</button><span className="admin-help">生成后仅显示一次，请妥善保存。</span></div>
@@ -130,7 +131,7 @@ export default function RemoteAccess({ user, mode, endpoint = "" }: { user: Team
       <section className="remote-credentials" aria-labelledby="remote-credentials-title"><div className="remote-section-heading"><h3 id="remote-credentials-title">{manage ? "全部个人凭据" : "我的凭据"}</h3><span>{status.tokens.length} 个连接</span></div>
       {!status.tokens.length && <p className="settings-empty">暂无凭据。</p>}
       <ul className="remote-items">{status.tokens.map(token => <li key={token.id}><div className="remote-credential-info"><strong>{token.label}</strong>{manage && <span> · {status.members?.find(member => member.id === token.owner)?.name || "成员"}</span>}<div className="remote-credential-scopes" aria-label="连接权限"><span>{token.can_save ? "直接保存进展及附件" : token.can_draft ? "查询和提交草稿" : "仅查询"}</span>{token.can_save&&<span>可查询和提交草稿</span>}{!!token.can_intake&&<span>业务档案维护</span>}{!!token.can_qa&&<span>投资问答库</span>}</div><p className="remote-credential-expiry"><time dateTime={new Date(token.expires * 1000).toISOString()}>{when(token.expires)}</time> 到期</p></div><div className="remote-credential-actions" role="group" aria-label={`${token.label}的管理操作`}>
-        {user.role === "admin" && token.owner === user.id && token.can_draft && !token.can_intake && <button className="admin-button" disabled={busy} onClick={() => {if(window.confirm(`允许“${token.label}”读取完整人员档案，新建、修改人员、对接方和事项，并处理进展及附件？${token.can_save ? "此连接可直接正式保存这些修改。" : "正式保存仍需网页确认。"}`)) void act("allow_intake", {tokenId:token.id,confirmed:true}, "此连接已获准维护业务档案。");}}>授权业务档案维护</button>}
+        {user.role === "admin" && token.owner === user.id && token.can_draft && !token.can_intake && <button className="admin-button" disabled={busy} onClick={() => {if(window.confirm(`允许“${token.label}”读取完整人员档案，新建、修改人员、对接方、事项及公司动态，并处理进展及附件？${token.can_save ? "此连接可直接正式保存这些修改。" : "正式保存仍需网页确认。"}`)) void act("allow_intake", {tokenId:token.id,confirmed:true}, "此连接已获准维护业务档案。");}}>授权业务档案维护</button>}
         {status.qa_allowed&&token.owner===user.id&&!token.can_qa&&<button className="admin-button" disabled={busy} onClick={()=>{if(window.confirm(`允许“${token.label}”访问投资问答库？${token.can_save?"可直接保存修订稿，推荐回答仍需网页确认。":token.can_draft?"可查询和提交问答修改草稿。":"仅可查询获授权问答。"}`))void act("allow_qa",{tokenId:token.id,confirmed:true},"此连接已获准访问投资问答库。");}}>授权投资问答库</button>}
         <button className="settings-text-button" disabled={busy} onClick={() => void act("revoke", { tokenId: token.id }, "凭据及其待确认草稿已撤销。")}>撤销</button></div></li>)}</ul></section>
       </>}
@@ -141,9 +142,9 @@ export default function RemoteAccess({ user, mode, endpoint = "" }: { user: Team
         {!drafts.length && <p>暂无可确认的修改。外部工具提交草稿后在这里核对；草稿最长保留 24 小时，权限变化、凭据失效或关闭功能会使草稿失效。</p>}
         {drafts.map(draft => <article key={draft.id} id={`draft-${draft.id}`} className="ai-draft">
           <h3>{[draft.counterparty,draft.matterName,operations[draft.operation]].filter(Boolean).join(" · ")}</h3>
-          {draft.operation==="investment_qa"&&<p className="admin-notice">确认后仅保存问答修订稿，当前推荐回答不会改变。请到投资问答库核对并确认推荐版本。</p>}{draft.progressTitle && <p>{draft.operation==="investment_qa"?"问题：":"进展："}{draft.progressDate} · {draft.progressTitle}</p>}<p>有效至 {when(draft.expires)}</p>
+          {draft.operation==="investment_qa"&&<p className="admin-notice">确认后仅保存问答修订稿，当前推荐回答不会改变。请到投资问答库核对并确认推荐版本。</p>}{draft.progressTitle && <p>{draft.operation==="investment_qa"?"问题：":draft.operation.endsWith("company_event")?"活动：":"进展："}{draft.progressDate} · {draft.progressTitle}</p>}<p>有效至 {when(draft.expires)}</p>
           <div className="remote-diff">{draft.changes.map(change => <div key={change.field}><h4>{change.label}</h4><div className="remote-diff-pair">
-            <section><h5>修改前</h5><pre>{display(change.field, change.before)}</pre></section><section><h5>{draft.operation === "add_progress" ? "新增内容" : "修改后"}</h5><pre>{display(change.field, change.after)}</pre></section>
+            <section><h5>修改前</h5><pre>{display(change.field, change.before, draft.operation)}</pre></section><section><h5>{["add_progress", "add_company_event"].includes(draft.operation) ? "新增内容" : "修改后"}</h5><pre>{display(change.field, change.after, draft.operation)}</pre></section>
           </div></div>)}</div>
           {!!draft.attachments?.length&&<section><h4>随进展保存的附件</h4><ul className="remote-attachment-list">{draft.attachments.map((file,index)=><li key={index}>
             <strong>{file.title} · v{file.version_number}</strong><p>{file.filename} · {Math.ceil(file.size/1024)} KB · {fileStatuses[file.status]}</p>
@@ -152,7 +153,7 @@ export default function RemoteAccess({ user, mode, endpoint = "" }: { user: Team
             {file.note&&<p>{file.note}</p>}
             <a className="admin-button" href={file.upload_id?`/api/remote/files?${new URLSearchParams({draft_id:draft.id,upload_id:file.upload_id})}`:`/api/files?${new URLSearchParams({action:"download",id:file.file_id,version_id:file.version_id})}`} download>下载核对文件</a>
           </li>)}</ul><p className="admin-help">确认后文件与进展一起保存。关联附件不会自动登记为已发送或改变事项阶段。</p></section>}
-          <label className="remote-draft-check"><input type="checkbox" checked={!!checked[draft.id]} onChange={e => setChecked({ ...checked, [draft.id]: e.target.checked })} /><span>{draft.operation==="investment_qa"?"我已核对问题、回答、数据日期、来源及全部修改内容":"我已核对事项、日期、事实状态、附件和全部修改内容"}</span></label>
+          <label className="remote-draft-check"><input type="checkbox" checked={!!checked[draft.id]} onChange={e => setChecked({ ...checked, [draft.id]: e.target.checked })} /><span>{draft.operation==="investment_qa"?"我已核对问题、回答、数据日期、来源及全部修改内容":draft.operation.endsWith("company_event")?"我已核对活动、实际日期、参与人、已发生事实和后续跟进备注":"我已核对事项、日期、事实状态、附件和全部修改内容"}</span></label>
           <div className="admin-actions"><button className="admin-button admin-primary" disabled={busy || !checked[draft.id]} onClick={() => void act("confirm", { draftId: draft.id, confirmed: true }, "已保存。工作台已更新，并保留修改记录；需要恢复时请联系管理员。")}>{draft.operation==="investment_qa"?"确认并保存修订稿":"确认并正式保存"}</button>
             <button className="admin-button" disabled={busy} onClick={() => void act("reject", { draftId: draft.id }, "已驳回草稿，业务资料未更改。")}>驳回草稿</button></div>
         </article>)}

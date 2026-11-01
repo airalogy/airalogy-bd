@@ -353,8 +353,12 @@ class Workspace:
                     self.atomic(target, values["before"])
         self.repair_directories(self.read_files())
         self.journal.unlink()
-        self.actor = journal.get("actor") if completed else None
-        self.observe("恢复中断前的完整资料" if not completed else journal["label"], "recovery")
+        requester = self.actor
+        try:
+            self.actor = journal.get("actor") if completed else None
+            self.observe("恢复中断前的完整资料" if not completed else journal["label"], "recovery")
+        finally:
+            self.actor = requester
 
     def commit(self, before: dict[str, str], after: dict[str, str], label: str, origin: str) -> dict:
         if before == after:
@@ -491,6 +495,67 @@ class Workspace:
                     changed.append("progress:" + identity)
         return changed
 
+    def event_update(self, request: dict, status: dict) -> dict:
+        """Return only the accountable user for this event's last content change."""
+        kind, identity, project = request.get("kind"), request.get("id"), request.get("project_id")
+        if kind not in {"company", "progress"} or not isinstance(identity, str) or not identity:
+            raise ServiceError("请选择一条进展记录。")
+        snapshot = request.get("snapshot")
+        if not snapshot and request.get("view_version") and request["view_version"] != status["version"]:
+            raise ServiceError("工作区已有更新，请重新打开记录。", "conflict")
+        if not snapshot and status.get("errors"):
+            return {"update": None}  # The dashboard still shows the previous valid data.
+        files = self.version_files(snapshot) if snapshot else self.read_files()
+        if kind == "company":
+            directory = "company"
+        else:
+            matter = self.projects(files).get(project)
+            if not matter:
+                raise ServiceError("未找到这条事项。", "not_found")
+            directory = matter[0]
+        event_path = directory + "/events.yaml"
+
+        def find_event(events_text):
+            if not events_text:
+                return None
+            data = parse_yaml(events_text)
+            if kind == "progress" and data.get("project") != project:
+                return None
+            return next((item for item in data.get("events", []) if item.get("id") == identity), None)
+
+        event = find_event(files.get(event_path))
+        if not event:
+            raise ServiceError("未找到这条进展记录。", "not_found")
+        version = snapshot or status["version"]
+        if not version.startswith("local:"):
+            return {"update": None}  # Imported Git authors are not authenticated members.
+        sha = version.split(":", 1)[1]
+        paths = ["content/" + event_path]
+        document_path = directory + "/" + event["related_record"] if event.get("related_record") else None
+        if document_path:
+            paths.append("content/" + document_path)
+        # Git path filtering excludes other matters. Compare the exact event within a shared YAML file.
+        log = self.git("--literal-pathspecs", "log", "--first-parent", "--format=%H%x09%cI%x09%s", sha, "--", *paths)
+        for line in log.splitlines():
+            commit, at, subject = line.split("\t", 2)
+            metadata = json.loads(subject)
+            if metadata.get("origin") == "baseline":
+                break
+            if "affected" in metadata and f"{kind}:{identity}" not in metadata["affected"]:
+                continue
+            before = self.git("show", f"{commit}^:{paths[0]}", check=False)
+            try:
+                same_event = find_event(before) == event
+            except ServiceError:
+                return {"update": None}
+            if same_event and (not document_path or self.git("show", f"{commit}^:{paths[1]}", check=False) == files.get(document_path)):
+                continue
+            name = (metadata.get("actor") or {}).get("name")
+            if name and metadata.get("valid") and metadata.get("origin") in {"form", "restore", "recovery", "attachment"}:
+                return {"update": {"name": name, "at": at}}
+            break  # A later uncredited edit must not fall back to an earlier editor.
+        return {"update": None}
+
     def get_record(self, request: dict) -> dict:
         files = self.read_files()
         kind, identity, project = request["kind"], request.get("id", ""), request.get("project_id", "")
@@ -576,8 +641,8 @@ class Workspace:
         else:
             groups = {"participants": event["participants"]}
         body = payload.get("body", "").strip()
-        needs_document = bool(body) or event["type"] == "meeting" or bool((current or {}).get("document"))
-        if needs_document and not body:
+        needs_document = bool(body) or event["type"] == "meeting" or bool((current or {}).get("document")) or (kind == "company" and bool(payload.get("location")))
+        if needs_document and not body and (kind == "progress" or event["type"] == "meeting"):
             raise ServiceError("会议进展需要填写整理后的沟通记录。")
         old_record = (current or {}).get("event", {}).get("related_record")
         if needs_document:
@@ -1123,7 +1188,9 @@ def main():
                     # Explicit restore is allowed only after a current, validated preview.
                     if action != "restore" or exc.code != "recovery_conflict":
                         raise
-            status = workspace.observe(request.get("label", "记录文件修改"), request.get("origin", "external"), request.get("force", False))
+            # Observing external files must never attribute them to the requesting web user.
+            origin = "external" if web else request.get("origin", "external")
+            status = workspace.observe(request.get("label", "记录文件修改"), origin, request.get("force", False))
             if action in {"status", "checkpoint"}:
                 result = status
             elif action == "workspace":
@@ -1151,6 +1218,8 @@ def main():
             elif action == "backup_download":
                 from file_backup import backup_download
                 result = backup_download(workspace, request.get("id", ""))
+            elif action == "event_update":
+                result = workspace.event_update(request, status)
             elif action == "record":
                 result = workspace.get_record(request)
             elif action == "save":

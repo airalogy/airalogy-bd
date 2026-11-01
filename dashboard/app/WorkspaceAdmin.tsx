@@ -52,7 +52,7 @@ export default function WorkspaceAdmin({data, onEdit, onHistory, onFiles, onNdaF
                 <time dateTime={event.date}>{event.date}</time><h4>{event.title}</h4>{event.summary && <p>{event.summary}</p>}
                 <EventAttachments files={data.files || []} matter={project.id} event={event.id} onDetails={() => onFiles(project.id,event.id)} compact/>
                 <div className="admin-context-links">
-                  {event.related_document && <button type="button" className="event-secondary-trigger" onClick={() => onOpenRecord(event,project.name,project.id)}>阅读完整记录</button>}
+                  <button type="button" className="event-secondary-trigger" onClick={() => onOpenRecord(event,project.name,project.id)}>{event.related_document ? "阅读完整记录" : "查看进展"}</button>
                   <button type="button" className="event-secondary-trigger" onClick={() => onEdit({kind:"progress",id:event.id,project_id:selected})} aria-label={`编辑进展：${event.title}`}>编辑进展</button>
                 </div>
               </article>;

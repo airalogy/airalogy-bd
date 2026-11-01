@@ -8,7 +8,7 @@ import type {HistoricalSnapshot, Version, BackupStatus} from "./lib/workspace-ty
 
 import * as Dialog from "@radix-ui/react-dialog";
 import * as ToggleGroup from "@radix-ui/react-toggle-group";
-import { useSyncExternalStore, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useSyncExternalStore, useMemo, useState, type ReactNode } from "react";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
 import ReactMarkdown from "react-markdown";
@@ -29,6 +29,7 @@ import CounterpartyContext from "./CounterpartyContext";
 import WorkspaceAdmin from "./WorkspaceAdmin";
 import VersionHistory from "./VersionHistory";
 import RecordEditor from "./RecordEditor";
+import { workspaceRequest, WorkspaceError } from "./lib/workspace-client";
 import type { RecordTarget, SavedResponse, WorkspaceStatus } from "./lib/workspace-types";
 import { companyCategoryLabel } from "./lib/company-events";
 import {
@@ -77,6 +78,7 @@ type PeopleSort = "recent" | "name" | "projects";
 type EventPeriod = "all" | "7d" | "30d" | "90d" | "custom";
 type ScopedEvent = ScopedActivityEvent;
 type RecordSelection = {
+  viewVersion?: string;
   projectId?: string;
   event: ProjectEvent;
   sourceLabel: string;
@@ -535,25 +537,51 @@ function EventItem({
         <h4>{event.title}</h4>
         <p>{event.summary}</p>
         {attachments}
-        {(event.related_document && onOpenRecord) || actions ? (
+        {onOpenRecord || actions ? (
           <div className={actions ? "event-actions" : undefined}>
-            {event.related_document && onOpenRecord && (
+            {onOpenRecord && (
               <button
                 type="button"
                 className="event-record-trigger"
                 onClick={() => onOpenRecord(event)}
-                aria-label={`阅读${event.related_document.title}完整记录`}
+                aria-label={event.related_document ? `阅读${event.related_document.title}完整记录` : `查看${event.title}进展记录`}
               >
-                阅读完整记录
+                {event.related_document ? "阅读完整记录" : "查看进展"}
                 <span aria-hidden="true">›</span>
               </button>
             )}
-            {actions && <div className={`event-secondary-actions${event.related_document && onOpenRecord ? " after-record" : ""}`} role="group" aria-label={`${event.title}管理操作`}>{actions}</div>}
+            {actions && <div className={`event-secondary-actions${onOpenRecord ? " after-record" : ""}`} role="group" aria-label={`${event.title}管理操作`}>{actions}</div>}
           </div>
         ) : null}
       </div>
     </article>
   );
+}
+
+function EventUpdateByline({selection, snapshot, workspace}: {selection: RecordSelection; snapshot?: string; workspace: Workspace}) {
+  const {event, projectId, viewVersion} = selection;
+  const [update, setUpdate] = useState<{name: string; at: string} | null>();
+  const [message, setMessage] = useState("");
+  useEffect(() => {
+    if (!snapshot && !viewVersion) return;
+    const controller = new AbortController();
+    workspaceRequest<{update: {name: string; at: string} | null}>("event_update", {
+      kind: projectId ? "progress" : "company", id: event.id, project_id: projectId,
+      snapshot, view_version: viewVersion,
+    }, false, controller.signal).then(result => {
+      if (!controller.signal.aborted) setUpdate(result.update);
+    }).catch(error => {
+      if (!controller.signal.aborted) setMessage(error instanceof WorkspaceError && error.code === "conflict"
+        ? "工作区已有更新，请重新打开记录查看更新人。" : "暂时无法读取更新人");
+    });
+    return () => controller.abort();
+  }, [event.id, projectId, viewVersion, snapshot]);
+  return <p className="record-update-byline" aria-live="polite">{update ? <>
+    <span>最近更新</span><strong>{update.name}</strong>
+    <time dateTime={update.at}>{new Intl.DateTimeFormat(workspace.locale, {
+      timeZone: workspace.timezone, dateStyle: "medium", timeStyle: "short",
+    }).format(new Date(update.at))}</time>
+  </> : message || (update === null ? "更新人未记录" : "正在读取更新人…")}</p>;
 }
 
 function EventRecordDialog({
@@ -593,6 +621,8 @@ function EventRecordDialog({
               <Dialog.Description>
                 {selection.sourceLabel} · {formatDate(selection.event.date, workspace)}
               </Dialog.Description>
+              <EventUpdateByline key={JSON.stringify([selection.projectId, selection.event.id, selection.viewVersion, snapshot])}
+                selection={selection} snapshot={snapshot} workspace={workspace} />
             </div>
             <Dialog.Close asChild>
               <button type="button" className="close-button" aria-label="关闭完整记录">
@@ -1055,6 +1085,9 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
   const [selectedProjectValue, setSelectedProject] = useState<Project | null>(null);
   const selectedProject = data.projects.find(project => project.id === selectedProjectValue?.id) || null;
   const [selectedRecord, setSelectedRecord] = useState<RecordSelection | null>(null);
+  const viewedEvent = selectedRecord && (selectedRecord.projectId
+    ? data.projects.find(project => project.id === selectedRecord.projectId)?.events
+    : data.company_events)?.find(event => event.id === selectedRecord.event.id);
   const [keyPeopleOnly, setKeyPeopleOnly] = useState(true);
   const [peopleSort, setPeopleSort] = useState<PeopleSort>("recent");
 
@@ -1514,8 +1547,7 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
         historyAction={<EventHistoryDialog events={allEvents} workspace={data.workspace} scopeLabel={scopeLabel}
           referenceDate={data.updated_at ?? ""} onOpenRecord={event => setSelectedRecord({event, sourceLabel:event.sourceLabel,projectId:event.projectId})} />}
         renderEvent={event => <EventItem event={event} workspace={data.workspace} sourceLabel={event.sourceLabel}
-          onOpenRecord={() => setSelectedRecord({event,sourceLabel:event.sourceLabel,projectId:event.projectId})}
-          actions={!event.related_document ? <button type="button" className="event-secondary-trigger" onClick={() => setSelectedRecord({event,sourceLabel:event.sourceLabel,projectId:event.projectId})}>查看进展</button> : undefined} />} />
+          onOpenRecord={() => setSelectedRecord({event,sourceLabel:event.sourceLabel,projectId:event.projectId})} />} />
 
       <section
         className="filter-hub"
@@ -1952,7 +1984,7 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
       {readOnly && historicalVersion && filesTarget && <HistoricalFiles data={data} target={filesTarget} version={historicalVersion} onClose={()=>setFilesTarget(null)}/> }
       {!readOnly && filesTarget && <FileLibraryDialog data={data} target={filesTarget} onClose={() => setFilesTarget(null)} onChanged={onWorkspaceRefresh} onHistory={openHistory} />}
       <EventRecordDialog
-        selection={selectedRecord}
+        selection={selectedRecord && viewedEvent ? {...selectedRecord, event: viewedEvent, viewVersion: workspaceStatus?.version} : null}
         onQa={!readOnly&&canQa&&canEdit&&selectedRecord?.projectId?()=>{setQaSource({project_id:selectedRecord.projectId!,event_id:selectedRecord.event.id,matter_name:selectedRecord.sourceLabel,event_title:selectedRecord.event.title});setSelectedRecord(null);setSelectedProject(null);setPage("qa");}:undefined}
         files={data.files || []}
         snapshot={readOnly ? historicalVersion : undefined}

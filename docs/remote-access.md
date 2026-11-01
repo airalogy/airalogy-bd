@@ -41,6 +41,8 @@ CLI 也可以通过 `codex mcp add airalogy_bd --url https://bd.example.com/api/
 | `search_investment_qa` / `read_investment_qa` | 查询单独获授权的问答库；来源资料仍按事项权限过滤 |
 | `investment_qa_history` | 可写连接查询问答修订历史及指定版本 |
 | `submit_investment_qa` / `save_investment_qa` | 提交问答修改草稿，或由管理员明确授权的连接直接保存修订稿；均不确认推荐版本 |
+| `search_company_events` / `read_company_event` | 独立查询公司动态及完整记录、参与人身份和版本，不需关联事项 |
+| `submit_company_event` / `save_company_event` | 业务档案维护连接提交公司动态草稿；同时获准直接保存的管理员连接可正式保存 |
 | `search_entities` | 查询人员或对接方的基本身份和关联事项，按账号范围过滤，不返回联系方式 |
 | `read_entity` | 业务档案维护连接读取完整人员或对接方档案及版本 |
 | `prepare_intake` | 准备人员、对接方、一个事项及一条进展的完整录入方案，不写入业务资料 |
@@ -63,6 +65,32 @@ CLI 也可以通过 `codex mcp add airalogy_bd --url https://bd.example.com/api/
 修改前先查询已有事项并确认目标；无法确定时向用户澄清，不能猜测事项或业务事实。新增进展使用 `read_matter` 返回的版本，修改进展使用 `read_progress` 的版本，修改事项使用 `read_matter` 的版本。
 
 两种提交工具的 `revision` 使用上述版本，`request_id` 使用唯一 UUID。相同凭据、相同请求编号、相同内容的重试只返回原收据；同编号不同内容、在草稿与直接保存工具间混用编号均拒绝。已保存收据不会再次执行。草稿收据最长保留 24 小时且不超过凭据有效期；直接保存收据保留至该凭据到期。每人最多 20 份待处理草稿，全局最多各 2000 份有效期内草稿收据和直接保存收据；超限需等待到期或撤销不再使用的凭据。每个账号每分钟最多 60 次接入认证/服务调用，工具调用包含入口校验和执行校验两次。
+
+## 公司动态
+
+公司层面的参会、路演、荣誉、产品发布等直接保存到公司动态，不需要新建对接方或挂靠事项。可见范围与网页一致，管理员和拥有“全部事项”范围的成员可查询；新增和更新沿用“业务档案维护”授权，只向管理员的可写连接开放。直接保存还需该连接已有直接保存权限，草稿始终由本人在网页确认。
+
+1. 先用 `search_company_events` 按活动名称、关键词及实际日期查询，核对是否已有同一活动。支持 `query`、`category`、`from`、`to`、`offset`，每页 20 条，返回 `total` 和 `nextOffset`。搜索覆盖标题、摘要、完整记录、参与人、主办方、分类及地点。有多个可能的匹配时先澄清，不自动合并。
+2. 用 `search_entities`（`kind: "person"`）核对参与人，复用已有人员 ID，不因参会新建同名人员，也不要求建立事项联系人关系。确需新增人员时，先沿用已授权的业务档案录入流程。
+3. 更新前用 `read_company_event({id})` 取得当前字段及 `revision`。新增前用 `read_company_event({id: ""})` 取得创建版本；这个版本涵盖公司动态列表，期间公司动态列表变化后需重新查询。
+4. 用 `submit_company_event` 提交草稿，或通过明确获准的 `save_company_event` 直接保存。传入 `revision`、唯一 `request_id`、`changes`；更新还需传入 `id`。只更新提供的字段，省略的字段保留；数组字段整体替换。同日同标题（忽略空白、大小写及全半角差异）的其他记录会阻止写入，草稿确认时也会重新检查。
+5. 直接保存返回 `id`、`revision`、`history_version`；网页确认也返回保存的 `id` 和 `revision`。用 `read_company_event` 回读核对。原请求重试须保留原工具、编号和内容，不重复执行；不确定结果先查记录与历史。
+
+字段与网页表单一致：`date`、`type`、`title`（最多 40 字）、`summary`（最多 200 字）、`importance`、`category`、`participants`、`organizers`、`location`、`body`。新增必须提供实际日期、标题、摘要、分类和至少一位已有参与人，默认 `type: "other"`、`importance: "normal"`。事件类型使用网页的接触、会议、方案、协议、手续、决策、付款、里程碑、阶段变化、其他对应值；参会可使用 `meeting`，获奖等可使用 `milestone`。`category` 与网页相同，允许自定义文字，常用值为 `fundraising`、`industry-recognition`、`product-launch`、`company`。主办方是名称数组。会议类型须填写完整记录，其他类型可留空；MCP 正文最多 8000 字。
+
+`body` 使用 Markdown，可将实际发生的事件与后续建议分别放入“事件内容”和“后续跟进”。例如以下虚构示例中，列为合作伙伴是事实，争取证书和商谈协议是建议，不表示已取得证书或完成签署：
+
+```markdown
+## 事件内容
+
+林岚出席示例研究中心成立大会，公司被列为首期合作伙伴。
+
+## 后续跟进
+
+建议联系主办方争取官方证书，并商谈框架协议。
+```
+
+公司动态接口不接收事项 ID 或附件参数；使用与网页相同的独立活动记录与人员档案。已有进展附件工具仍按原有事项权限使用。
 
 ## 随进展新增人员
 

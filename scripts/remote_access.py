@@ -18,6 +18,7 @@ from staged_uploads import UploadStore
 from remote_intake import Intake, require_intake
 from remote_qa import TOOLS as QA_TOOLS, require_qa, tool as qa_tool
 from investment_qa import InvestmentQA
+from remote_company import TOOLS as COMPANY_TOOLS, require_company, tool as company_tool, save as save_company
 
 MATTER_FIELDS = {"body", "stage", "follow_up_status", "next_action", "next_action_due"}
 PROGRESS_FIELDS = {"date", "type", "title", "summary", "importance", "participants", "body", "location"}
@@ -300,6 +301,8 @@ class RemoteAccess:
             require_qa(actor, token)
         elif saved.get("kind") == "intake":
             Intake(self, actor, token).read(saved["intake_id"])
+        elif saved.get("kind") == "company":
+            require_company(actor, token, write=True)
         else:
             policy.project(row["matter"])
         for attachment in json.loads(row["value"])["request"].get("attachments", []):
@@ -316,8 +319,8 @@ class RemoteAccess:
         if self.db.execute("SELECT COUNT(*) FROM remote_attempts WHERE owner=? AND at>=?", (actor["id"], now - 60)).fetchone()[0] >= 60:
             raise AuthError("远程请求过于频繁，请稍后再试。", "rate_limited")
         with self.db: self.db.execute("INSERT INTO remote_attempts VALUES(?,?)", (actor["id"], now))
-        if op == "access": return {"canQa": bool(token["can_qa"]) and self.accounts.qa_allowed(actor["id"]),"canDraft": bool(token["can_draft"]) and actor["role"] != "viewer", "canSave": bool(token["can_save"]) and actor["role"] == "admin", "canIntake": bool(token["can_intake"]) and actor["role"] == "admin"}
-        if op not in QA_TOOLS | {"search_entities", "read_entity", "prepare_intake", "discard_intake", "submit_intake", "save_intake", "search_matters", "read_matter", "read_progress", "list_files", "read_file", "prepare_upload", "upload_status", "discard_upload", "upload_bytes", "submit_draft", "save_progress"}: raise AuthError("远程接口不提供此操作。")
+        if op == "access": return {"canCompany": actor["role"] == "admin" or bool(actor["all_projects"]), "canQa": bool(token["can_qa"]) and self.accounts.qa_allowed(actor["id"]),"canDraft": bool(token["can_draft"]) and actor["role"] != "viewer", "canSave": bool(token["can_save"]) and actor["role"] == "admin", "canIntake": bool(token["can_intake"]) and bool(token["can_draft"]) and actor["role"] == "admin"}
+        if op not in COMPANY_TOOLS | QA_TOOLS | {"search_entities", "read_entity", "prepare_intake", "discard_intake", "submit_intake", "save_intake", "search_matters", "read_matter", "read_progress", "list_files", "read_file", "prepare_upload", "upload_status", "discard_upload", "upload_bytes", "submit_draft", "save_progress"}: raise AuthError("远程接口不提供此操作。")
         policy = Policy(self.workspace, actor)
         self.upload_context(actor, token)
         self.ready()
@@ -330,6 +333,8 @@ class RemoteAccess:
         return result
 
     def save_request(self, saved, actor, token, preview=False):
+        if saved.get("kind") == "company":
+            return save_company(self, saved, actor, token, preview=preview)
         if saved.get("kind") == "qa":
             require_qa(actor, token)
             return InvestmentQA(self.workspace).execute(saved, preview=preview)
@@ -338,6 +343,8 @@ class RemoteAccess:
         return self.workspace.save(saved, preview=preview)
 
     def tool(self, op, args, actor, token, policy):
+        if op in COMPANY_TOOLS:
+            return company_tool(self, op, args, actor, token)
         if op in QA_TOOLS:
             return qa_tool(self, op, args, actor, token)
         if op in {"prepare_intake", "discard_intake", "submit_intake", "save_intake"}:

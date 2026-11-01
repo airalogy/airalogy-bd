@@ -1,0 +1,60 @@
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+
+// Reuse real authenticated HTTP sessions; never bypass token or website authorization.
+export async function exerciseRemoteCompany({rpc,call,web,request,okay,admin,editor,direct,draftToken,restricted,clearRate}) {
+  clearRate();
+  const toolNames = async token => {
+    const response=await rpc("tools/list",{},token);
+    assert.equal(response.status,200,await response.clone().text());
+    return (await response.json()).result.tools.map(tool=>tool.name);
+  };
+  const before = await toolNames(direct.token);
+  assert.ok(before.includes("search_company_events"));
+  assert.ok(before.includes("read_company_event"));
+  assert.ok(!before.includes("save_company_event"),"Direct-save alone cannot write company events");
+  assert.ok(!(await toolNames(restricted.token)).includes("read_company_event"));
+  assert.ok((await (await rpc("tools/call",{name:"read_company_event",arguments:{id:"2026-01-12-annual-bd-plan"}},restricted.token)).json()).error);
+  for (const token of [direct,draftToken]) await okay(await web("allow_intake",{tokenId:token.id,confirmed:true}));
+  assert.ok((await toolNames(direct.token)).includes("save_company_event"));
+  assert.ok((await toolNames(draftToken.token)).includes("submit_company_event"));
+  assert.ok(!(await toolNames(draftToken.token)).includes("save_company_event"));
+  const matched = await call("search_entities",{kind:"person",query:"林岚"},direct.token);
+  const person = matched.entities[0].id;
+  const found = await call("search_company_events",{query:"合作伙伴",from:"2026-10-31",to:"2026-10-31"},direct.token);
+  assert.equal(found.total,0);
+  const current = await call("read_company_event",{id:""},direct.token);
+  const body = "## 事件内容\n\n林岚出席示例研究中心成立大会，公司被列为首期合作伙伴。\n\n## 后续跟进\n\n建议联系主办方争取证书或商谈框架协议。";
+  const args = {revision:current.revision,request_id:randomUUID(),changes:{date:"2026-10-31",type:"milestone",title:"参加示例研究中心成立大会",summary:"公司被列为首期合作伙伴。",category:"industry-recognition",importance:"key",participants:[person],organizers:["示例大学"],location:"示例会场",body}};
+  const draft = await call("submit_company_event",args,draftToken.token);
+  assert.equal(draft.status,"pending");
+  assert.equal((await call("search_company_events",{query:"合作伙伴"},direct.token)).total,0);
+  const review=(await okay(await request("/api/remote?action=drafts",null,admin))).drafts.find(value=>value.id===draft.draftId);
+  assert.equal(review.operation,"add_company_event");
+  assert.equal(review.changes.find(change=>change.field==="body").after,body);
+  assert.equal((await web("confirm",{draftId:draft.draftId,confirmed:true},editor)).status,409);
+  const saved=await okay(await web("confirm",{draftId:draft.draftId,confirmed:true}));
+  let read=await call("read_company_event",{id:saved.id},direct.token);
+  assert.deepEqual(read.fields,args.changes);
+  assert.equal(read.revision,saved.revision);
+  assert.equal((await call("submit_company_event",args,draftToken.token)).status,"saved");
+  const update={id:saved.id,revision:read.revision,request_id:randomUUID(),changes:{body:body+"\n\n建议核实证书申请流程。"}};
+  const updated=await call("save_company_event",update,direct.token);
+  assert.equal(updated.status,"saved");
+  assert.deepEqual(await call("save_company_event",update,direct.token),updated);
+  assert.equal((await call("save_company_event",{...update,request_id:randomUUID(),changes:{summary:"过期修改"}},direct.token,true)).code,"conflict");
+  read=await call("read_company_event",{id:saved.id},direct.token);
+  assert.equal(read.fields.body,update.changes.body);
+  assert.equal(read.fields.summary,args.changes.summary);
+  assert.equal(read.revision,updated.revision);
+  assert.doesNotMatch(JSON.stringify(read),/phone|email|wechat|related_record|company\/records/);
+  const duplicate={...args,revision:(await call("read_company_event",{id:""},direct.token)).revision,request_id:randomUUID()};
+  assert.equal((await call("save_company_event",duplicate,direct.token,true)).code,"duplicate");
+  const directAdd=await call("save_company_event",{...duplicate,request_id:randomUUID(),changes:{...args.changes,title:"参加示例路演",category:"fundraising",type:"meeting"}},direct.token);
+  assert.equal((await call("read_company_event",{id:directAdd.id},direct.token)).fields.title,"参加示例路演");
+  const publicRecord=await okay(await request(`/api/workspace?action=record&kind=company&id=${saved.id}`,null,admin));
+  assert.equal(publicRecord.record.body,update.changes.body,"MCP and web read the same canonical Markdown");
+  const attribution=await okay(await request(`/api/workspace?action=event_update&kind=company&id=${saved.id}`,null,admin));
+  assert.equal(attribution.update.name,admin.user.name);
+  clearRate();
+}
