@@ -2103,6 +2103,7 @@ select,
 }
 
 .decision-list {
+  list-style: disc;
   display: grid;
   gap: 10px;
   margin: 0;
@@ -2990,7 +2991,7 @@ select,
 
   .project-drawer {
     max-width: 100vw;
-    padding: 28px 22px 42px;
+    padding: 24px clamp(14px, 3.4vw, 22px) 36px;
     width: 100vw;
   }
 

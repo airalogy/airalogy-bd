@@ -55,7 +55,44 @@
 .admin-alert .admin-button { margin-top:8px; }
 .admin-notice { margin:12px 0; padding:10px 16px; background:#ecf7f0; border:1px solid #c5decf; border-radius:8px; color:#286044; font-size:var(--text-body); line-height:var(--leading-body); }
 .admin-notice > button { float:right; cursor:pointer; font-size:var(--text-section); }
-.drawer-edit-actions { padding:0 0 16px; }
+/* Matter detail: the reading order is status, next action, timeline, then reference material. */
+.project-drawer .drawer-head { gap: 12px; }
+.project-drawer .drawer-head h2 { margin-top: 3px; overflow-wrap: anywhere; }
+.drawer-head .close-button { flex-shrink: 0; }
+.drawer-party-name { color: var(--muted); font-size: var(--text-small); margin: 5px 0 0; }
+.project-drawer .drawer-badges { margin: 10px 0 14px; gap: 5px; }
+.drawer-action-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.drawer-action-row .admin-button, .drawer-more-trigger, .drawer-extra-actions button { min-height: 32px; padding: 4px 10px; font-size: var(--text-small); line-height: var(--leading-heading); }
+.drawer-action-row .matter-brief-options { min-width: 30px; padding-inline: 5px; }
+.drawer-more-trigger, .drawer-extra-actions button { border: 0; background: transparent; border-radius: 6px; color: var(--muted); cursor: pointer; }
+.drawer-more-trigger { display: inline-flex; align-items: center; gap: 7px; margin-left: auto; }
+.drawer-more-trigger:hover, .drawer-extra-actions button:hover { color: var(--navy); background: var(--canvas); }
+.drawer-chevron { display: inline-block; width: 6px; height: 6px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: translateY(-1px) rotate(45deg); }
+.drawer-more-trigger[aria-expanded="true"] .drawer-chevron, .drawer-archive[open] > summary .drawer-chevron { transform: translateY(2px) rotate(225deg); }
+.drawer-extra-actions:not([hidden]) { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 6px; padding: 3px; border-radius: 8px; background: var(--canvas); }
+.drawer-extra-actions button { color: var(--navy); }
+.drawer-summary { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 14px; }
+.project-drawer .drawer-section { padding-top: 16px; margin-top: 16px; }
+.project-drawer .next-action-panel { margin-top: 14px; padding: 12px 14px; }
+.drawer-next-heading, .drawer-timeline-heading > div { display: flex; flex-wrap: wrap; gap: 7px; align-items: baseline; }
+.drawer-next-heading { justify-content: space-between; }
+.project-drawer .drawer-next-heading h3, .project-drawer .drawer-timeline-heading h3 { margin: 0; }
+.drawer-next-heading > span, .drawer-timeline-heading > div > span { color: var(--muted); font-size: var(--text-caption); }
+.project-drawer .next-action-panel p { margin: 4px 0 0; font-weight: 500; }
+.drawer-timeline-heading { margin-bottom: 12px; gap: 8px; }
+.drawer-archive { border-top: 1px solid var(--line); margin-top: 18px; }
+.drawer-archive > summary { display: flex; list-style: none; justify-content: space-between; align-items: center; padding: 14px 5px 14px 0; cursor: pointer; color: var(--navy); font-size: var(--text-body); font-weight: 600; }
+.drawer-archive > summary::-webkit-details-marker { display: none; }
+.drawer-archive .detail-grid { margin-top: 0; border: 0; padding-top: 4px; }
+.drawer-archive .counterparty-context { margin: 14px 0; }
+@media (max-width: 420px) {
+  .drawer-action-row { gap: 4px; }
+  .drawer-action-row .admin-button, .drawer-more-trigger { padding-inline: 7px; }
+}
+@media (pointer: coarse) {
+  .drawer-action-row .admin-button, .drawer-more-trigger, .drawer-extra-actions button, .drawer-head .close-button, .drawer-timeline-heading button { min-height: 44px; }
+  .drawer-action-row .matter-brief-split > .matter-brief-options, .drawer-head .close-button { min-width: 44px; }
+}
 .event-actions { display:flex; align-items:center; flex-wrap:wrap; gap:4px 16px; margin-top:6px; }
 .event-actions > .event-record-trigger { margin-top:0; min-height:28px; font-size:var(--text-caption); }
 .event-secondary-actions { display:flex; align-items:center; gap:12px; }

@@ -8,7 +8,7 @@ import type {HistoricalSnapshot, Version, BackupStatus} from "./lib/workspace-ty
 
 import * as Dialog from "@radix-ui/react-dialog";
 import * as ToggleGroup from "@radix-ui/react-toggle-group";
-import { useEffect, useSyncExternalStore, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useId, useSyncExternalStore, useMemo, useState, type ReactNode } from "react";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
 import ReactMarkdown from "react-markdown";
@@ -877,6 +877,9 @@ function ProjectDrawer({
   followUpActive: boolean;
   relationshipActive: boolean;
 }) {
+  const [moreFor, setMoreFor] = useState<string | null>(null);
+  const moreId = useId();
+  const showMore = moreFor === project.id;
   const sortedEvents = [...project.events].sort(eventSort);
   const keyContacts = project.contacts.filter((contact) =>
     contact.project_roles.some((role) => keyContactRoles.has(role)),
@@ -899,6 +902,7 @@ function ProjectDrawer({
                 <Dialog.Title asChild>
                   <h2>{project.name}</h2>
                 </Dialog.Title>
+                {project.counterparties.length > 0 && <p className="drawer-party-name">{project.counterparties.join("、")}</p>}
               </div>
               <Dialog.Close asChild>
                 <button type="button" className="close-button" aria-label="关闭事项详情">
@@ -907,16 +911,6 @@ function ProjectDrawer({
               </Dialog.Close>
             </div>
 
-            <div className="admin-actions drawer-edit-actions">
-              {!readOnly && <button type="button" className="admin-button admin-primary" onClick={() => onEdit({kind:"progress",id:"",project_id:project.id})}>新增进展</button>}
-              <MatterBriefActions key={project.id} project={project} historical={!!fileSnapshot} />
-              {onAi && <button type="button" className="admin-button" onClick={onAi}>用 AI 整理此事项</button>}
-              <button type="button" className="admin-button" onClick={() => onFiles()}>事项资料{fileCount ? ` · ${fileCount}` : ""}</button>
-              {!readOnly && <button type="button" className="admin-button" onClick={() => onEdit({kind:"project",id:project.id})}>编辑信息</button>}
-              {!readOnly && (!data.access || data.access.role==="admin") && <button type="button" className="admin-button" onClick={() => onHistory({kind:"project",id:project.id})}>修改历史</button>}
-            </div>
-            <CounterpartyContext readOnly={readOnly || (!!data.access && data.access.role!=="admin")} project={project} data={data} onSelectProject={onSelectProject} onEdit={onEdit} onFiles={onCounterpartyFiles} />
-            {project.record_type === "investment" && <section className="drawer-bp"><h3>BP 发送与版本</h3><BpStatus projectId={project.id} files={data.files || []} people={data.people} onOpen={onBpFiles} /><p className="admin-help">以实际发送记录为准，版本更新不会改变此前发给对方的版本。</p></section>}
             <div className="drawer-badges">
               <RecordTypeBadge
                 project={project}
@@ -945,58 +939,24 @@ function ProjectDrawer({
               />
             </div>
 
-            <section className="drawer-section">
-              <h3>管理摘要</h3>
+            <div className="drawer-action-row" role="group" aria-label="事项操作">
+              {!readOnly && <button type="button" className="admin-button admin-primary" onClick={() => onEdit({kind:"progress",id:"",project_id:project.id})}>新增进展</button>}
+              <MatterBriefActions key={project.id} project={project} historical={!!fileSnapshot} />
+              {(onAi || !readOnly) && <button type="button" className="drawer-more-trigger" aria-label="更多事项操作" aria-expanded={showMore} aria-controls={moreId}
+                onClick={() => setMoreFor(showMore ? null : project.id)}>更多<span aria-hidden="true" className="drawer-chevron" /></button>}
+            </div>
+            {(onAi || !readOnly) && <div id={moreId} className="drawer-extra-actions" role="group" aria-label="更多事项操作" hidden={!showMore}>
+              {onAi && <button type="button" onClick={onAi}>用 AI 整理此事项</button>}
+              {!readOnly && <button type="button" onClick={() => onEdit({kind:"project",id:project.id})}>编辑信息</button>}
+              {!readOnly && (!data.access || data.access.role === "admin") && <button type="button" onClick={() => onHistory({kind:"project",id:project.id})}>修改历史</button>}
+            </div>}
+            {project.summary && <section className="drawer-summary" aria-label="事项摘要">
               <p className="long-copy">{project.summary}</p>
-            </section>
-
-            <section className="drawer-section detail-grid">
-              <div>
-                <span>负责人</span>
-                <strong>{projectOwnerLabel(project.owner)}</strong>
-              </div>
-              <div>
-                <span>首次接触</span>
-                <strong>{project.first_contact ? formatDate(project.first_contact, workspace) : "未知"}</strong>
-              </div>
-              <div>
-                <span>最初对接来源</span>
-                <strong>
-                  {project.source_people.map((person) => person.name).join("、")}
-                </strong>
-              </div>
-              <div>
-                <span>最近进展</span>
-                <strong>{formatDate(project.last_activity, workspace)}</strong>
-              </div>
-              <div>
-                <span>对接方</span>
-                <strong>{project.counterparties.join("、")}</strong>
-              </div>
-              {project.target_investment_amount_cny && (
-                <div>
-                  <span>目标投资金额</span>
-                  <strong>
-                    {formatCnyAmount(
-                      project.target_investment_amount_cny,
-                      workspace,
-                    )}
-                  </strong>
-                </div>
-              )}
-            </section>
-
-            <section className="drawer-section source-note-panel">
-              <div className="source-note-label">线索来源</div>
-              <p>{project.source_note}</p>
-            </section>
-
-            <section className="drawer-section next-action-panel">
-              <div className="eyebrow">下一步</div>
+            </section>}
+            {project.next_action && <section className="drawer-section next-action-panel" aria-label="下一步">
+              <div className="drawer-next-heading"><h3>下一步</h3>{project.next_action_due && <span>期限：{formatDate(project.next_action_due, workspace)}</span>}</div>
               <p>{project.next_action}</p>
-              <span>期限：{formatDate(project.next_action_due, workspace)}</span>
-            </section>
-
+            </section>}
             {project.management_decisions.length > 0 && (
               <section className="drawer-section">
                 <h3>需要管理层决策</h3>
@@ -1008,33 +968,13 @@ function ProjectDrawer({
               </section>
             )}
 
+            {project.record_type === "investment" && <section className="drawer-bp"><h3>BP 发送与版本</h3><BpStatus projectId={project.id} files={data.files || []} people={data.people} onOpen={onBpFiles} /><p className="admin-help">以实际发送记录为准，版本更新不会改变此前发给对方的版本。</p></section>}
             <section className="drawer-section">
-              <div className="section-title-row">
-                <h3>关键联系人</h3>
-                <span>{keyContacts.length} 人</span>
+              <div className="section-title-row drawer-timeline-heading">
+                <div><h3>沟通进展</h3><span>{sortedEvents.length} 条</span></div>
+                <button type="button" className="event-secondary-trigger" onClick={() => onFiles()}>事项资料{fileCount ? ` · ${fileCount}` : ""}</button>
               </div>
-              <div className="drawer-contacts">
-                {keyContacts.map((contact) => (
-                  <div className="drawer-contact" key={`${project.id}-${contact.id}`}>
-                    <div className="avatar">{contact.name.slice(-2)}</div>
-                    <div>
-                      <strong>{contact.name}</strong>
-                      <p>{contact.affiliation}</p>
-                      <ContactChannels person={contact} />
-                      <span>
-                        {contact.project_roles.map((role) => roleLabels[role] ?? role).join(" · ")}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            <section className="drawer-section">
-              <div className="section-title-row">
-                <h3>项目时间线</h3>
-                <span>{sortedEvents.length} 条</span>
-              </div>
+              {!sortedEvents.length && <p className="admin-help">暂无沟通进展记录。</p>}
               <div className="event-list drawer-timeline">
                 {sortedEvents.map((event) => (
                   <EventItem
@@ -1048,6 +988,69 @@ function ProjectDrawer({
                 ))}
               </div>
             </section>
+
+            <details key={project.id} className="drawer-archive">
+              <summary>事项档案与联系人<span aria-hidden="true" className="drawer-chevron" /></summary>
+              <section className="drawer-section detail-grid" aria-label="基本信息">
+                <div>
+                  <span>负责人</span>
+                  <strong>{projectOwnerLabel(project.owner)}</strong>
+                </div>
+                <div>
+                  <span>首次接触</span>
+                  <strong>{project.first_contact ? formatDate(project.first_contact, workspace) : "未知"}</strong>
+                </div>
+                <div>
+                  <span>最初对接来源</span>
+                  <strong>
+                    {project.source_people.map((person) => person.name).join("、") || "未记录"}
+                  </strong>
+                </div>
+                <div>
+                  <span>最近进展</span>
+                  <strong>{formatDate(project.last_activity, workspace)}</strong>
+                </div>
+                {project.target_investment_amount_cny && (
+                  <div>
+                    <span>目标投资金额</span>
+                    <strong>
+                      {formatCnyAmount(
+                        project.target_investment_amount_cny,
+                        workspace,
+                      )}
+                    </strong>
+                  </div>
+                )}
+              </section>
+
+              <section className="drawer-section source-note-panel">
+                <div className="source-note-label">线索来源</div>
+                <p>{project.source_note}</p>
+              </section>
+
+              <CounterpartyContext readOnly={readOnly || (!!data.access && data.access.role!=="admin")} project={project} data={data} onSelectProject={onSelectProject} onEdit={onEdit} onFiles={onCounterpartyFiles} />
+              {keyContacts.length > 0 && <section className="drawer-section">
+                <div className="section-title-row">
+                  <h3>关键联系人</h3>
+                  <span>{keyContacts.length} 人</span>
+                </div>
+                <div className="drawer-contacts">
+                  {keyContacts.map((contact) => (
+                    <div className="drawer-contact" key={`${project.id}-${contact.id}`}>
+                      <div className="avatar">{contact.name.slice(-2)}</div>
+                      <div>
+                        <strong>{contact.name}</strong>
+                        <p>{contact.affiliation}</p>
+                        <ContactChannels person={contact} />
+                        <span>
+                          {contact.project_roles.map((role) => roleLabels[role] ?? role).join(" · ")}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>}
+            </details>
           </aside>
         </Dialog.Content>
       </Dialog.Portal>
