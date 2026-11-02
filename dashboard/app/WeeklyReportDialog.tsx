@@ -10,13 +10,7 @@ import {
   weeklyReportToText, type WeeklyReport,
 } from "./lib/weekly-report";
 
-function download(blob: Blob, name: string) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url; link.download = name;
-  document.body.append(link); link.click(); link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
+import { copyText, downloadBlob } from "./lib/browser-export";
 
 function WeeklyPreview({ report, reportRef }: {
   report: WeeklyReport;
@@ -90,38 +84,22 @@ export default function WeeklyReportDialog({ data, open, onOpenChange }: {
   const copy = async () => {
     if (!report) return;
     const text = weeklyReportToText(report);
-    const area = document.createElement("textarea");
-    area.value = text;
-    area.setAttribute("aria-hidden", "true");
-    area.style.cssText = "position:fixed;left:-9999px;top:0";
-    const active = document.activeElement;
-    let copied = false;
-    try {
-      (active?.closest('[role="dialog"]') ?? document.body).append(area); area.select();
-      copied = document.execCommand("copy");
-    } catch { /* Fall back to the asynchronous clipboard API. */ }
-    finally { area.remove(); if (active instanceof HTMLElement) active.focus(); }
-    try {
-      if (!copied) await Promise.race([
-        navigator.clipboard.writeText(text),
-        new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error("复制超时")), 3000)),
-      ]);
-      setCopyStatus("copied");
-    } catch { setCopyStatus("error"); }
+    try { await copyText(text); setCopyStatus("copied"); }
+    catch { setCopyStatus("error"); }
   };
   const word = async () => {
     if (!report) return;
     setWordStatus("working");
     try {
       const { createWeeklyDocx } = await import("./lib/export-weekly-docx");
-      download(await createWeeklyDocx(report), weeklyReportFilename(report, "docx"));
+      downloadBlob(await createWeeklyDocx(report), weeklyReportFilename(report, "docx"));
       setWordStatus("idle");
     } catch (error) { console.error(error); setWordStatus("error"); }
   };
   const textFile = (format: "md" | "html") => {
     if (!report) return;
     const text = format === "md" ? weeklyReportToMarkdown(report) : weeklyReportToHtml(report);
-    download(new Blob(["\uFEFF", text], { type: format === "md" ? "text/markdown;charset=utf-8" : "text/html;charset=utf-8" }), weeklyReportFilename(report, format));
+    downloadBlob(new Blob(["\uFEFF", text], { type: format === "md" ? "text/markdown;charset=utf-8" : "text/html;charset=utf-8" }), weeklyReportFilename(report, format));
   };
 
   return <Dialog.Root open={open} onOpenChange={onOpenChange}>

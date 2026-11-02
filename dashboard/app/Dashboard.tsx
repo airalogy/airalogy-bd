@@ -13,6 +13,7 @@ import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import MatterBriefActions from "./MatterBriefActions";
 import ExportDialog from "./ExportDialog";
 import WeeklyReportDialog from "./WeeklyReportDialog";
 import ToolbarActions from "./ToolbarActions";
@@ -908,6 +909,7 @@ function ProjectDrawer({
 
             <div className="admin-actions drawer-edit-actions">
               {!readOnly && <button type="button" className="admin-button admin-primary" onClick={() => onEdit({kind:"progress",id:"",project_id:project.id})}>新增进展</button>}
+              <MatterBriefActions key={project.id} project={project} historical={!!fileSnapshot} />
               {onAi && <button type="button" className="admin-button" onClick={onAi}>用 AI 整理此事项</button>}
               <button type="button" className="admin-button" onClick={() => onFiles()}>事项资料{fileCount ? ` · ${fileCount}` : ""}</button>
               {!readOnly && <button type="button" className="admin-button" onClick={() => onEdit({kind:"project",id:project.id})}>编辑信息</button>}

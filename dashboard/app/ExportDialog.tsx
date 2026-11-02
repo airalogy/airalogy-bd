@@ -15,6 +15,7 @@ import {
   type LeadershipReport,
   type LeadershipReportEvent,
 } from "./lib/report";
+import { downloadBlob } from "./lib/browser-export";
 import type { DashboardData, Project } from "./lib/types";
 
 const exportScopeLabels: Record<ExportScope, string> = {
@@ -36,17 +37,6 @@ function formatCny(value: number | undefined) {
     return `${new Intl.NumberFormat("zh-CN").format(value / 10_000)} 万元`;
   }
   return `${new Intl.NumberFormat("zh-CN").format(value)} 元`;
-}
-
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 function ReportEventsTable({

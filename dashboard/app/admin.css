@@ -349,3 +349,11 @@
 @media (max-width: 640px) { .remote-diff-pair { grid-template-columns: 1fr; } }
 .admin-center-panel > p, .admin-center .team-management > p { margin: 10px 0; }
 @media (max-width: 640px) { .admin-center-panel { padding: 16px; } .admin-center-nav a { flex: 1 0 40%; text-align: center; } }
+
+.matter-brief-split { display: inline-flex; }
+.matter-brief-split > button:first-child { border-radius: 8px 0 0 8px; }
+.matter-brief-split > .matter-brief-options { border-radius: 0 8px 8px 0; border-left: 0; min-width: 32px; padding-inline: 8px; }
+.matter-brief-dialog { max-height: min(780px, calc(100dvh - 24px)); }
+.matter-brief-body { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow: auto; padding: 16px clamp(14px, 3vw, 28px) 20px; }
+.matter-brief-option { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: var(--text-body); }
+.matter-brief-preview { width: 100%; height: min(48dvh, 440px); min-height: 100px; resize: vertical; border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: var(--canvas); color: var(--ink); font: inherit; line-height: var(--leading-body); }
