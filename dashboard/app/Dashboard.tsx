@@ -1,4 +1,6 @@
 "use client";
+import MeetingSupplements from "./MeetingSupplements";
+import RecordPdfExport from "./RecordPdfExport";
 import EventAttachments from "./EventAttachments";
 import { BrandLogo } from "./Branding";
 import Link from "next/link";
@@ -593,7 +595,10 @@ function EventRecordDialog({
   files,
   snapshot,
   onQa,
+  canEdit, onChanged, participantNames,
 }: {
+  participantNames: Record<string, string>;
+  canEdit: boolean; onChanged: () => Promise<void>;
   onQa?:()=>void;
   selection: RecordSelection | null;
   files: LibraryFile[];
@@ -625,11 +630,12 @@ function EventRecordDialog({
               <EventUpdateByline key={JSON.stringify([selection.projectId, selection.event.id, selection.viewVersion, snapshot])}
                 selection={selection} snapshot={snapshot} workspace={workspace} />
             </div>
-            <Dialog.Close asChild>
-              <button type="button" className="close-button" aria-label="关闭完整记录">
-                ×
-              </button>
-            </Dialog.Close>
+            <div className="record-detail-actions">
+              <RecordPdfExport event={selection.event} sourceLabel={selection.sourceLabel} workspaceName={workspace.workspace_title}
+                participants={selection.event.participants.map(id => participantNames[id] || id)} historical={!!snapshot}
+                projectId={selection.projectId} snapshot={snapshot} viewVersion={selection.viewVersion}/>
+              <Dialog.Close asChild><button type="button" className="close-button" aria-label="关闭完整记录">×</button></Dialog.Close>
+            </div>
           </header>
           <div className="record-dialog-scroll">
             <article className="markdown-record">
@@ -642,6 +648,7 @@ function EventRecordDialog({
             </article>
             {onQa&&<div className="qa-actions"><button className="admin-button" type="button" onClick={onQa}>整理到投资问答</button></div>}
             {selection.projectId && <EventAttachments key={`${selection.projectId}:${selection.event.id}`} files={files} matter={selection.projectId} event={selection.event.id} snapshot={snapshot} onDetails={onFiles} />}
+            {selection.projectId && selection.event.type === "meeting" && <MeetingSupplements key={`${selection.projectId}:${selection.event.id}:${snapshot || "live"}`} projectId={selection.projectId} eventId={selection.event.id} canEdit={canEdit} snapshot={snapshot} timezone={workspace.timezone} onChanged={onChanged}/>}
           </div>
         </Dialog.Content>
       </Dialog.Portal>
@@ -1989,6 +1996,9 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
       {readOnly && historicalVersion && filesTarget && <HistoricalFiles data={data} target={filesTarget} version={historicalVersion} onClose={()=>setFilesTarget(null)}/> }
       {!readOnly && filesTarget && <FileLibraryDialog data={data} target={filesTarget} onClose={() => setFilesTarget(null)} onChanged={onWorkspaceRefresh} onHistory={openHistory} />}
       <EventRecordDialog
+        participantNames={Object.fromEntries(data.people.map(person => [person.id, person.name]))}
+        canEdit={!readOnly && canEdit}
+        onChanged={onWorkspaceRefresh}
         selection={selectedRecord && viewedEvent ? {...selectedRecord, event: viewedEvent, viewVersion: workspaceStatus?.version} : null}
         onQa={!readOnly&&canQa&&canEdit&&selectedRecord?.projectId?()=>{setQaSource({project_id:selectedRecord.projectId!,event_id:selectedRecord.event.id,matter_name:selectedRecord.sourceLabel,event_title:selectedRecord.event.title});setSelectedRecord(null);setSelectedProject(null);setPage("qa");}:undefined}
         files={data.files || []}

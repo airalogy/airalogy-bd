@@ -15,7 +15,7 @@ type Status = { qa_allowed:boolean; enabled: boolean; granted: boolean; revision
 type DraftAttachment = {mode:"upload"|"version"|"existing";file_id:string;version_id:string;upload_id?:string;title:string;filename:string;size:number;version_number:number;status:keyof typeof fileStatuses;agreement_date?:string;signing_completed_date?:string;note?:string};
 type Draft = { attachments?:DraftAttachment[]; id: string; matterName: string; counterparty: string; progressTitle: string; progressDate: string; operation: string; expires: number; changes: { field: string; label: string; before: unknown; after: unknown }[] };
 type AccessMode = "read" | "draft" | "direct";
-const operations: Record<string, string> = { add_company_event: "新增公司动态", update_company_event: "修改公司动态", investment_qa: "保存问答修订稿", intake: "业务资料录入", add_progress: "新增进展", update_progress: "修改进展", update_matter: "修改事项" };
+const operations: Record<string, string> = { add_supplement: "新增会后补充", update_supplement: "修改会后补充", add_company_event: "新增公司动态", update_company_event: "修改公司动态", investment_qa: "保存问答修订稿", intake: "业务资料录入", add_progress: "新增进展", update_progress: "修改进展", update_matter: "修改事项" };
 function display(field: string, value: unknown, operation: string) {
   if (value === null || value === undefined || value === "") return "（空）";
   if (typeof value === "string" && field === "stage") return stageLabels[value] || value;

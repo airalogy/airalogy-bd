@@ -1006,4 +1006,149 @@ class RemoteCompanyTests(unittest.TestCase):
         with self.assertRaises(AuthError):self.call('save_company_event',args)
 
 
+class MeetingSupplementTests(unittest.TestCase):
+    setUp = RemoteWriteTests.setUp
+    issue = RemoteWriteTests.issue
+    call = RemoteWriteTests.call
+    meeting = '2026-01-15-solution-meeting'
+
+    def target(self, **extra):
+        return {'matter_id':self.matter,'meeting_id':self.meeting,**extra}
+
+    def args(self, **changes):
+        current=self.call('read_meeting_supplements',self.target())
+        return self.target(revision=current['revision'],request_id=uuid.uuid4().hex,changes={'title':'产业介绍草稿','date':'2026-01-16','body':'## 产业应用\n\n完整文案。\n\n- 数据整理\n- 过程记录',**changes})
+
+    def service(self, actor, **request):
+        from meeting_supplements import Supplements
+        self.workspace.actor=actor
+        self.workspace.policy=Policy(self.workspace,actor)
+        return Supplements(self.workspace).execute({'action':'supplements','project_id':self.matter,'event_id':self.meeting,**request})
+
+    def test_independent_storage_identity_history_snapshots_and_activity(self):
+        from workspace_service import ServiceError
+        before=self.workspace.observe();files=self.workspace.read_files()
+        # Give the meeting a real accountable editor before adding supplements.
+        path='counterparties/示例合作/matters/合作对接/meetings/20260115.md'
+        self.workspace.actor={**self.actor,'name':'会议编辑'}
+        self.workspace.commit(files,{**files,path:files[path]+'\n原会议结论。\n'},'完善会议记录','form')
+        files=self.workspace.read_files()
+        query={'kind':'progress','id':self.meeting,'project_id':self.matter}
+        byline=self.workspace.event_update(query,self.workspace.observe())
+        data=json.loads((self.content/'generated/dashboard.json').read_text())
+        args=self.args();saved=self.call('save_meeting_supplement',args)
+        self.assertEqual(self.call('save_meeting_supplement',args),saved)
+        after=self.workspace.read_files()
+        self.assertEqual({k:v for k,v in after.items() if '/supplements/' not in k},files)
+        self.assertEqual(json.loads((self.content/'generated/dashboard.json').read_text()),data)
+        self.assertEqual(self.workspace.event_update(query,self.workspace.observe()),byline)
+        opened=self.call('read_meeting_supplements',self.target(id=saved['id']))
+        self.assertEqual(opened['record']['body'],args['changes']['body'])
+        self.assertEqual(opened['record']['author'],{'id':self.actor['id'],'name':self.actor['name']})
+        self.assertNotIn('email',json.dumps(opened))
+        editor={**self.actor,'id':'second-editor','name':'另一位编辑','role':'editor','all_projects':False,'project_ids':[self.matter]}
+        update=self.service(editor,operation='save',id=saved['id'],revision=opened['revision'],request_id=uuid.uuid4().hex,payload={**args['changes'],'body':'修订后全文。'})
+        read=self.call('read_meeting_supplements',self.target(id=saved['id']))
+        self.assertEqual(read['record']['author'],opened['record']['author'])
+        self.assertEqual(read['record']['updated_by']['name'],'另一位编辑')
+        history=self.call('meeting_supplement_history',self.target(id=saved['id']))['versions']
+        self.assertEqual(len(history),2)
+        self.assertEqual(history[0]['actor']['name'],'另一位编辑')
+        old=self.call('meeting_supplement_history',self.target(id=saved['id'],version=saved['history_version']))
+        self.assertEqual(old['record']['body'],args['changes']['body'])
+        self.assertEqual(self.call('read_meeting_supplements',self.target(snapshot=before['version']))['items'],[])
+        self.assertEqual(self.call('read_meeting_supplements',self.target(snapshot=saved['history_version']))['items'][0]['body'],args['changes']['body'])
+        historical_history=self.service(self.actor,operation='history',id=saved['id'],snapshot=saved['history_version'])
+        self.assertEqual(len(historical_history['versions']),1)
+        with self.assertRaises(ServiceError):
+            self.service(self.actor,operation='version',id=saved['id'],snapshot=saved['history_version'],version=update['status']['version'])
+
+        # Another independent addition is not another business event.
+        self.call('save_meeting_supplement',self.args(title='',body='独立背景材料'))
+        self.assertEqual(len(self.call('read_meeting_supplements',self.target())['items']),2)
+        self.assertEqual(self.workspace.event_update(query,self.workspace.observe()),byline)
+        self.assertEqual(json.loads((self.content/'generated/dashboard.json').read_text()),data)
+        # Stale per-record revisions and forged authors never overwrite a supplement.
+        with self.assertRaises(ServiceError) as caught:
+            self.service(editor,operation='save',id=saved['id'],revision=opened['revision'],request_id=uuid.uuid4().hex,payload=args['changes'])
+        self.assertEqual(caught.exception.code,'conflict')
+        with self.assertRaises(ServiceError):
+            self.service(editor,operation='save',id=saved['id'],revision=read['revision'],request_id=uuid.uuid4().hex,payload={**args['changes'],'author':self.actor})
+        with self.assertRaises(AuthError):
+            self.service(editor,operation='save',snapshot=saved['history_version'],request_id=uuid.uuid4().hex)
+
+    def test_drafts_permissions_replay_and_uncertain_outcome(self):
+        from meeting_supplements import Supplements
+        from workspace_service import ServiceError
+        args=self.args();draft_token=self.issue('draft')
+        before=self.workspace.read_files()
+        draft=self.call('submit_meeting_supplement',args,draft_token)
+        self.assertEqual(self.call('submit_meeting_supplement',args,draft_token),draft)
+        self.assertEqual(self.workspace.read_files(),before)
+        with self.assertRaises(AuthError):self.call('save_meeting_supplement',args,draft_token)
+        readonly=self.issue('read')
+        with self.assertRaises(AuthError):self.call('submit_meeting_supplement',args,readonly)
+        saved=self.remote.browser({'operation':'confirm','draftId':draft['draftId'],'confirmed':True},self.actor)
+        self.assertEqual(self.call('submit_meeting_supplement',args,draft_token)['status'],'saved')
+        self.assertEqual(self.call('read_meeting_supplements',self.target(id=saved['id']))['record']['author']['id'],self.actor['id'])
+        for role in ('editor','viewer'):
+            account={**self.actor,'role':role,'all_projects':False,'project_ids':['project-demo-investment']}
+            for op in ('list','read','history','version','save'):
+                with self.assertRaises(AuthError):self.service(account,operation=op,id=saved['id'],version=saved['status']['version'])
+        viewer={**self.actor,'role':'viewer','all_projects':False,'project_ids':[self.matter]}
+        self.assertEqual(len(self.service(viewer,operation='list')['items']),1)
+        self.assertTrue(self.service(viewer,operation='history',id=saved['id'])['versions'])
+        with self.assertRaises(AuthError):self.service(viewer,operation='save')
+        with self.assertRaises(ServiceError) as caught:self.call('save_meeting_supplement',self.args())
+        self.assertEqual(caught.exception.code,'duplicate')
+        with self.assertRaises(AuthError):self.call('submit_meeting_supplement',{**args,'changes':{'body':'同编号不同内容'}},draft_token)
+        stale=self.call('submit_meeting_supplement',self.args(body='待确认草稿'),draft_token)
+        self.call('save_meeting_supplement',self.args(body='另一条补充'))
+        with self.assertRaises(AuthError) as caught:self.remote.browser({'operation':'confirm','draftId':stale['draftId'],'confirmed':True},self.actor)
+        self.assertEqual(caught.exception.code,'conflict')
+        interrupted=self.args(body='响应丢失测试')
+        original=Supplements.execute
+        def lost_ack(service,request,*,preview=False):
+            value=original(service,request,preview=preview)
+            if not preview and request.get('operation')=='save':raise RuntimeError('lost ack')
+            return value
+        with patch.object(Supplements,'execute',lost_ack):
+            with self.assertRaises(AuthError) as caught:self.call('save_meeting_supplement',interrupted)
+        self.assertEqual(caught.exception.code,'uncertain')
+        count=len(self.call('read_meeting_supplements',self.target())['items'])
+        self.assertEqual(self.call('save_meeting_supplement',interrupted)['status'],'uncertain')
+        self.assertEqual(len(self.call('read_meeting_supplements',self.target())['items']),count)
+
+    def test_migration_preserves_meeting_and_complete_text_and_has_no_duplicate_event(self):
+        from workspace_service import ServiceError
+        body='# 简介草稿\n\n完整文案第一段。\n\n第二段包含 **重点** 与 CRO 描述。'
+        current=self.workspace.get_record({'kind':'progress','id':'','project_id':self.matter})
+        self.workspace.actor=self.actor
+        added=self.workspace.save({'kind':'progress','id':'','project_id':self.matter,'revision':current['revision'],'payload':{'date':'2026-01-16','type':'other','title':'会后补充：面向 CRO 的平台简介草稿','summary':'会后形成介绍草稿。','importance':'normal','participants':['林岚','陈青'],'body':body}})
+        before=self.workspace.read_files()
+        meeting=self.workspace.record(before,'progress',self.meeting,self.matter)
+        byline=self.workspace.event_update({'kind':'progress','id':self.meeting,'project_id':self.matter},self.workspace.observe())
+        source=self.workspace.get_record({'kind':'progress','id':added['id'],'project_id':self.matter})
+        revision=self.service(self.actor,operation='list')['revision']
+        args={'operation':'migrate','source_id':added['id'],'source_revision':source['revision'],'revision':revision,'request_id':uuid.uuid4().hex,'confirmed':True}
+        result=self.service(self.actor,**args)
+        self.assertEqual(self.service(self.actor,**args),result)
+        after=self.workspace.read_files()
+        self.assertEqual(self.workspace.record(after,'progress',self.meeting,self.matter),meeting)
+        self.assertEqual(self.workspace.event_update({'kind':'progress','id':self.meeting,'project_id':self.matter},self.workspace.observe()),byline)
+        self.assertEqual(after['counterparties/示例合作/matters/合作对接/meetings/20260115.md'],before['counterparties/示例合作/matters/合作对接/meetings/20260115.md'])
+        self.assertIsNone(self.workspace.record(after,'progress',added['id'],self.matter))
+        supplement=self.service(self.actor,operation='read',id=result['id'])['record']
+        self.assertEqual(supplement['body'],body)
+        self.assertEqual(supplement['date'],'2026-01-16')
+        self.assertEqual(supplement['source_progress_id'],added['id'])
+        data=json.loads((self.content/'generated/dashboard.json').read_text())
+        self.assertEqual(next(p for p in data['projects'] if p['id']==self.matter)['last_activity'],'2026-01-15')
+        historical=self.workspace.historical({'version':added['status']['version']})
+        self.assertIn(added['id'],[e['id'] for p in historical['data']['projects'] for e in p['events']])
+        self.assertEqual(self.service(self.actor,operation='list',snapshot=added['status']['version'])['items'],[])
+        self.assertEqual(self.service(self.actor,operation='list',snapshot=result['status']['version'])['items'][0]['body'],body)
+
+
+
 if __name__=='__main__': unittest.main(verbosity=2)

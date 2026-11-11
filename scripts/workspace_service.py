@@ -30,6 +30,9 @@ from file_library import FileLibrary, LibraryError, check_index, index_from
 from team_auth import Accounts, AuthError
 from investment_qa import InvestmentQA, QAError, raw_record as qa_record, identities as qa_identities
 
+if __name__ == "__main__":
+    sys.modules["workspace_service"] = sys.modules[__name__]
+
 SCRIPTS = Path(__file__).resolve().parent
 FRONTMATTER = re.compile(r"\A---[ \t]*\n(.*?)\n---[ \t]*(?:\n|\Z)", re.S)
 KINDS = {"counterparty", "person", "project", "progress", "company"}
@@ -39,7 +42,7 @@ EVENT_FIELDS = {"date", "type", "title", "summary", "importance", "participants"
 LABELS = {"name": "名称", "affiliation": "单位及职位", "phone": "电话", "wechat": "微信", "email": "邮箱", "counterparties": "对方单位", "record_type": "事项类型", "category": "分类", "stage": "阶段", "relationship": "关系", "priority": "优先级", "owner": "负责人", "first_contact": "首次接触日期", "first_contact_certainty": "首次接触日期依据", "sourced_by": "对接来源人员", "source_certainty": "来源依据", "source_note": "来源说明", "follow_up_status": "跟进状态", "next_action": "下一步", "next_action_due": "下一步期限", "target_investment_amount_cny": "目标投资金额（元）", "date": "日期", "type": "事件类型", "title": "标题", "summary": "进展摘要", "importance": "重要程度", "participants": "参与人", "organizers": "主办方", "location": "地点", "side": "关系", "project_roles": "项目角色", "notes": "备注", "body": "正文", "contacts": "事项联系人", "events": "沟通进展", "metadata": "事项信息", "documents": "沟通记录", "document": "记录信息", "event": "进展信息"}
 
 
-LABELS.update({"attachments":"进展附件", "agreement_date":"协议载明日期", "signing_completed_date":"实际签署完成日期", "agreement_type":"协议类型", "organization":"对接机构或个人", "home_counterparty_id":"归档对接方", "primary_counterparty_id":"归档对接方", "counterparty_ids":"参与对接方", "short_name":"简称", "kind":"对接方类型", "project_ids":"关联事项", "archived":"回收站状态", "current_version":"当前文件版本", "versions":"文件版本", "records":"使用与发送记录", "filename":"文件名", "sha256":"文件指纹", "size":"文件大小", "status":"文件状态", "created_at":"归档时间", "note":"说明", "archive_path":"归档位置", "version_id":"具体版本", "kind":"类型", "people":"相关人员", "channel":"渠道", "event_id":"关联交流", "project_id":"关联事项"})
+LABELS.update({"supplements":"会后补充", "author":"作者", "updated_by":"最近编辑", "updated_at":"编辑时间", "attachments":"进展附件", "agreement_date":"协议载明日期", "signing_completed_date":"实际签署完成日期", "agreement_type":"协议类型", "organization":"对接机构或个人", "home_counterparty_id":"归档对接方", "primary_counterparty_id":"归档对接方", "counterparty_ids":"参与对接方", "short_name":"简称", "kind":"对接方类型", "project_ids":"关联事项", "archived":"回收站状态", "current_version":"当前文件版本", "versions":"文件版本", "records":"使用与发送记录", "filename":"文件名", "sha256":"文件指纹", "size":"文件大小", "status":"文件状态", "created_at":"归档时间", "note":"说明", "archive_path":"归档位置", "version_id":"具体版本", "kind":"类型", "people":"相关人员", "channel":"渠道", "event_id":"关联交流", "project_id":"关联事项"})
 
 
 class ServiceError(Exception):
@@ -288,9 +291,11 @@ class Workspace:
 
     def stage(self, files: dict[str, str], *, verify_attachments=True) -> tuple[list[str], str | None]:
         try:
+            from meeting_supplements import validate as validate_supplements
+            validate_supplements(files, self.projects(files))
             if verify_attachments:
                 FileLibrary(self).verify_index(files)
-        except (LibraryError, ValueError, TypeError, KeyError, yaml.YAMLError) as exc:
+        except (ServiceError, LibraryError, ValueError, TypeError, KeyError, yaml.YAMLError) as exc:
             return [str(exc) or "资料索引格式无效。"], None
         with tempfile.TemporaryDirectory(prefix="validation-", dir=self.store) as directory:
             root = Path(directory) / "content"
@@ -414,6 +419,9 @@ class Workspace:
         return projects
 
     def record(self, files: dict[str, str], kind: str, identity: str, project_id="") -> dict | None:
+        if kind == "supplement":
+            from meeting_supplements import records
+            return next((item for directory, _, _ in self.projects(files).values() for item in records(files, directory) if item["id"] == identity), None)
         if kind == "qa":
             return qa_record(files, identity)
         if kind == "counterparty":
@@ -431,7 +439,7 @@ class Workspace:
             if not value:
                 return None
             directory, metadata, body = value
-            return {"metadata": metadata, "body": body, "contacts": parse_yaml(files[directory + "/contacts.yaml"]).get("contacts", []), "events": parse_yaml(files[directory + "/events.yaml"]).get("events", []), "documents": {name[len(directory)+1:]: text for name, text in files.items() if name.startswith(directory + "/meetings/")}}
+            return {"metadata": metadata, "body": body, "contacts": parse_yaml(files[directory + "/contacts.yaml"]).get("contacts", []), "events": parse_yaml(files[directory + "/events.yaml"]).get("events", []), "supplements": {name[len(directory)+1:]: text for name, text in files.items() if name.startswith(directory + "/supplements/")}, "documents": {name[len(directory)+1:]: text for name, text in files.items() if name.startswith(directory + "/meetings/")}}
         if kind in {"progress", "company"}:
             if kind == "company":
                 directory = "company"
@@ -469,6 +477,8 @@ class Workspace:
         keys = set()
         for files in (before, after):
             try:
+                from meeting_supplements import records
+                keys.update("supplement:" + item["id"] for directory, _, _ in self.projects(files).values() for item in records(files, directory))
                 keys.update("qa:" + identity for identity in qa_identities(files))
                 keys.update("file:" + item["id"] for item in index_from(files)["files"])
                 keys.update("person:" + item["id"] for item in parse_yaml(files.get("people.yaml", "people: []")).get("people", []))
@@ -1159,8 +1169,8 @@ def main():
             workspace.upload_scope = {"owner": actor["id"], "binding": actor["revision"], "channel": "web"}
             policy.authorize(request)
             workspace.actor = {key: actor[key] for key in ("id", "name", "email")}
-            if action in {"save", "file_save", "restore", "backup_config", "backup_now", "file_backup"} or (action == "qa" and request.get("operation") not in {"list", "read", "history", "version"}):
-                accounts.audit(actor, "qa." + request.get("operation", "") if action == "qa" else action, request.get("id") or request.get("project_id", ""), "started")
+            if action in {"save", "file_save", "restore", "backup_config", "backup_now", "file_backup"} or (action in {"qa", "supplements"} and request.get("operation") not in {"list", "read", "history", "version"}):
+                accounts.audit(actor, action + "." + request.get("operation", "") if action in {"qa", "supplements"} else action, request.get("id") or request.get("project_id", ""), "started")
         if action == "migrate_layout":
             from workspace_layout import migrate_layout
             workspace.recover()
@@ -1196,6 +1206,9 @@ def main():
             elif action == "workspace":
                 data_file = workspace.root / "generated" / "dashboard.json"
                 result = {"status": status, "data": json.loads(data_file.read_text()) if data_file.exists() else None}
+            elif action == "supplements":
+                from meeting_supplements import Supplements
+                result = Supplements(workspace).execute(request)
             elif action == "qa":
                 result = InvestmentQA(workspace).execute(request)
             elif action == "files":
@@ -1234,8 +1247,8 @@ def main():
                 raise ServiceError("未知操作。")
         if policy:
             result = policy.result(request, result)
-            if action in {"save", "file_save", "restore", "backup_config", "backup_now", "file_backup"} or (action == "qa" and request.get("operation") not in {"list", "read", "history", "version"}):
-                accounts.audit(actor, "qa." + request.get("operation", "") if action == "qa" else action, result.get("id") or request.get("id") or request.get("project_id", ""), "failed" if result.get("error") else "success")
+            if action in {"save", "file_save", "restore", "backup_config", "backup_now", "file_backup"} or (action in {"qa", "supplements"} and request.get("operation") not in {"list", "read", "history", "version"}):
+                accounts.audit(actor, action + "." + request.get("operation", "") if action in {"qa", "supplements"} else action, result.get("id") or request.get("id") or request.get("project_id", ""), "failed" if result.get("error") else "success")
             accounts.close()
         print(json.dumps({"ok": True, "result": result}, ensure_ascii=False))
 

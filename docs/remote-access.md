@@ -158,3 +158,7 @@ CLI 也可以通过 `codex mcp add airalogy_bd --url https://bd.example.com/api/
 接口检查 Host、Origin（存在时）、请求格式、协议版本、24 KB 请求上限，且不允许跨站请求。网页登录独立执行 CSRF 校验。反向代理只转发到本机应用端口，按部署示例设置登录/请求限流，并对 `/api/mcp` 与 `/api/mcp/uploads` 限制连接数和请求速率。MCP 消息仍限制为 24 KB；独立上传路由按 50 MB 文件加少量表单开销限制请求体，不提高 MCP 消息上限。代理必须保留正确 Host、Authorization，禁止记录 Authorization/Cookie。无需把 `.bd-auth`、数据目录或管理端口暴露到互联网。
 
 接口遵循 [MCP Streamable HTTP 规范](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)。自动测试覆盖真实 HTTP、邀请时分配外部工具权限、待激活成员权限调整、TOTP 会话、默认关闭、角色/事项边界、凭据生命周期、草稿确认、管理员直接保存、重复请求、处理中断、并发冲突、单条恢复和停用。每次部署后仍需使用本人账号，按上述步骤完成实际客户端连接验收。
+
+## 会后补充
+
+会后文案、分析和背景资料可通过 MCP 独立关联到原会议，沿用事项权限、草稿确认和管理员直接保存规则。接口与操作说明见 [会后补充](meeting-supplements.md)。
