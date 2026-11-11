@@ -3210,3 +3210,27 @@ select,
   .activity-feed .event-list { max-height:280px; }
   .activity-calendar-totals { gap:24px; }
 }
+
+/* Recycle bin: quiet destructive actions, explicit review, recoverable records. */
+.recycle-dialog { max-width: 720px; }
+.recycle-kind { color: var(--muted); font-size: var(--text-caption); }
+.recycle-counts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 16px 0; margin: 12px 0; border-block: 1px solid var(--line); }
+.recycle-counts dt { font-size: var(--text-caption); color: var(--muted); }
+.recycle-counts dd { margin: 4px 0 0; font-weight: 600; }
+.recycle-danger.admin-button { color: #9e3030; border-color: #e9c3c3; background: #fff5f5; }
+.recycle-danger-text { color: #9e3030 !important; }
+.recycle-actions { justify-content: flex-end; margin-top: 24px; }
+.recycle-history { margin-top: 20px; }
+.recycle-history summary, .record-more-actions summary { cursor: pointer; color: var(--muted); font-size: var(--text-caption); padding-block: 8px; }
+.recycle-history ol { padding: 0; list-style: none; }
+.recycle-history li { display: flex; flex-wrap: wrap; gap: 8px 16px; padding-block: 8px; border-bottom: 1px solid var(--line); font-size: var(--text-caption); }
+.recycle-preview { padding-block: 16px; }
+.recycle-filter { display: flex; align-items: center; gap: 8px; margin-block: 20px; font-size: var(--text-caption); }
+.recycle-list { display: grid; }
+.recycle-item { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-block: 20px; border-top: 1px solid var(--line); }
+.recycle-item > div:first-child { min-width: 0; overflow-wrap: anywhere; }
+.recycle-item h3 { margin: 4px 0; font-size: var(--text-body); }
+.recycle-item p { margin: 4px 0; }
+.recycle-item-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.record-more-actions { margin-top: 24px; padding-top: 12px; border-top: 1px solid var(--line); }
+@media (max-width: 560px) { .recycle-dialog .admin-button, .recycle-item-actions .admin-button { min-height: 44px; } .recycle-item { align-items: stretch; flex-direction: column; } .recycle-item-actions { justify-content: flex-end; } .recycle-counts { gap: 8px; } }

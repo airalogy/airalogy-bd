@@ -3,6 +3,7 @@ import Link from "next/link";
 import AccountBar from "./AccountBar";
 import AiSettings from "./AiSettings";
 import AiUsage from "./AiUsage";
+import RecycleBin from "./RecycleBin";
 import BackupSettings from "./BackupSettings";
 import TeamManagement from "./TeamManagement";
 import RemoteAccess from "./RemoteAccess";
@@ -10,7 +11,7 @@ import {SettingsIcon,SettingsPanelHeader} from "./SettingsUI";
 import type {TeamUser} from "./lib/team-client";
 import type {Project,DashboardData} from "./lib/types";
 
-const sections={members:{title:"成员与权限",description:"邀请成员 · 分配访问范围"},ai:{title:"AI 设置",description:"内置 AI · 外部工具"},usage:{title:"用量与费用",description:"请求统计 · 费用估算"},backup:{title:"备份",description:"自动备份 · 数据保护"}};
+const sections={members:{title:"成员与权限",description:"邀请成员 · 分配访问范围"},ai:{title:"AI 设置",description:"内置 AI · 外部工具"},usage:{title:"用量与费用",description:"请求统计 · 费用估算"},backup:{title:"备份",description:"自动备份 · 数据保护"},recycle:{title:"回收站",description:"查看记录 · 恢复资料"}};
 type Section=keyof typeof sections;
 export default function AdminCenter({user,projects,timezone,unavailable,initialSection,dates,workspace}:{
   workspace?:DashboardData["workspace"];user:TeamUser|null;projects:Pick<Project,"id"|"name">[];timezone:string;unavailable:boolean;initialSection?:string;dates:{from:string;to:string};
@@ -28,6 +29,7 @@ export default function AdminCenter({user,projects,timezone,unavailable,initialS
           {section==="members"&&(user?<TeamManagement user={user} projects={projects} timezone={timezone}/>:<section className="panel admin-center-panel"><SettingsPanelHeader title="成员与权限" description="本机单人模式无需创建账号。"/><p>部署为团队模式后，可在这里邀请成员、停用账号并分配事项权限。</p></section>)}
           {section==="ai"&&<>{user&&<nav className="account-section-nav" aria-label="AI 设置内容"><a href="#builtin-ai">内置 AI 助手</a><a href="#external-ai">外部 AI 工具</a></nav>}<div id="builtin-ai"><AiSettings/></div>{user&&<RemoteAccess user={user} mode="settings"/>}</>}
           {section==="usage"&&<section className="panel admin-center-panel"><SettingsPanelHeader title="用量与费用" description="查看团队 AI 请求、Token 用量和费用估算。"/><AiUsage initialFrom={dates.from} initialTo={dates.to}/></section>}
+          {section==="recycle"&&<RecycleBin timezone={timezone}/>}
           {section==="backup"&&<BackupSettings timezone={timezone} onChanged={()=>{}}/>}
 
         </div>

@@ -167,6 +167,7 @@ class Intake:
         if attachments:
             # Candidate matter is authorized only within this admin's explicit intake scope.
             self.workspace.policy.allowed.add(plan["matter_id"])
+            self.workspace.policy.granted.add(plan["matter_id"])
             event = self.workspace.record(files, "progress", plan["progress_id"], plan["matter_id"])["event"]
             files, writes, attached = attach_progress(self.workspace, files, plan["matter_id"], plan["progress_id"], event["date"], attachments)
         errors, _ = self.workspace.stage(files, verify_attachments=not bool(attachments))

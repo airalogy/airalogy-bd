@@ -293,6 +293,8 @@ class Workspace:
         try:
             from meeting_supplements import validate as validate_supplements
             validate_supplements(files, self.projects(files))
+            from recycle_bin import validate as validate_recycle_bin
+            validate_recycle_bin(files, self.projects(files))
             if verify_attachments:
                 FileLibrary(self).verify_index(files)
         except (ServiceError, LibraryError, ValueError, TypeError, KeyError, yaml.YAMLError) as exc:
@@ -468,6 +470,10 @@ class Workspace:
         raise ServiceError("未知的资料类型。")
 
     def record_revision(self, files: dict[str, str], kind: str, identity: str, project_id="") -> str:
+        from recycle_bin import operations
+        changes = [x for x in operations(files) if x["project_id"] == (project_id if kind == "progress" else identity)] if kind in {"project", "progress"} else []
+        if changes:
+            return digest({"record": self.record(files, "project", project_id) if kind == "progress" else self.record(files, kind, identity), "recycle_operations": changes})
         if kind == "progress":
             # Includes contacts and all project events that a progress save may change.
             return digest(self.record(files, "project", project_id))
@@ -503,6 +509,12 @@ class Workspace:
             for identity in event_ids:
                 if self.record(before, "progress", identity, project) != self.record(after, "progress", identity, project):
                     changed.append("progress:" + identity)
+        from recycle_bin import states
+        previous, current = states(before), states(after)
+        for key in previous.keys() | current.keys():
+            if previous.get(key) != current.get(key):
+                kind, project, identity = key
+                changed.extend(["project:" + project, kind + ":" + identity])
         return changed
 
     def event_update(self, request: dict, status: dict) -> dict:
@@ -516,6 +528,8 @@ class Workspace:
         if not snapshot and status.get("errors"):
             return {"update": None}  # The dashboard still shows the previous valid data.
         files = self.version_files(snapshot) if snapshot else self.read_files()
+        from recycle_bin import guard
+        guard(files, request)
         if kind == "company":
             directory = "company"
         else:
@@ -569,7 +583,11 @@ class Workspace:
     def get_record(self, request: dict) -> dict:
         files = self.read_files()
         kind, identity, project = request["kind"], request.get("id", ""), request.get("project_id", "")
-        return {"record": self.record(files, kind, identity, project), "revision": self.record_revision(files, kind, identity, project)}
+        from recycle_bin import guard, project_record
+        guard(files, request)
+        record = self.record(files, kind, identity, project)
+        if kind == "project": record = project_record(files, identity, record)
+        return {"record": record, "revision": self.record_revision(files, kind, identity, project)}
 
     @staticmethod
     def check_date(value: Any):
@@ -702,6 +720,8 @@ class Workspace:
     def save(self, request: dict, *, preview=False, candidate=None) -> dict:
         # Internal candidate mode composes validated transactions without writing to disk.
         before = self.read_files() if candidate is None else candidate
+        from recycle_bin import guard
+        guard(before, request)
         files = dict(before)
         kind, identity, project = request["kind"], request.get("id", ""), request.get("project_id", "")
         if request.get("revision") != self.record_revision(before, kind, identity, project):
@@ -1006,6 +1026,8 @@ class Workspace:
 
     def restore(self, request: dict) -> dict:
         before = self.read_files()
+        from recycle_bin import guard
+        guard(before, request)
         if digest(before) != request.get("revision"):
             raise ServiceError("预览后资料又发生变化，请重新预览恢复范围。", "conflict")
         historical = self.version_files(request["version"])
@@ -1169,8 +1191,8 @@ def main():
             workspace.upload_scope = {"owner": actor["id"], "binding": actor["revision"], "channel": "web"}
             policy.authorize(request)
             workspace.actor = {key: actor[key] for key in ("id", "name", "email")}
-            if action in {"save", "file_save", "restore", "backup_config", "backup_now", "file_backup"} or (action in {"qa", "supplements"} and request.get("operation") not in {"list", "read", "history", "version"}):
-                accounts.audit(actor, action + "." + request.get("operation", "") if action in {"qa", "supplements"} else action, request.get("id") or request.get("project_id", ""), "started")
+            if action in {"save", "file_save", "restore", "backup_config", "backup_now", "file_backup"} or (action in {"qa", "supplements", "recycle"} and request.get("operation", "list") not in {"list", "read", "history", "version", "preview"}):
+                accounts.audit(actor, action + "." + request.get("operation", "") if action in {"qa", "supplements", "recycle"} else action, request.get("id") or request.get("project_id", ""), "started")
         if action == "migrate_layout":
             from workspace_layout import migrate_layout
             workspace.recover()
@@ -1206,6 +1228,9 @@ def main():
             elif action == "workspace":
                 data_file = workspace.root / "generated" / "dashboard.json"
                 result = {"status": status, "data": json.loads(data_file.read_text()) if data_file.exists() else None}
+            elif action == "recycle":
+                from recycle_bin import RecycleBin
+                result = RecycleBin(workspace).execute(request)
             elif action == "supplements":
                 from meeting_supplements import Supplements
                 result = Supplements(workspace).execute(request)
@@ -1247,8 +1272,8 @@ def main():
                 raise ServiceError("未知操作。")
         if policy:
             result = policy.result(request, result)
-            if action in {"save", "file_save", "restore", "backup_config", "backup_now", "file_backup"} or (action in {"qa", "supplements"} and request.get("operation") not in {"list", "read", "history", "version"}):
-                accounts.audit(actor, action + "." + request.get("operation", "") if action in {"qa", "supplements"} else action, result.get("id") or request.get("id") or request.get("project_id", ""), "failed" if result.get("error") else "success")
+            if action in {"save", "file_save", "restore", "backup_config", "backup_now", "file_backup"} or (action in {"qa", "supplements", "recycle"} and request.get("operation", "list") not in {"list", "read", "history", "version", "preview"}):
+                accounts.audit(actor, action + "." + request.get("operation", "") if action in {"qa", "supplements", "recycle"} else action, result.get("id") or request.get("id") or request.get("project_id", ""), "failed" if result.get("error") else "success")
             accounts.close()
         print(json.dumps({"ok": True, "result": result}, ensure_ascii=False))
 

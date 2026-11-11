@@ -1112,6 +1112,8 @@ try:
     from meeting_supplements import validate as check_supplements
     from workspace_service import Workspace
     check_supplements(file_sources, Workspace.projects(file_sources))
+    from recycle_bin import validate as check_recycle_bin
+    check_recycle_bin(file_sources, Workspace.projects(file_sources))
 except Exception as exc:
     errors.append(f"content/files.yaml: {exc}")
 

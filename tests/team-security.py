@@ -1151,4 +1151,142 @@ class MeetingSupplementTests(unittest.TestCase):
 
 
 
+class RecycleBinTests(unittest.TestCase):
+    setUp = RemoteWriteTests.setUp
+    issue = RemoteWriteTests.issue
+    call = RemoteWriteTests.call
+    meeting = '2026-01-15-solution-meeting'
+
+    def service(self, operation, kind='progress', identity=None, actor=None, **extra):
+        from recycle_bin import RecycleBin
+        actor = actor or self.actor
+        self.workspace.actor = {key: actor[key] for key in ("id", "name", "email")}
+        self.workspace.policy = Policy(self.workspace, actor)
+        query = {'action':'recycle','operation':operation,'kind':kind,'id':identity or self.meeting,'project_id':self.matter,**extra}
+        self.workspace.policy.authorize(query)
+        return RecycleBin(self.workspace).execute(query)
+
+    def move(self, operation, kind='progress', identity=None):
+        item = self.service('preview', kind, identity)
+        request = {'revision':item['revision'],'request_id':uuid.uuid4().hex,'confirmed':True}
+        return self.service(operation, kind, identity, **request), request
+
+    def data(self):
+        return json.loads((self.content/'generated/dashboard.json').read_text())
+
+    def test_preserve_original_files_history_snapshots_supplements_and_restore(self):
+        from recycle_bin import INDEX
+        from workspace_service import ServiceError
+        from meeting_supplements import Supplements
+        target = {'matter_id':self.matter,'meeting_id':self.meeting}
+        original_files = self.workspace.read_files()
+        meeting_path = 'counterparties/示例合作/matters/合作对接/meetings/20260115.md'
+        self.workspace.actor = {**self.actor,'name':'原会议记录人'}
+        self.workspace.commit(original_files,{**original_files,meeting_path:original_files[meeting_path]+'\n会议记录原文。\n'},'完善会议记录','form')
+        opened = self.call('read_meeting_supplements', target)
+        self.call('save_meeting_supplement',{**target,'revision':opened['revision'],'request_id':uuid.uuid4().hex,'changes':{'date':'2026-01-16','body':'会后文案完整保留。'}})
+        baseline = self.workspace.observe(); before = self.workspace.read_files()
+        data = self.data()
+        query = {'kind':'progress','id':self.meeting,'project_id':self.matter}
+        byline = self.workspace.event_update(query, baseline)
+        self.assertEqual(byline['update']['name'],'原会议记录人')
+        preview = self.service('preview')
+        self.assertEqual(preview['counts']['supplements'], 1)
+        archived, request = self.move('archive')
+        self.assertEqual({k:v for k,v in self.workspace.read_files().items() if k!=INDEX},before)
+        self.assertFalse(any(e['id']==self.meeting for p in self.data()['projects'] for e in p['events']))
+        project = next(p for p in self.data()['projects'] if p['id']==self.matter)
+        self.assertEqual(project['last_activity'],'2026-01-05')
+        self.assertTrue(self.service('archive', **request)['replayed'])
+        with self.assertRaises(ServiceError): self.service('archive', **{**request,'id':'other'})
+        with self.assertRaises(ServiceError): self.workspace.get_record(query)
+        with self.assertRaises(ServiceError): self.workspace.save({**query,'revision':'stale','payload':{}})
+        with self.assertRaises(ServiceError): self.call('read_progress',{'matter_id':self.matter,'progress_id':self.meeting})
+        with self.assertRaises(ServiceError): self.call('read_meeting_supplements',target)
+        events = self.call('read_matter',{'matter_id':self.matter})['events']
+        self.assertNotIn(self.meeting,[e['id'] for e in events])
+        record = self.service('read')['record']
+        self.assertEqual(record['body'],self.workspace.record(before,'progress',self.meeting,self.matter)['body'])
+        self.assertEqual(self.service('list')['items'][0]['history'][0]['actor']['id'],self.actor['id'])
+        self.move('restore')
+        self.assertEqual(self.data(),data)
+        self.assertEqual(self.workspace.event_update(query,self.workspace.observe()),byline)
+        self.assertEqual(self.call('read_meeting_supplements',target)['items'][0]['body'],'会后文案完整保留。')
+        self.assertEqual(Supplements(self.workspace).read({'project_id':self.matter,'event_id':self.meeting},self.workspace.version_files(baseline['version']))['items'][0]['body'],'会后文案完整保留。')
+        historical = self.workspace.historical({'version':archived['status']['version']})
+        self.assertFalse(any(e['id']==self.meeting for p in historical['data']['projects'] for e in p['events']))
+        labels = [v['label'] for v in self.workspace.history_entries({})]
+        self.assertTrue(any(v.startswith('移入回收站') for v in labels))
+        self.assertTrue(any(v.startswith('从回收站恢复') for v in labels))
+
+    def test_lost_acknowledgement_does_not_repeat_or_reapply_a_move(self):
+        from workspace_service import ServiceError
+        preview = self.service('preview')
+        args = {'revision':preview['revision'],'request_id':uuid.uuid4().hex,'confirmed':True}
+        commit = self.workspace.commit
+        def lost(*values, **kwargs):
+            commit(*values, **kwargs)
+            raise ServiceError('模拟保存成功后连接中断。', 'storage')
+        with patch.object(self.workspace, 'commit', side_effect=lost):
+            with self.assertRaises(ServiceError): self.service('archive', **args)
+        self.assertTrue(self.service('archive', **args)['replayed'])
+        self.assertEqual(len(self.service('list')['items'][0]['history']), 1)
+        self.move('restore')
+        self.assertTrue(self.service('archive', **args)['replayed'])
+        self.assertFalse(self.service('list')['items'][0]['archived'])
+
+    def test_roles_conflicts_nested_restore_empty_matter_and_no_remote_delete(self):
+        from workspace_service import ServiceError
+        for role in ('editor','viewer'):
+            actor = {**self.actor,'id':role,'role':role,'all_projects':True}
+            for op in ('list','read','preview','archive','restore'):
+                with self.assertRaises(AuthError): self.service(op,actor=actor)
+        preview = self.service('preview')
+        files = self.workspace.read_files()
+        path = 'counterparties/示例合作/matters/合作对接/meetings/20260115.md'
+        self.workspace.commit(files,{**files,path:files[path]+'\n补充会议事实。\n'},'修改原文','form')
+        with self.assertRaises(ServiceError) as error: self.service('archive',revision=preview['revision'],request_id=uuid.uuid4().hex,confirmed=True)
+        self.assertEqual(error.exception.code,'conflict')
+        self.move('archive')
+        self.move('archive','project',self.matter)
+        self.assertNotIn(self.matter,[p['id'] for p in self.data()['projects']])
+        self.assertNotIn(self.matter,[p['id'] for p in self.call('search_matters')['matters']])
+        with self.assertRaises(AuthError): self.call('read_matter',{'matter_id':self.matter})
+        with self.assertRaises(ServiceError): self.move('restore')
+        with self.assertRaises(AuthError): self.call('archive_progress',{'matter_id':self.matter,'progress_id':self.meeting})
+        self.move('restore','project',self.matter)
+        project = next(p for p in self.data()['projects'] if p['id']==self.matter)
+        self.assertNotIn(self.meeting,[e['id'] for e in project['events']])
+        for event in project['events']: self.move('archive',identity=event['id'])
+        project = next(p for p in self.data()['projects'] if p['id']==self.matter)
+        self.assertEqual(project['events'],[])
+        self.assertEqual(project['last_activity'],'')
+        self.move('restore')
+        self.assertEqual(len(next(p for p in self.data()['projects'] if p['id']==self.matter)['events']),1)
+
+    def test_shared_attachments_keep_original_access_scope_and_bytes(self):
+        from file_library import FileLibrary
+        library=FileLibrary(self.workspace)
+        self.workspace.actor=self.actor
+        self.workspace.policy=Policy(self.workspace,self.actor)
+        before=self.workspace.read_files()
+        raw=self.workspace.record(before,'project',self.matter)
+        result=library.save({'operation':'upload','payload':{'title':'共享附件','organization':'示例机构','category':'presentation','project_ids':[self.matter,'project-demo-investment'],'home_counterparty_id':raw['metadata']['primary_counterparty_id'],'status':'unspecified','filename':'shared.txt','data':base64.b64encode(b'original attachment').decode()}})
+        index=library.list()['files']; item=next(x for x in index if x['id']==result['id'])
+        source=library.download(item['id'],item['versions'][0]['id'])
+        index_source=self.workspace.read_files()['files.yaml']
+        self.move('archive','project',self.matter)
+        self.assertEqual(library.download(item['id'],item['versions'][0]['id']),source)
+        self.assertIn(item['id'],[x['id'] for x in library.list()['files']])
+        partial=Policy(self.workspace,{**self.actor,'role':'editor','all_projects':False,'project_ids':['project-demo-investment']})
+        self.assertFalse(partial.file_allowed(item),'Trashing a linked matter must never widen a shared-file ACL')
+        all_projects=Policy(self.workspace,{**self.actor,'role':'editor','all_projects':True})
+        self.assertTrue(all_projects.file_allowed(item))
+        self.move('archive','project','project-demo-investment')
+        self.assertNotIn(item['id'],[x['id'] for x in library.list()['files']])
+        self.assertEqual(self.workspace.read_files()['files.yaml'],index_source)
+        self.move('restore','project',self.matter)
+        self.assertIn(item['id'],[x['id'] for x in library.list()['files']])
+
+
 if __name__=='__main__': unittest.main(verbosity=2)

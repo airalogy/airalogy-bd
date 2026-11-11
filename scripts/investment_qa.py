@@ -142,12 +142,14 @@ class InvestmentQA:
         if operation in {'archive','unarchive'} and not self.admin: raise AuthError('问答归档由管理员管理。')
 
     def source_allowed(self, source):
-        return self.admin or source['project_id'] in self.policy.allowed
+        from recycle_bin import hidden
+        return not hidden(self.workspace.read_files(), source["project_id"], source.get("event_id", "")) and (self.admin or source["project_id"] in self.policy.allowed)
 
     def file_allowed(self, reference, files):
         from file_library import index_from
         item=next((x for x in index_from(files)['files'] if x['id']==reference['file_id']),None)
-        return bool(item and not item['archived'] and (self.admin or self.policy.file_allowed(item)))
+        from recycle_bin import file_visible
+        return bool(item and not item["archived"] and file_visible(files, item) and (self.admin or self.policy.file_allowed(item)))
 
     def redact(self, value, files):
         from file_library import index_from

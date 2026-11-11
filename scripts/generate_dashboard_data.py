@@ -286,6 +286,8 @@ def main() -> None:
         "files": load_yaml(CONTENT_ROOT / "files.yaml").get("files", []) if (CONTENT_ROOT / "files.yaml").exists() else [],
     }
 
+    from recycle_bin import dashboard as active_dashboard, INDEX
+    payload = active_dashboard(payload, {INDEX: (CONTENT_ROOT / INDEX).read_text()} if (CONTENT_ROOT / INDEX).exists() else {})
     OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT_FILE.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",

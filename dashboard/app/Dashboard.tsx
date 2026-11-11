@@ -1,4 +1,5 @@
 "use client";
+import {RecycleDialog} from "./RecycleBin";
 import MeetingSupplements from "./MeetingSupplements";
 import RecordPdfExport from "./RecordPdfExport";
 import EventAttachments from "./EventAttachments";
@@ -192,7 +193,7 @@ function formatDate(
 }
 
 function daysBetween(from: string, to: string | null) {
-  if (!to) return 0;
+  if (!from || !to) return 0;
   const start = Date.parse(`${from}T00:00:00Z`);
   const end = Date.parse(`${to}T00:00:00Z`);
   return Math.max(0, Math.floor((end - start) / 86_400_000));
@@ -595,10 +596,10 @@ function EventRecordDialog({
   files,
   snapshot,
   onQa,
-  canEdit, onChanged, participantNames,
+  canEdit, onChanged, participantNames, onRecycle,
 }: {
   participantNames: Record<string, string>;
-  canEdit: boolean; onChanged: () => Promise<void>;
+  canEdit: boolean; onChanged: () => Promise<void>; onRecycle?:()=>void;
   onQa?:()=>void;
   selection: RecordSelection | null;
   files: LibraryFile[];
@@ -649,6 +650,7 @@ function EventRecordDialog({
             {onQa&&<div className="qa-actions"><button className="admin-button" type="button" onClick={onQa}>整理到投资问答</button></div>}
             {selection.projectId && <EventAttachments key={`${selection.projectId}:${selection.event.id}`} files={files} matter={selection.projectId} event={selection.event.id} snapshot={snapshot} onDetails={onFiles} />}
             {selection.projectId && selection.event.type === "meeting" && <MeetingSupplements key={`${selection.projectId}:${selection.event.id}:${snapshot || "live"}`} projectId={selection.projectId} eventId={selection.event.id} canEdit={canEdit} snapshot={snapshot} timezone={workspace.timezone} onChanged={onChanged}/>}
+            {onRecycle&&<details className="record-more-actions"><summary>更多操作</summary><button type="button" className="supplement-text-action recycle-danger-text" onClick={onRecycle}>将此进展移入回收站</button></details>}
           </div>
         </Dialog.Content>
       </Dialog.Portal>
@@ -837,7 +839,7 @@ function EventHistoryDialog({
 
 function ProjectDrawer({
   fileSnapshot,
-  data, onSelectProject, onCounterpartyFiles, readOnly, onAi,
+  data, onSelectProject, onCounterpartyFiles, readOnly, onAi, onRecycle,
   onFiles,
   fileCount,
   onBpFiles,
@@ -863,6 +865,7 @@ function ProjectDrawer({
   data: DashboardData;
   onSelectProject: (project:Project) => void;
   onAi?: () => void;
+  onRecycle?: () => void;
   onCounterpartyFiles: (identity:string) => void;
   fileSnapshot?: string;
   onFiles: (eventId?:string) => void;
@@ -956,6 +959,7 @@ function ProjectDrawer({
               {onAi && <button type="button" onClick={onAi}>用 AI 整理此事项</button>}
               {!readOnly && <button type="button" onClick={() => onEdit({kind:"project",id:project.id})}>编辑信息</button>}
               {!readOnly && (!data.access || data.access.role === "admin") && <button type="button" onClick={() => onHistory({kind:"project",id:project.id})}>修改历史</button>}
+              {onRecycle&&<button type="button" className="recycle-danger-text" onClick={onRecycle}>移入回收站</button>}
             </div>}
             {project.summary && <section className="drawer-summary" aria-label="事项摘要">
               <p className="long-copy">{project.summary}</p>
@@ -1015,7 +1019,7 @@ function ProjectDrawer({
                 </div>
                 <div>
                   <span>最近进展</span>
-                  <strong>{formatDate(project.last_activity, workspace)}</strong>
+                  <strong>{project.last_activity ? formatDate(project.last_activity, workspace) : "暂无业务进展"}</strong>
                 </div>
                 {project.target_investment_amount_cny && (
                   <div>
@@ -1083,6 +1087,7 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
   const [historyTarget, setHistoryTarget] = useState<RecordTarget | null>(null);
   const [saveNotice, setSaveNotice] = useState("");
   const openHistory = (target: RecordTarget) => {setSelectedProject(null);setHistoryTarget(target);setPage("history");};
+  const [recycleTarget,setRecycleTarget]=useState<{kind:"project"|"progress";id:string;project_id?:string}|null>(null);
   const saved = (result: SavedResponse) => {setSaveNotice(result.message);setEditTarget(null);void onWorkspaceRefresh();};
   const [viewMode, setViewMode] = useState<ViewMode>("all");
   const [projectScope, setProjectScope] = useState("all");
@@ -1835,10 +1840,10 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
                 </span>
                 <span className="latest-cell" role="cell">
                   <time dateTime={latestEvent?.date}>
-                    {formatDate(latestEvent?.date, data.workspace)}
+                    {latestEvent ? formatDate(latestEvent.date, data.workspace) : "暂无业务进展"}
                   </time>
-                  <strong>{latestEvent?.title ?? "暂无事件"}</strong>
-                  <small>{inactiveDays === 0 ? "本日更新" : `${inactiveDays} 天未更新`}</small>
+                  <strong>{latestEvent?.title ?? ""}</strong>
+                  {latestEvent && <small>{inactiveDays === 0 ? "本日更新" : `${inactiveDays} 天未更新`}</small>}
                 </span>
                 <span className="action-cell" role="cell">
                   {project.next_action}
@@ -1963,6 +1968,7 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
 
       {selectedProject && (
         <ProjectDrawer fileSnapshot={historicalVersion} readOnly={readOnly || !canEdit}
+          onRecycle={!readOnly&&canAdmin?()=>setRecycleTarget({kind:"project",id:selectedProject.id}):undefined}
           onBpFiles={fileId => setFilesTarget({projectId:selectedProject.id,fileId,category:"bp",usageKind:"sent"})}
           onAi={readOnly ? undefined : () => {setAiScope(selectedProject.id);setSelectedProject(null);setPage("ai");}}
           data={data} onSelectProject={setSelectedProject} onCounterpartyFiles={identity => openFiles(undefined,undefined,identity)}
@@ -1995,7 +2001,9 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
       {!readOnly && canEdit && editTarget && <RecordEditor key={`${editTarget.kind}:${editTarget.id}:${editTarget.project_id || ""}`} target={editTarget} data={data} onPeopleChanged={onWorkspaceRefresh} onTargetChange={setEditTarget} onClose={() => setEditTarget(null)} onSaved={saved} onSavedWithFiles={async result => {const target=editTarget;await onWorkspaceRefresh();setSaveNotice(result.message);setEditTarget(null);openFiles(target.kind === "project" ? result.id : target.project_id,target.kind === "progress" ? result.id : undefined);}} />}
       {readOnly && historicalVersion && filesTarget && <HistoricalFiles data={data} target={filesTarget} version={historicalVersion} onClose={()=>setFilesTarget(null)}/> }
       {!readOnly && filesTarget && <FileLibraryDialog data={data} target={filesTarget} onClose={() => setFilesTarget(null)} onChanged={onWorkspaceRefresh} onHistory={openHistory} />}
+      {!readOnly&&canAdmin&&recycleTarget&&<RecycleDialog target={recycleTarget} timezone={data.workspace.timezone} onClose={()=>setRecycleTarget(null)} onChanged={async()=>{setSelectedRecord(null);setSelectedProject(null);await onWorkspaceRefresh();}}/>}
       <EventRecordDialog
+        onRecycle={!readOnly&&canAdmin&&selectedRecord?.projectId?()=>setRecycleTarget({kind:"progress",id:selectedRecord.event.id,project_id:selectedRecord.projectId}):undefined}
         participantNames={Object.fromEntries(data.people.map(person => [person.id, person.name]))}
         canEdit={!readOnly && canEdit}
         onChanged={onWorkspaceRefresh}

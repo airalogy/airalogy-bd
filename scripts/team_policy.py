@@ -8,14 +8,17 @@ class Policy:
     def __init__(self, workspace, actor):
         self.workspace, self.actor = workspace, actor
         self.admin = actor["role"] == "admin"
-        self.allowed = set(workspace.projects(workspace.read_files())) if actor["all_projects"] else set(actor["project_ids"])
+        from recycle_bin import hidden
+        files = workspace.read_files()
+        self.granted = set(workspace.projects(files)) if actor["all_projects"] else set(actor["project_ids"])
+        self.allowed = {p for p in self.granted if not hidden(files, p)}
 
     def project(self, identity):
         if identity not in self.allowed:
             raise AuthError("你没有访问这条事项的权限。")
 
     def file_allowed(self, item):
-        return bool(item.get("project_ids")) and set(item["project_ids"]).issubset(self.allowed)
+        return bool(set(item.get("project_ids", [])) & self.allowed) and set(item["project_ids"]).issubset(self.granted)
 
     def file(self, identity, files=None):
         from file_library import index_from
@@ -49,6 +52,10 @@ class Policy:
 
     def authorize(self, request):
         action = "save" if request.get("action") == "preview" else request.get("action")
+        if action == "recycle":
+            from recycle_bin import RecycleBin
+            RecycleBin(self.workspace).authorize()
+            return
         # Opening a server-side Finder or arbitrary backup directories is never a web operation.
         if action in {"file_location", "file_normalize_paths", "restore_backup", "migrate_layout", "backup_tick"}:
             raise AuthError("此操作仅可由服务器维护人员执行。")

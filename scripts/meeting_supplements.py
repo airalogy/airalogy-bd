@@ -69,6 +69,8 @@ class Supplements:
 
     def context(self, files, request):
         from workspace_service import ServiceError
+        from recycle_bin import require_active
+        require_active(files, request.get("project_id"), request.get("event_id", ""))
         matter = self.workspace.projects(files).get(request.get("project_id"))
         event = self.workspace.record(files, "progress", request.get("event_id"), request.get("project_id")) if matter else None
         if not event or event["event"]["type"] != "meeting":

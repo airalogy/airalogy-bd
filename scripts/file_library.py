@@ -305,7 +305,8 @@ class FileLibrary:
         from workspace_service import digest
         files = self.workspace.read_files()
         index = check_index(files)
-        return {"files": [{**item, "revision": digest(item)} for item in index["files"]], "directory_pattern": "content/counterparties/<对接方>/attachments/", "workspace_directory": str(self.workspace_root), "max_bytes": MAX_BYTES}
+        from recycle_bin import visible_files
+        return {"files": visible_files(files, [{**item, "revision": digest(item)} for item in index["files"]]), "directory_pattern": "content/counterparties/<对接方>/attachments/", "workspace_directory": str(self.workspace_root), "max_bytes": MAX_BYTES}
 
     def prepare(self, request, before):
         from workspace_service import digest, dump
@@ -317,6 +318,13 @@ class FileLibrary:
         payload = request.get("payload", {})
         if not isinstance(payload, dict):
             raise LibraryError("无法读取资料表单。")
+        from recycle_bin import require_active, file_visible
+        for project in payload.get("project_ids", []): require_active(before, project)
+        require_active(before, payload.get("project_id"), payload.get("event_id", ""))
+        if item and not file_visible(before, item): raise LibraryError("请先从回收站恢复所属事项。", "archived")
+        if item and operation in {"usage", "usage_remove"} and payload.get("record_id"):
+            previous = next((r for r in item["records"] if r["id"] == payload["record_id"]), None)
+            if previous: require_active(before, previous["project_id"], previous.get("event_id", ""))
         if identity and not item:
             raise LibraryError("这份资料已不存在，请刷新列表。")
         if item and request.get("revision") != digest(item):
