@@ -159,6 +159,6 @@ CLI 也可以通过 `codex mcp add airalogy_bd --url https://bd.example.com/api/
 
 接口遵循 [MCP Streamable HTTP 规范](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)。自动测试覆盖真实 HTTP、邀请时分配外部工具权限、待激活成员权限调整、TOTP 会话、默认关闭、角色/事项边界、凭据生命周期、草稿确认、管理员直接保存、重复请求、处理中断、并发冲突、单条恢复和停用。每次部署后仍需使用本人账号，按上述步骤完成实际客户端连接验收。
 
-## 会后补充
+## 补充记录
 
-会后文案、分析和背景资料可通过 MCP 独立关联到原会议，沿用事项权限、草稿确认和管理员直接保存规则。接口与操作说明见 [会后补充](meeting-supplements.md)。
+文案、分析和背景资料可通过 MCP 独立关联到事项下任意类型的沟通进展，沿用事项权限、草稿确认和管理员直接保存规则。接口与操作说明见 [补充记录](progress-supplements.md)。

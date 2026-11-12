@@ -29,13 +29,13 @@ export function RecycleDialog({target,mode="archive",timezone,onClose,onChanged}
       {error&&<div className="admin-alert" role="alert">{error}<button className="supplement-text-action" type="button" disabled={busy} onClick={()=>void load()}>重新读取并核对</button></div>}
       {!item&&!error&&<p role="status">正在读取记录…</p>}
       {item&&<><p className="recycle-kind">{item.kind==="project"?"事项":`沟通进展 · ${item.matter_name}`}</p><h3>{item.title}</h3>
-        <dl className="recycle-counts"><div><dt>沟通进展</dt><dd>{item.counts.progress} 条</dd></div><div><dt>关联资料</dt><dd>{item.counts.attachments} 份</dd></div><div><dt>会后补充</dt><dd>{item.counts.supplements} 条</dd></div></dl>
+        <dl className="recycle-counts"><div><dt>沟通进展</dt><dd>{item.counts.progress} 条</dd></div><div><dt>关联资料</dt><dd>{item.counts.attachments} 份</dd></div><div><dt>补充记录</dt><dd>{item.counts.supplements} 条</dd></div></dl>
         {mode!=="read"&&<p>{mode==="archive"?"移入后不再显示在正常列表、动态日历和统计中。共享人员、对接方和附件不会删除，可在管理中心的回收站恢复。":"恢复后重新显示在正常列表。单独移入回收站的其他进展会保持原有状态。"}</p>}
         {item.parent_archived&&<p className="admin-notice">所属事项也在回收站中，请先恢复事项。</p>}
         {mode==="archive"&&item.archived&&<p role="status">这条记录已经在回收站中。</p>}
         {mode==="restore"&&!item.archived&&<p role="status">这条记录已经恢复。</p>}
         {item.record&&<section className="recycle-preview"><h4>原始内容</h4>{item.record.event&&<p>{item.record.event.date} · {item.participant_names?.join("、")}</p>}<div className="markdown-record"><ReactMarkdown remarkPlugins={[remarkGfm]}>{item.record.body||item.record.event?.summary||"暂无正文"}</ReactMarkdown></div>{item.record.events?.map(e=><div key={e.id}><h4>{e.date} · {e.title}</h4><p>{e.summary}</p></div>)}</section>}
-        {item.supplements?.map(s=><details key={s.id} className="recycle-preview"><summary>{s.title||"会后补充"} · {s.date} · {s.author.name}</summary><div className="markdown-record"><ReactMarkdown remarkPlugins={[remarkGfm]}>{s.body}</ReactMarkdown></div></details>)}
+        {item.supplements?.map(s=><details key={s.id} className="recycle-preview"><summary>{s.title||"补充记录"} · {s.date} · {s.author.name}</summary><div className="markdown-record"><ReactMarkdown remarkPlugins={[remarkGfm]}>{s.body}</ReactMarkdown></div></details>)}
         {item.history.length>0&&<details className="recycle-history" open={mode==="read"}><summary>回收站操作记录 · {item.history.length} 次</summary><ol>{item.history.map((h,i)=><li key={i}><strong>{h.operation==="archive"?"移入回收站":"恢复"}</strong><span>{h.actor.name}</span><time dateTime={h.at}>{at(h.at,timezone)}</time></li>)}</ol></details>}
         <div className="admin-actions recycle-actions"><button type="button" className="admin-button" disabled={busy} onClick={onClose}>{mode==="read"?"关闭":"取消"}</button>{mode!=="read"&&<button type="button" className={`admin-button ${mode==="archive"?"recycle-danger":"admin-primary"}`} disabled={busy||!!blocked||!requestId} onClick={()=>void save()}>{busy?"处理中…":mode==="archive"?"确认移入回收站":"确认恢复"}</button>}</div>
       </>}

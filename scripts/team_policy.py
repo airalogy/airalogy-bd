@@ -66,7 +66,7 @@ class Policy:
                 self.project(request.get("project_id"))
             return
         if action == "supplements":
-            from meeting_supplements import Supplements
+            from progress_supplements import Supplements
             Supplements(self.workspace).authorize(request)
             return
         if action == "qa":

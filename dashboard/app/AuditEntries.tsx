@@ -17,7 +17,7 @@ const actionNames:Record<string,string>={
   "remote.configure":"调整外部 AI 全局开关","remote.issue":"生成个人接入凭据","remote.issue_direct":"生成可直接保存的接入凭据","remote.revoke":"撤销接入凭据",
   "remote.search_matters":"外部工具查询事项","remote.read_matter":"外部工具读取事项","remote.read_progress":"外部工具读取进展",
   "recycle.archive":"移入回收站","recycle.restore":"从回收站恢复",
-  "supplements.save":"保存会后补充","supplements.migrate":"迁入会后补充","remote.save_meeting_supplement":"外部工具保存会后补充","remote.submit_meeting_supplement":"外部工具提交会后补充",
+  "supplements.save":"保存补充记录","supplements.migrate":"迁入补充记录","remote.save_progress_supplement":"外部工具保存补充记录","remote.submit_progress_supplement":"外部工具提交补充记录","remote.save_meeting_supplement":"外部工具保存补充记录","remote.submit_meeting_supplement":"外部工具提交补充记录",
   "remote.submit_draft":"外部工具提交草稿","remote.confirm":"确认修改草稿","remote.reject":"驳回修改草稿","remote.save_progress":"外部工具直接保存进展",
   save:"保存资料",file_save:"更新附件",restore:"恢复资料",backup_config:"调整备份",backup_now:"立即备份",file_backup:"导出完整备份",
 };

@@ -85,7 +85,7 @@ export async function exerciseRemote({ directory, request, okay, admin, editor, 
   const toolViewer = await join(viewerInvitation.token);
   assert.equal((await web("issue", { label: "invalid writer", days: 7, canDraft: true }, toolViewer)).status, 422);
   const toolViewerToken = await issue(toolViewer, false);
-  assert.deepEqual((await (await rpc("tools/list", {}, toolViewerToken.token)).json()).result.tools.map(t => t.name), ["read_meeting_supplements", "meeting_supplement_history", "search_entities", "search_matters", "read_matter", "read_progress", "list_files", "read_file"]);
+  assert.deepEqual((await (await rpc("tools/list", {}, toolViewerToken.token)).json()).result.tools.map(t => t.name), ["read_progress_supplements", "progress_supplement_history", "search_entities", "search_matters", "read_matter", "read_progress", "list_files", "read_file"]);
   assert.equal((await web("issue", { label: "Unapproved", canDraft: true }, editor)).status, 403);
   assert.equal(await pendingCount(editor), 0);
   assert.equal(await pendingCount(toolViewer), 0);
@@ -122,7 +122,7 @@ export async function exerciseRemote({ directory, request, okay, admin, editor, 
   const init = await rpc("initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } }, writable.token, { Origin: "" });
   assert.equal((await init.json()).result.protocolVersion, "2025-11-25");
   const tools = (await (await rpc("tools/list", {}, readonly.token)).json()).result.tools.map(t => t.name);
-  assert.deepEqual(tools, ["read_meeting_supplements", "meeting_supplement_history", "search_entities", "search_matters", "read_matter", "read_progress", "list_files", "read_file"]);
+  assert.deepEqual(tools, ["read_progress_supplements", "progress_supplement_history", "search_entities", "search_matters", "read_matter", "read_progress", "list_files", "read_file"]);
   assert.ok((await (await rpc("tools/call", { name: "save", arguments: {} }, adminToken.token)).json()).error);
   assert.ok((await (await rpc("tools/call", { name: "submit_draft", arguments: {} }, readonly.token)).json()).error);
   const found = await call("search_matters", {}, writable.token);
@@ -267,7 +267,7 @@ export async function exerciseRemote({ directory, request, okay, admin, editor, 
   }
   assert.ok((await (await rpc("tools/call", {name:"save_progress",arguments:{}}, defaultToken.token)).json()).error);
   assert.ok((await (await rpc("tools/call", {name:"save_progress",arguments:{}}, rateToken.token)).json()).error);
-  assert.deepEqual((await (await rpc("tools/list", {}, direct.token)).json()).result.tools.map(t=>t.name), ["read_meeting_supplements","meeting_supplement_history","submit_meeting_supplement","save_meeting_supplement","search_company_events","read_company_event","search_entities","search_matters","read_matter","read_progress","list_files","read_file","prepare_upload","upload_status","discard_upload","submit_draft","save_progress"]);
+  assert.deepEqual((await (await rpc("tools/list", {}, direct.token)).json()).result.tools.map(t=>t.name), ["read_progress_supplements","progress_supplement_history","submit_progress_supplement","save_progress_supplement","search_company_events","read_company_event","search_entities","search_matters","read_matter","read_progress","list_files","read_file","prepare_upload","upload_status","discard_upload","submit_draft","save_progress"]);
   const directInit = (await (await rpc("initialize", {protocolVersion:"2025-11-25"}, direct.token)).json()).result;
   assert.match(directInit.instructions, /formally save progress/);
   const currentDirect = await call("read_matter", {matter_id:matter}, direct.token);

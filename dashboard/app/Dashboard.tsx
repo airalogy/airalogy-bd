@@ -1,6 +1,6 @@
 "use client";
 import {RecycleDialog} from "./RecycleBin";
-import MeetingSupplements from "./MeetingSupplements";
+import ProgressSupplements from "./ProgressSupplements";
 import RecordPdfExport from "./RecordPdfExport";
 import EventAttachments from "./EventAttachments";
 import { BrandLogo } from "./Branding";
@@ -649,7 +649,7 @@ function EventRecordDialog({
             </article>
             {onQa&&<div className="qa-actions"><button className="admin-button" type="button" onClick={onQa}>整理到投资问答</button></div>}
             {selection.projectId && <EventAttachments key={`${selection.projectId}:${selection.event.id}`} files={files} matter={selection.projectId} event={selection.event.id} snapshot={snapshot} onDetails={onFiles} />}
-            {selection.projectId && selection.event.type === "meeting" && <MeetingSupplements key={`${selection.projectId}:${selection.event.id}:${snapshot || "live"}`} projectId={selection.projectId} eventId={selection.event.id} canEdit={canEdit} snapshot={snapshot} timezone={workspace.timezone} onChanged={onChanged}/>}
+            {selection.projectId && <ProgressSupplements key={`${selection.projectId}:${selection.event.id}:${snapshot || "live"}`} projectId={selection.projectId} eventId={selection.event.id} canEdit={canEdit} snapshot={snapshot} timezone={workspace.timezone} onChanged={onChanged}/>}
             {onRecycle&&<details className="record-more-actions"><summary>更多操作</summary><button type="button" className="supplement-text-action recycle-danger-text" onClick={onRecycle}>将此进展移入回收站</button></details>}
           </div>
         </Dialog.Content>

@@ -65,7 +65,7 @@ export default function RecordPdfDocument({record, supplements = []}: {record: P
     </header>
     {event.related_document?.markdown.trim() ? <Markdown>{event.related_document.markdown}</Markdown> : <p>{event.summary}</p>}
     {supplements.length > 0 && <section className="record-pdf-supplements">
-      <h2>会后补充</h2>
+      <h2>补充记录</h2>
       {supplements.map(item => <section key={item.id} className="record-pdf-supplement">
         {item.title && <h3>{item.title}</h3>}
         <p className="record-pdf-meta">补充日期：{item.date} · 作者：{item.author.name}

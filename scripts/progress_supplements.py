@@ -1,4 +1,4 @@
-"""Independent post-meeting Markdown records, under the existing workspace lock."""
+"""Independent progress-linked Markdown supplements, under the existing workspace lock."""
 import json
 import re
 import uuid
@@ -31,21 +31,21 @@ def validate(files, projects):
         for item in records(files, directory):
             identity = item.get("id", "")
             if not ID.fullmatch(identity) or directory + "/supplements/" + identity + ".md" not in files:
-                raise ServiceError("会后补充标识或保存位置无效。")
-            if events.get(item.get("event_id"), {}).get("type") != "meeting":
-                raise ServiceError("会后补充必须关联所属事项中的会议。")
+                raise ServiceError("补充记录标识或保存位置无效。")
+            if item.get("event_id") not in events:
+                raise ServiceError("补充记录必须关联所属事项中的沟通进展。")
             Workspace.check_date(item.get("date"))
             if not isinstance(item.get("title"), str) or len(item["title"]) > 120 or not isinstance(item.get("body"), str) or not item["body"].strip() or len(item["body"]) > 50000:
-                raise ServiceError("会后补充标题或正文格式无效。")
+                raise ServiceError("补充记录标题或正文格式无效。")
             for field in ("author", "updated_by"):
                 actor = item.get(field)
                 if not isinstance(actor, dict) or set(actor) != {"id", "name"} or not all(isinstance(v, str) and v for v in actor.values()):
-                    raise ServiceError("会后补充缺少实际操作账号。")
+                    raise ServiceError("补充记录缺少实际操作账号。")
             for field in ("created_at", "updated_at"):
                 try:
                     if not datetime.fromisoformat(item[field]).tzinfo: raise ValueError()
                 except (KeyError, TypeError, ValueError):
-                    raise ServiceError("会后补充保存时间无效。")
+                    raise ServiceError("补充记录保存时间无效。")
 
 
 class Supplements:
@@ -55,13 +55,13 @@ class Supplements:
     def authorize(self, request):
         op = request.get("operation", "list")
         if op not in READS | {"save", "migrate"}:
-            raise AuthError("未知的会后补充操作。", "invalid")
+            raise AuthError("未知的补充记录操作。", "invalid")
         policy = self.workspace.policy
         if policy:
             if not (policy.admin and op in READS and request.get("snapshot")):
                 policy.project(request.get("project_id"))
             if op not in READS and policy.actor["role"] == "viewer":
-                raise AuthError("只读成员不能编辑会后补充。")
+                raise AuthError("只读成员不能编辑补充记录。")
             if op == "migrate" and not policy.admin:
                 raise AuthError("迁移已有进展由管理员操作。")
         if op not in READS and (request.get("snapshot") or request.get("version")):
@@ -73,8 +73,8 @@ class Supplements:
         require_active(files, request.get("project_id"), request.get("event_id", ""))
         matter = self.workspace.projects(files).get(request.get("project_id"))
         event = self.workspace.record(files, "progress", request.get("event_id"), request.get("project_id")) if matter else None
-        if not event or event["event"]["type"] != "meeting":
-            raise ServiceError("未找到所属事项中的会议。", "not_found")
+        if not event:
+            raise ServiceError("未找到所属事项中的沟通进展。", "not_found")
         return matter, event
 
     def read(self, request, files=None):
@@ -85,9 +85,9 @@ class Supplements:
         identity = request.get("id", "")
         if identity:
             found = next((item for item in items if item["id"] == identity), None)
-            if not found: raise ServiceError("未找到这条会后补充。", "not_found")
+            if not found: raise ServiceError("未找到这条补充记录。", "not_found")
             return {"record": found, "revision": digest(found)}
-        return {"items": items, "revision": digest(items), "meeting_title": event["event"]["title"]}
+        return {"items": items, "revision": digest(items), "progress_title": event["event"]["title"]}
 
     def execute(self, request, *, preview=False):
         from workspace_service import ServiceError, digest, markdown, replace_item
@@ -136,7 +136,7 @@ class Supplements:
             if old.get("result"): return old["result"]
             raise ServiceError("保存结果需要核对，请回读补充和历史，不要更换请求编号重试。", "uncertain")
         before = workspace.read_files()
-        matter, meeting = self.context(before, request)
+        matter, progress = self.context(before, request)
         current = self.read(request, before)
         if request.get("revision") != current["revision"]:
             raise ServiceError("补充内容已变化，请读取最新版本后再保存。", "conflict")
@@ -145,7 +145,7 @@ class Supplements:
         source_id = None
         if op == "migrate":
             if request.get("id") or request.get("confirmed") is not True:
-                raise ServiceError("请确认将已有补充进展迁入本次会议。")
+                raise ServiceError("请确认将已有补充进展迁入这条沟通进展。")
             source_id = request.get("source_id")
             source = workspace.record(before, "progress", source_id, request["project_id"])
             if not source or source_id == request["event_id"] or not source["event"]["title"].startswith("会后补充："):
@@ -174,7 +174,7 @@ class Supplements:
         identity = request.get("id") or "supp-" + uuid.uuid4().hex
         previous = current.get("record")
         if any(item["id"] != identity and item["date"] == payload["date"] and item["body"] == payload["body"].strip() for item in records(before, matter[0], request["event_id"])):
-            raise ServiceError("该会议已有同日期、同正文的补充，请查看已有记录。", "duplicate")
+            raise ServiceError("该进展已有同日期、同正文的补充，请查看已有记录。", "duplicate")
         now = datetime.now(timezone.utc).isoformat()
         metadata = {"id": identity, "event_id": request["event_id"], "title": payload["title"].strip(), "date": payload["date"],
                     "author": previous["author"] if previous else actor, "created_at": previous["created_at"] if previous else now,
@@ -189,7 +189,7 @@ class Supplements:
         workspace.atomic(receipt_path, json.dumps({"signature": signature}))
         if workspace.actor is None:
             workspace.actor = {**actor, "email": ""}
-        result = workspace.commit(before, files, ("迁入会后补充：" if source_id else "修改会后补充：" if previous else "新增会后补充：") + (metadata["title"] or meeting["event"]["title"]), "form")
+        result = workspace.commit(before, files, ("迁入补充记录：" if source_id else "修改补充记录：" if previous else "新增补充记录：") + (metadata["title"] or progress["event"]["title"]), "form")
         result.update(id=identity, revision=self.read({**request, "id": identity})["revision"])
         workspace.atomic(receipt_path, json.dumps({"signature": signature, "result": result}, ensure_ascii=False))
         return result

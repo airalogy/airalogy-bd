@@ -335,7 +335,7 @@ class RemoteAccess:
 
     def save_request(self, saved, actor, token, preview=False):
         if saved.get("kind") == "supplement":
-            from meeting_supplements import Supplements
+            from progress_supplements import Supplements
             return Supplements(self.workspace).execute(saved, preview=preview)
         if saved.get("kind") == "company":
             return save_company(self, saved, actor, token, preview=preview)

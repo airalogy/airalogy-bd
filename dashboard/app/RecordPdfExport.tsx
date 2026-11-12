@@ -48,15 +48,15 @@ function PdfPreview({selection, onClose}: {selection: ExportSelection; onClose: 
           <Dialog.Close asChild><button type="button" className="close-button" aria-label="关闭 PDF 预览">×</button></Dialog.Close>
         </header>
         <div className="record-pdf-toolbar">
-          {selection.projectId && selection.event.type === "meeting" && <label>
+          {selection.projectId && <label>
             <input type="checkbox" checked={includeSupplements} disabled={loading} onChange={event => void chooseSupplements(event.target.checked)}/>
-            附上会后补充
+            附上补充记录
           </label>}
           <button type="button" className="admin-button admin-primary" disabled={loading || !!error} onClick={() => {setPrintError(""); print();}}>打印 / 存为 PDF</button>
         </div>
         {printError && <p className="record-pdf-status admin-alert" role="alert">{printError}</p>}
-        {loading && <p className="record-pdf-status" role="status">正在读取会后补充…</p>}
-        {includeSupplements && !loading && !error && supplements.length === 0 && <p className="record-pdf-status" role="status">这条会议暂无会后补充。</p>}
+        {loading && <p className="record-pdf-status" role="status">正在读取补充记录…</p>}
+        {includeSupplements && !loading && !error && supplements.length === 0 && <p className="record-pdf-status" role="status">这条进展暂无补充记录。</p>}
         {error && <div className="record-pdf-status admin-alert" role="alert">{error}{includeSupplements && <button type="button" className="supplement-text-action" onClick={() => void chooseSupplements(true)}>重新读取</button>}</div>}
         <div className="record-dialog-scroll record-pdf-preview">
           <style>{recordPdfStyles}</style>

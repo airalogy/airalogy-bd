@@ -1109,7 +1109,7 @@ try:
     check_index(file_sources)
     from investment_qa import check_files as check_qa
     check_qa(file_sources)
-    from meeting_supplements import validate as check_supplements
+    from progress_supplements import validate as check_supplements
     from workspace_service import Workspace
     check_supplements(file_sources, Workspace.projects(file_sources))
     from recycle_bin import validate as check_recycle_bin

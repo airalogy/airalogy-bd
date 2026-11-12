@@ -1020,7 +1020,7 @@ class MeetingSupplementTests(unittest.TestCase):
         return self.target(revision=current['revision'],request_id=uuid.uuid4().hex,changes={'title':'产业介绍草稿','date':'2026-01-16','body':'## 产业应用\n\n完整文案。\n\n- 数据整理\n- 过程记录',**changes})
 
     def service(self, actor, **request):
-        from meeting_supplements import Supplements
+        from progress_supplements import Supplements
         self.workspace.actor=actor
         self.workspace.policy=Policy(self.workspace,actor)
         return Supplements(self.workspace).execute({'action':'supplements','project_id':self.matter,'event_id':self.meeting,**request})
@@ -1078,7 +1078,7 @@ class MeetingSupplementTests(unittest.TestCase):
             self.service(editor,operation='save',snapshot=saved['history_version'],request_id=uuid.uuid4().hex)
 
     def test_drafts_permissions_replay_and_uncertain_outcome(self):
-        from meeting_supplements import Supplements
+        from progress_supplements import Supplements
         from workspace_service import ServiceError
         args=self.args();draft_token=self.issue('draft')
         before=self.workspace.read_files()
@@ -1151,6 +1151,86 @@ class MeetingSupplementTests(unittest.TestCase):
 
 
 
+class ProgressSupplementTests(unittest.TestCase):
+    setUp = RemoteWriteTests.setUp
+    issue = RemoteWriteTests.issue
+    call = RemoteWriteTests.call
+    service = MeetingSupplementTests.service
+    meeting = '2026-01-05-initial-contact'
+
+    def target(self, **extra):
+        return {'matter_id':self.matter,'progress_id':self.meeting,**extra}
+
+    def args(self, **changes):
+        current=self.call('read_progress_supplements',self.target())
+        return self.target(revision=current['revision'],request_id=uuid.uuid4().hex,changes={'date':'2026-01-20','body':'## 背景分析\n\n独立补充内容。',**changes})
+
+    def test_every_progress_type_preserves_original_record_and_business_activity(self):
+        for event_type in ('contact','meeting','proposal','agreement','administrative','decision','payment','milestone','status_change','other'):
+            with self.subTest(event_type=event_type):
+                # Separate business scenarios from the already tested rate limiter.
+                with self.accounts.db: self.accounts.db.execute('DELETE FROM remote_attempts')
+                current=self.workspace.get_record({'kind':'progress','id':'','project_id':self.matter})
+                self.workspace.actor=self.actor
+                added=self.workspace.save({'kind':'progress','id':'','project_id':self.matter,'revision':current['revision'],'payload':{
+                    'date':'2026-01-19','type':event_type,'title':'补充测试 '+event_type,'summary':'记录已经发生的业务动作。',
+                    'importance':'normal','participants':['林岚'],'body':'原会议正文。' if event_type=='meeting' else ''}})
+                self.meeting=added['id']
+                files=self.workspace.read_files()
+                query={'kind':'progress','id':self.meeting,'project_id':self.matter}
+                byline=self.workspace.event_update(query,self.workspace.observe())
+                data=json.loads((self.content/'generated/dashboard.json').read_text())
+                original=self.call('read_progress',self.target())
+                args=self.args();saved=self.call('save_progress_supplement',args)
+                self.assertEqual(self.call('save_progress_supplement',args),saved)
+                after=self.workspace.read_files()
+                self.assertEqual({k:after[k] for k in files},files)
+                self.assertEqual(len(set(after)-set(files)),1)
+                self.assertEqual(json.loads((self.content/'generated/dashboard.json').read_text()),data)
+                self.assertEqual(self.workspace.event_update(query,self.workspace.observe()),byline)
+                self.assertEqual(self.call('read_progress',self.target())['fields'],original['fields'])
+                listing=self.call('read_progress_supplements',self.target())
+                self.assertEqual(listing['progress_title'],'补充测试 '+event_type)
+                self.assertEqual(listing['items'][0]['body'],args['changes']['body'])
+                self.assertEqual(self.call('read_progress_supplements',self.target(snapshot=added['status']['version']))['items'],[])
+
+    def test_generic_tools_edit_history_permissions_and_legacy_retries(self):
+        from workspace_service import ServiceError
+        args=self.args();draft_token=self.issue('draft')
+        draft=self.call('submit_progress_supplement',args,draft_token)
+        self.assertEqual(self.call('read_progress_supplements',self.target())['items'],[])
+        saved=self.remote.browser({'operation':'confirm','draftId':draft['draftId'],'confirmed':True},self.actor)
+        first=self.call('read_progress_supplements',self.target(id=saved['id']))
+        update=self.target(id=saved['id'],revision=first['revision'],request_id=uuid.uuid4().hex,changes={'body':'修订后的背景分析。'})
+        result=self.call('save_progress_supplement',update)
+        self.assertEqual(self.call('save_progress_supplement',update),result)
+        revised=self.call('read_progress_supplements',self.target(id=saved['id']))
+        self.assertEqual(revised['record']['date'],args['changes']['date'])
+        self.assertEqual(revised['record']['author'],first['record']['author'])
+        self.assertEqual(self.call('progress_supplement_history',self.target(id=saved['id'],version=saved['status']['version']))['record'],first['record'])
+        self.assertEqual(len(self.call('progress_supplement_history',self.target(id=saved['id']))['versions']),2)
+        with self.assertRaises(ServiceError):self.call('save_progress_supplement',{**update,'request_id':uuid.uuid4().hex})
+        with self.assertRaises(AuthError):self.call('save_progress_supplement',self.args(),draft_token)
+        for role in ('editor','viewer'):
+            account={**self.actor,'role':role,'all_projects':False,'project_ids':['project-demo-investment']}
+            for op in ('list','read','history','version','save'):
+                with self.assertRaises(AuthError):self.service(account,operation=op,id=saved['id'],version=saved['status']['version'])
+        viewer={**self.actor,'role':'viewer','all_projects':False,'project_ids':[self.matter]}
+        self.assertEqual(len(self.service(viewer,operation='list')['items']),1)
+        with self.assertRaises(AuthError):self.service(viewer,operation='save')
+        legacy_target={'matter_id':self.matter,'meeting_id':self.meeting}
+        old=self.call('read_meeting_supplements',legacy_target)
+        self.assertIn('meeting_title',old)
+        legacy_args={**legacy_target,'revision':old['revision'],'request_id':uuid.uuid4().hex,'changes':{'date':'2026-01-21','body':'现有连接补充'}}
+        legacy_saved=self.call('save_meeting_supplement',legacy_args)
+        self.assertEqual(self.call('save_meeting_supplement',legacy_args),legacy_saved)
+        with self.assertRaises(AuthError):
+            self.call('save_progress_supplement',{**self.target(),'revision':old['revision'],'request_id':legacy_args['request_id'],'changes':legacy_args['changes']})
+        self.assertEqual(len(self.call('read_progress_supplements',self.target())['items']),2)
+        with self.assertRaises(ServiceError):self.call('read_progress_supplements',self.target(progress_id='absent'))
+        with self.assertRaises(AuthError):self.call('read_progress_supplements',{**self.target(),'meeting_id':self.meeting})
+
+
 class RecycleBinTests(unittest.TestCase):
     setUp = RemoteWriteTests.setUp
     issue = RemoteWriteTests.issue
@@ -1177,7 +1257,7 @@ class RecycleBinTests(unittest.TestCase):
     def test_preserve_original_files_history_snapshots_supplements_and_restore(self):
         from recycle_bin import INDEX
         from workspace_service import ServiceError
-        from meeting_supplements import Supplements
+        from progress_supplements import Supplements
         target = {'matter_id':self.matter,'meeting_id':self.meeting}
         original_files = self.workspace.read_files()
         meeting_path = 'counterparties/示例合作/matters/合作对接/meetings/20260115.md'

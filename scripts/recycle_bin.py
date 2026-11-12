@@ -133,7 +133,7 @@ class RecycleBin:
 
     def describe(self, files, request):
         from file_library import index_from
-        from meeting_supplements import records
+        from progress_supplements import records
         from workspace_service import digest
         kind, identity = request.get("kind"), request.get("id")
         if kind not in {"project", "progress"} or not isinstance(identity, str) or not identity:
@@ -174,7 +174,7 @@ class RecycleBin:
                     participants += [p for group in groups.values() for p in group] if isinstance(groups, dict) else groups
                     people = {p["id"]: p["name"] for p in parse_yaml(files["people.yaml"])["people"]}
                     item["participant_names"] = [people.get(p, p) for p in dict.fromkeys(participants)]
-                    from meeting_supplements import records
+                    from progress_supplements import records
                     item["supplements"] = records(files, self.workspace.projects(files)[item["project_id"]][0], item["id"])
             return item
         if request.get("confirmed") is not True:
