@@ -18,6 +18,7 @@ class Policy:
             raise AuthError("你没有访问这条事项的权限。")
 
     def file_allowed(self, item):
+        if item.get("reference_id"): return self.admin or self.actor["all_projects"]
         return bool(set(item.get("project_ids", [])) & self.allowed) and set(item["project_ids"]).issubset(self.granted)
 
     def file(self, identity, files=None):
@@ -52,6 +53,15 @@ class Policy:
 
     def authorize(self, request):
         action = "save" if request.get("action") == "preview" else request.get("action")
+        if action == "references":
+            from reference_cases import authorize, READS
+            authorize(self.workspace, request.get("operation","list") not in READS)
+            return
+        if action == "file_save":
+            from file_library import index_from
+            item = next((f for f in index_from(self.workspace.read_files())["files"] if f["id"]==request.get("id")),None)
+            if (item and item.get("reference_id")) or (request.get("payload") or {}).get("reference_id"):
+                raise AuthError("请在参考案例中维护附件。")
         if action == "recycle":
             from recycle_bin import RecycleBin
             RecycleBin(self.workspace).authorize()
@@ -63,7 +73,9 @@ class Policy:
             if self.actor["role"] == "viewer":
                 raise AuthError("只读成员不能上传文件。")
             if action == "upload_stage":
-                self.project(request.get("project_id"))
+                from reference_cases import UPLOAD_SCOPE, authorize
+                if request.get("project_id")==UPLOAD_SCOPE: authorize(self.workspace,True)
+                else: self.project(request.get("project_id"))
             return
         if action == "tasks":
             from matter_tasks import Tasks
@@ -82,8 +94,8 @@ class Policy:
         if action in {"workspace", "files"}:
             return
         if action == "file_download":
-            self.file(request.get("id"))
-            if request.get("snapshot"):
+            item=self.file(request.get("id"))
+            if request.get("snapshot") and not item.get("reference_id"):
                 raise AuthError("历史版本资料由管理员查看。")
             return
         if action == "event_update":

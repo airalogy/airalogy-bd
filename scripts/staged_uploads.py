@@ -58,11 +58,15 @@ class UploadStore:
             raise LibraryError("单个文件须非空且不超过 50 MB。", "too_large")
         if not isinstance(sha256, str) or not re.fullmatch(r"[a-f0-9]{64}", sha256):
             raise LibraryError("请提供文件的 SHA-256 指纹。")
-        if intake_id:
+        from reference_cases import UPLOAD_SCOPE, authorize
+        if matter==UPLOAD_SCOPE:
+            if intake_id: raise LibraryError("参考案例上传不能用于事项计划。")
+            authorize(self.workspace,True)
+        elif intake_id:
             self.workspace.authorize_intake_upload(intake_id, matter)
         elif matter not in self.workspace.projects(self.workspace.read_files()):
             raise LibraryError("请选择现有事项。")
-        if self.workspace.policy and not intake_id:
+        if self.workspace.policy and not intake_id and matter!=UPLOAD_SCOPE:
             self.workspace.policy.project(matter)
         records = self.cleanup()
         owned = [v for v in records if v["scope"]["owner"] == self.scope["owner"]]
@@ -85,7 +89,9 @@ class UploadStore:
         value = json.loads(path.read_text())
         if value["scope"] != self.scope or (matter is not None and value["matter_id"] != matter):
             raise LibraryError("不能访问其他账号、连接或事项的上传。", "forbidden")
-        if value.get("intake_id"):
+        from reference_cases import UPLOAD_SCOPE, authorize
+        if value["matter_id"]==UPLOAD_SCOPE: authorize(self.workspace,True)
+        elif value.get("intake_id"):
             self.workspace.authorize_intake_upload(value["intake_id"], value["matter_id"])
         elif self.workspace.policy:
             self.workspace.policy.project(value["matter_id"])

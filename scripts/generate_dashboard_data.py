@@ -283,7 +283,7 @@ def main() -> None:
         "people": build_people(profiles, projects),
         "projects": projects,
         "company_events": company_events,
-        "files": load_yaml(CONTENT_ROOT / "files.yaml").get("files", []) if (CONTENT_ROOT / "files.yaml").exists() else [],
+        "files": [f for f in load_yaml(CONTENT_ROOT / "files.yaml").get("files", []) if not f.get("reference_id")] if (CONTENT_ROOT / "files.yaml").exists() else [],
     }
 
     from recycle_bin import dashboard as active_dashboard, INDEX

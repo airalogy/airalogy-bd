@@ -1537,4 +1537,144 @@ class TaskTests(unittest.TestCase):
         self.assertEqual(self.call('search_tasks',{})['total'],1)
 
 
+from file_library import FileLibrary
+
+class ReferenceCaseTests(unittest.TestCase):
+    setUp=RemoteWriteTests.setUp
+    issue=RemoteWriteTests.issue
+    call=RemoteWriteTests.call
+
+    def args(self,**changes):
+        return {'revision':self.call('read_reference_case')['revision'],'request_id':uuid.uuid4().hex,'changes':{'title':'研发平台路演','organization':'示例参考公司','observed_on':'2026-11-13','source_type':'roadshow','source_name':'示例产业论坛','body':'## 路演内容\n\n- 对方介绍产品订阅模式。','insights':'可进一步了解客户续费情况。',**changes}}
+
+    def service(self,actor,**req):
+        from reference_cases import ReferenceCases
+        self.workspace.actor=actor;self.workspace.policy=Policy(self.workspace,actor)
+        return ReferenceCases(self.workspace).execute(req)
+
+    def upload(self,token=None,data=b'%PDF-1.4 example source material'):
+        prepared=self.call('prepare_reference_upload',{'filename':'路演.pdf','size':len(data),'sha256':hashlib.sha256(data).hexdigest()},token)
+        self.call('upload_bytes',{'upload_id':prepared['upload_id'],'filename':'路演.pdf','data':base64.b64encode(data).decode()},token)
+        return {'upload_id':prepared['upload_id'],'title':'路演原件','category':'presentation'}
+
+    def update(self,saved,**changes):
+        current=self.call('read_reference_case',{'id':saved['id']})
+        return self.call('save_reference_case',{'id':saved['id'],'revision':current['revision'],'request_id':uuid.uuid4().hex,'changes':changes})
+
+    def test_text_identity_search_and_business_independence(self):
+        self.workspace.observe();before=self.workspace.read_files();dashboard=json.loads((self.content/'generated/dashboard.json').read_text())
+        args=self.args(tags=['商业模式','科研']);saved=self.call('save_reference_case',args)
+        self.assertEqual(self.call('save_reference_case',args),saved)
+        current=self.call('read_reference_case',{'id':saved['id']})
+        self.assertEqual(current['record']['author'],{'id':self.actor['id'],'name':self.actor['name']})
+        self.assertNotIn('email',json.dumps(current))
+        for query in ['示例参考公司','订阅模式','续费']:
+            self.assertEqual(self.call('search_reference_cases',{'query':query})['total'],1)
+        self.assertEqual(self.call('search_reference_cases',{'tag':'科研'})['total'],1)
+        self.assertEqual({p:v for p,v in self.workspace.read_files().items() if not p.startswith('references/')},before)
+        self.assertEqual(json.loads((self.content/'generated/dashboard.json').read_text()),dashboard)
+        self.assertEqual(len(self.workspace.projects(self.workspace.read_files())),2)
+
+    def test_photos_files_atomic_history_snapshots_and_backup(self):
+        from reference_cases import ReferenceCases
+        args=self.args();args['attachments']=[self.upload()]
+        saved=self.call('save_reference_case',args);current=self.call('read_reference_case',{'id':saved['id']})
+        file=current['attachments'][0];version=file['versions'][0]
+        self.assertEqual(file['project_ids'],[]);self.assertEqual(file['reference_id'],saved['id'])
+        self.assertTrue(version['archive_path'].startswith('references/'+saved['id']+'/attachments/'))
+        self.assertEqual(Path(FileLibrary(self.workspace).download(file['id'],version['id'])['path']).read_bytes(),b'%PDF-1.4 example source material')
+        self.assertEqual(FileLibrary(self.workspace).list()['files'],[])
+        self.assertEqual(json.loads((self.content/'generated/dashboard.json').read_text())['files'],[])
+        updated=self.update(saved,body='修订后的完整笔记。',attachment_ids=[])
+        self.assertEqual(self.call('read_reference_case',{'id':saved['id']})['attachments'],[])
+        history=self.call('reference_case_history',{'id':saved['id']})['versions'];self.assertEqual(len(history),2)
+        past=self.call('reference_case_history',{'id':saved['id'],'version':saved['history_version']});self.assertEqual(len(past['attachments']),1);self.assertEqual(past['record']['body'],args['changes']['body'])
+        self.assertEqual(len(self.call('reference_case_history',{'id':saved['id'],'snapshot':saved['history_version']})['versions']),1)
+        archive=create_backup(self.workspace);target=self.content.parent/'restored-reference'
+        restore_backup(backup_download(self.workspace,archive['id'])['path'],target)
+        restored=Workspace(target/'content');read=ReferenceCases(restored).execute({'operation':'read','id':saved['id'],'snapshot':saved['history_version']})
+        self.assertEqual(read['record']['body'],args['changes']['body'])
+        self.assertEqual(Path(FileLibrary(restored).download(file['id'],version['id'])['path']).read_bytes(),b'%PDF-1.4 example source material')
+
+    def test_scope_viewer_editors_and_attachment_download_permissions(self):
+        args=self.args();args['attachments']=[self.upload()];saved=self.call('save_reference_case',args);current=self.call('read_reference_case',{'id':saved['id']})
+        file=current['attachments'][0]
+        for role,all_projects in [('viewer',False),('editor',False)]:
+            actor={**self.actor,'role':role,'all_projects':all_projects,'project_ids':[self.matter]}
+            for op in ['list','read','history','version','save']:
+                with self.assertRaises(AuthError):self.service(actor,operation=op,id=saved['id'])
+            with self.assertRaises(AuthError):Policy(self.workspace,actor).authorize({'action':'file_download','id':file['id']})
+        viewer={**self.actor,'role':'viewer','all_projects':True}
+        self.assertEqual(self.service(viewer,operation='list')['total'],1)
+        Policy(self.workspace,viewer).authorize({'action':'file_download','id':file['id'],'snapshot':saved['history_version']})
+        with self.assertRaises(AuthError):self.service(viewer,operation='save')
+        editor={**self.actor,'role':'editor','all_projects':True,'id':'actual-editor','name':'实际编辑人'}
+        result=self.service(editor,operation='save',id=saved['id'],revision=current['revision'],request_id=uuid.uuid4().hex,payload={**current['fields'],'insights':'编辑成员的分析。'})
+        item=self.service(editor,operation='read',id=saved['id'])
+        self.assertEqual(item['record']['updated_by']['id'],'actual-editor');self.assertEqual(item['record']['author']['id'],self.actor['id'])
+        with self.assertRaises(AuthError):self.service(editor,operation='save',id=saved['id'],revision=item['revision'],request_id=uuid.uuid4().hex,payload={**item['fields'],'archived':True})
+        for actor in (self.actor,editor):
+            with self.assertRaises(AuthError):Policy(self.workspace,actor).authorize({'action':'file_save','operation':'metadata','id':file['id'],'payload':{}})
+
+    def test_duplicate_conflict_spoofing_and_invalid_fields(self):
+        from workspace_service import ServiceError
+        from file_library import LibraryError
+        original=self.args();saved=self.call('save_reference_case',original)
+        with self.assertRaises(ServiceError) as err:self.call('save_reference_case',self.args())
+        self.assertEqual(err.exception.code,'duplicate')
+        current=self.call('read_reference_case',{'id':saved['id']});self.update(saved,summary='新的摘要')
+        with self.assertRaises(ServiceError) as err:self.call('save_reference_case',{'id':saved['id'],'revision':current['revision'],'request_id':uuid.uuid4().hex,'changes':{'body':'旧版本修改'}})
+        self.assertEqual(err.exception.code,'conflict')
+        for changes in ({'author':{'id':'fake','name':'假用户'}},{'source_url':'javascript:alert(1)'},{'observed_on':'2026-02-31'},{'tags':['x'*31]},{'source_type':'unknown'},{'attachment_ids':['file-'+'0'*32]}):
+            with self.assertRaises((AuthError,ServiceError,LibraryError)):self.call('save_reference_case',self.args(title=uuid.uuid4().hex,**changes))
+        with self.assertRaises(AuthError):self.call('save_reference_case',{**original,'changes':{**original['changes'],'summary':'different'}})
+
+    def test_mcp_draft_files_confirmation_is_atomic_and_owner_bound(self):
+        token=self.issue('draft');args=self.args();args['attachments']=[self.upload(token)]
+        draft=self.call('submit_reference_case',args,token);self.assertEqual(self.call('submit_reference_case',args,token),draft)
+        self.assertEqual(self.call('search_reference_cases')['total'],0)
+        self.assertEqual(len(self.remote.browser({'operation':'drafts'},self.actor)['drafts']),1)
+        path=self.remote.browser({'operation':'attachment','draftId':draft['draftId'],'uploadId':args['attachments'][0]['upload_id']},self.actor)['path']
+        self.assertEqual(Path(path).read_bytes(),b'%PDF-1.4 example source material')
+        saved=self.remote.browser({'operation':'confirm','draftId':draft['draftId'],'confirmed':True},self.actor)
+        self.assertEqual(self.call('search_reference_cases')['total'],1)
+        self.assertEqual(len(self.call('read_reference_case',{'id':saved['id']})['attachments']),1)
+        with self.assertRaises(AuthError):self.remote.browser({'operation':'confirm','draftId':draft['draftId'],'confirmed':True},self.actor)
+        with self.assertRaises(AuthError):self.call('save_reference_case',self.args(title='不能直接保存'),token)
+        readonly=self.issue('read')
+        with self.assertRaises(AuthError):self.call('prepare_reference_upload',{'filename':'x.pdf','size':1,'sha256':'a'*64},readonly)
+
+    def test_upload_binding_reject_duplicates_and_failed_save_leaves_no_case(self):
+        from file_library import LibraryError
+        from workspace_service import ServiceError
+        upload=self.upload();other=self.issue('direct')
+        with self.assertRaises(LibraryError):self.call('upload_status',{'upload_id':upload['upload_id']},other)
+        args=self.args();args['attachments']=[upload,upload]
+        with self.assertRaises(ServiceError):self.call('save_reference_case',args)
+        self.assertEqual(self.call('search_reference_cases')['total'],0)
+        args['attachments']=[upload];args['request_id']=uuid.uuid4().hex;saved=self.call('save_reference_case',args)
+        extra=self.upload();current=self.call('read_reference_case',{'id':saved['id']})
+        with self.assertRaises(ServiceError):self.call('save_reference_case',{'id':saved['id'],'revision':current['revision'],'request_id':uuid.uuid4().hex,'changes':{},'attachments':[extra]})
+        self.assertEqual(len(self.call('read_reference_case',{'id':saved['id']})['attachments']),1)
+
+    def test_archive_restore_and_future_history_exclusion(self):
+        from workspace_service import ServiceError
+        saved=self.call('save_reference_case',self.args());archived=self.update(saved,archived=True)
+        self.assertEqual(self.call('search_reference_cases')['total'],0);self.assertEqual(self.call('search_reference_cases',{'state':'archived'})['total'],1)
+        with self.assertRaises(ServiceError):self.call('reference_case_history',{'id':saved['id'],'snapshot':saved['history_version'],'version':archived['history_version']})
+        self.update(saved,archived=False)
+        self.assertEqual(self.call('search_reference_cases')['total'],1)
+
+    def test_receipt_failure_does_not_duplicate_saved_case(self):
+        from workspace_service import ServiceError
+        args=self.args();original=self.workspace.atomic
+        def fail_receipt(path,text):
+            if path.parent.name=='reference-requests' and '"result"' in text:raise OSError('receipt write failed')
+            return original(path,text)
+        with patch.object(self.workspace,'atomic',side_effect=fail_receipt):
+            with self.assertRaises(AuthError):self.call('save_reference_case',args)
+        self.assertEqual(self.call('save_reference_case',args)['status'],'uncertain')
+        self.assertEqual(self.call('search_reference_cases')['total'],1)
+
+
 if __name__=='__main__': unittest.main(verbosity=2)

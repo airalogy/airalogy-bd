@@ -79,12 +79,17 @@ def check_index(files):
         if agreement_type not in AGREEMENT_TYPES or (agreement_type != "unspecified" and item["category"] != "agreement"):
             raise LibraryError("协议类型无效；具体协议类型须归入协议分类。")
         related = item.get("project_ids")
-        if not isinstance(related, list) or not related or len(set(related)) != len(related) or any(key not in projects for key in related):
+        if item.get("reference_id"):
+            reference = item["reference_id"]
+            if not isinstance(reference,str) or not re.fullmatch(r"case-[0-9a-f]{32}",reference) or f"references/{reference}/README.md" not in files or related != [] or item.get("home_counterparty_id") != "" or item.get("records") != []:
+                raise LibraryError("参考附件必须独立关联现有参考案例。")
+        elif not isinstance(related, list) or not related or len(set(related)) != len(related) or any(key not in projects for key in related):
             raise LibraryError("资料必须关联现有事项；请先调整附件关联，再移除事项。")
+        reference = item.get("reference_id")
         home = item.get("home_counterparty_id")
-        if not isinstance(home, str) or home not in parties or not any(home in projects[identity].get("counterparty_ids", []) for identity in related):
+        if not reference and (not isinstance(home, str) or home not in parties or not any(home in projects[identity].get("counterparty_ids", []) for identity in related)):
             raise LibraryError("归档对接方必须至少关联这份资料的一个事项。")
-        archive_prefix = directories[home]
+        archive_prefix = f"references/{reference}/attachments/" if reference else directories[home]
         versions = item.get("versions")
         if not isinstance(versions, list) or not versions:
             raise LibraryError("资料至少需要一个文件版本。")
@@ -182,7 +187,8 @@ class FileLibrary:
         owned = {str(Path(version["archive_path"]).parent) for version in item["versions"]}
         if owned and not normalize:
             return str(Path(item["versions"][0]["archive_path"]).parent)
-        base = f'{self.archive_directory(files, item["home_counterparty_id"])}/{"agreements" if item["category"] == "agreement" else "materials"}/{slug(item["title"])}'
+        archive = f'references/{item["reference_id"]}/attachments' if item.get("reference_id") else self.archive_directory(files, item["home_counterparty_id"])
+        base = f'{archive}/{"agreements" if item["category"] == "agreement" else "materials"}/{slug(item["title"])}'
         occupied = {path_key(str(Path(version["archive_path"]).parent)) for other in index["files"] if other["id"] != item["id"] for version in other["versions"]}
         number = 1
         while True:
@@ -238,6 +244,15 @@ class FileLibrary:
                     self.put(entry["archive_path"], self.verified(version).read_bytes())
 
     def archive_roots(self):
+        # Keep removed reference attachments available for historical snapshots and backups.
+        references = self.root / "references"
+        if references.is_symlink(): raise LibraryError("参考资料目录不能是符号链接。", "unsafe_path")
+        if references.exists():
+            for folder in sorted(references.iterdir()):
+                if folder.is_symlink(): raise LibraryError("参考资料目录不能是符号链接。", "unsafe_path")
+                if folder.is_dir():
+                    archive = self.path(folder.relative_to(self.root).as_posix()+"/attachments")
+                    if archive.is_dir(): yield archive
         # Include retained archives whose matter was removed by a historical restore.
         projects = self.root / "counterparties"
         if projects.is_symlink():
@@ -251,7 +266,7 @@ class FileLibrary:
                     yield archive
 
     def path(self, relative):
-        if not safe_relative(relative) or not is_attachment_path(relative) or not relative.startswith("counterparties/"):
+        if not safe_relative(relative) or not is_attachment_path(relative) or not relative.startswith(("counterparties/", "references/")):
             raise LibraryError("资料路径无效。", "unsafe_path")
         target = self.root
         if self.root.is_symlink():
@@ -306,7 +321,7 @@ class FileLibrary:
         files = self.workspace.read_files()
         index = check_index(files)
         from recycle_bin import visible_files
-        return {"files": visible_files(files, [{**item, "revision": digest(item)} for item in index["files"]]), "directory_pattern": "content/counterparties/<对接方>/attachments/", "workspace_directory": str(self.workspace_root), "max_bytes": MAX_BYTES}
+        return {"files": visible_files(files, [{**item, "revision": digest(item)} for item in index["files"] if not item.get("reference_id")]), "directory_pattern": "content/counterparties/<对接方>/attachments/", "workspace_directory": str(self.workspace_root), "max_bytes": MAX_BYTES}
 
     def prepare(self, request, before):
         from workspace_service import digest, dump
@@ -334,6 +349,7 @@ class FileLibrary:
                 raise LibraryError("请先从回收站恢复这份资料。")
             if not item:
                 item = {"id": "file-" + uuid.uuid4().hex, "title": payload.get("title"), "organization": payload.get("organization"), "category": payload.get("category"), "agreement_type": payload.get("agreement_type", "unspecified"), "project_ids": payload.get("project_ids"), "home_counterparty_id": payload.get("home_counterparty_id"), "notes": payload.get("notes", ""), "archived": False, "versions": [], "records": []}
+                if payload.get("reference_id"): item["reference_id"] = payload["reference_id"]
                 index["files"].append(item)
             filename = text(payload.get("filename"), "文件名", limit=180)
             if "/" in filename or "\\" in filename or Path(filename).suffix.lower() not in EXTENSIONS:

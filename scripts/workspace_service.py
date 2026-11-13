@@ -293,6 +293,8 @@ class Workspace:
         try:
             from progress_supplements import validate as validate_supplements
             validate_supplements(files, self.projects(files))
+            from reference_cases import validate as validate_references
+            validate_references(files)
             from matter_tasks import validate as validate_tasks
             validate_tasks(files, self.projects(files))
             from recycle_bin import validate as validate_recycle_bin
@@ -423,6 +425,10 @@ class Workspace:
         return projects
 
     def record(self, files: dict[str, str], kind: str, identity: str, project_id="") -> dict | None:
+        if kind == "reference":
+            from reference_cases import records
+            item=next((r for r in records(files) if r["id"]==identity),None)
+            return {**item,"files":[f for f in index_from(files)["files"] if f["id"] in item["attachment_ids"]]} if item else None
         if kind == "task":
             from matter_tasks import records
             return next((item for directory, _, _ in self.projects(files).values() for item in records(files, directory) if item["id"] == identity), None)
@@ -488,6 +494,8 @@ class Workspace:
         keys = set()
         for files in (before, after):
             try:
+                from reference_cases import records as reference_records
+                keys.update("reference:"+item["id"] for item in reference_records(files))
                 from matter_tasks import records as task_records
                 keys.update("task:" + item["id"] for directory, _, _ in self.projects(files).values() for item in task_records(files, directory))
                 from progress_supplements import records
@@ -1198,8 +1206,8 @@ def main():
             workspace.upload_scope = {"owner": actor["id"], "binding": actor["revision"], "channel": "web"}
             policy.authorize(request)
             workspace.actor = {key: actor[key] for key in ("id", "name", "email")}
-            if action in {"save", "file_save", "restore", "backup_config", "backup_now", "file_backup"} or (action in {"qa", "supplements", "recycle", "tasks"} and request.get("operation", "list") not in {"list", "read", "history", "version", "preview", "assignees"}):
-                accounts.audit(actor, action + "." + request.get("operation", "") if action in {"qa", "supplements", "recycle", "tasks"} else action, request.get("id") or request.get("project_id", ""), "started")
+            if action in {"save", "file_save", "restore", "backup_config", "backup_now", "file_backup"} or (action in {"qa", "supplements", "recycle", "tasks", "references"} and request.get("operation", "list") not in {"list", "read", "history", "version", "preview", "assignees"}):
+                accounts.audit(actor, action + "." + request.get("operation", "") if action in {"qa", "supplements", "recycle", "tasks", "references"} else action, request.get("id") or request.get("project_id", ""), "started")
         if action == "migrate_layout":
             from workspace_layout import migrate_layout
             workspace.recover()
@@ -1238,6 +1246,9 @@ def main():
             elif action == "recycle":
                 from recycle_bin import RecycleBin
                 result = RecycleBin(workspace).execute(request)
+            elif action == "references":
+                from reference_cases import ReferenceCases
+                result = ReferenceCases(workspace).execute(request)
             elif action == "tasks":
                 from matter_tasks import Tasks
                 result = Tasks(workspace).execute(request)
@@ -1282,8 +1293,8 @@ def main():
                 raise ServiceError("未知操作。")
         if policy:
             result = policy.result(request, result)
-            if action in {"save", "file_save", "restore", "backup_config", "backup_now", "file_backup"} or (action in {"qa", "supplements", "recycle", "tasks"} and request.get("operation", "list") not in {"list", "read", "history", "version", "preview", "assignees"}):
-                accounts.audit(actor, action + "." + request.get("operation", "") if action in {"qa", "supplements", "recycle", "tasks"} else action, result.get("id") or request.get("id") or request.get("project_id", ""), "failed" if result.get("error") else "success")
+            if action in {"save", "file_save", "restore", "backup_config", "backup_now", "file_backup"} or (action in {"qa", "supplements", "recycle", "tasks", "references"} and request.get("operation", "list") not in {"list", "read", "history", "version", "preview", "assignees"}):
+                accounts.audit(actor, action + "." + request.get("operation", "") if action in {"qa", "supplements", "recycle", "tasks", "references"} else action, result.get("id") or request.get("id") or request.get("project_id", ""), "failed" if result.get("error") else "success")
             accounts.close()
         print(json.dumps({"ok": True, "result": result}, ensure_ascii=False))
 

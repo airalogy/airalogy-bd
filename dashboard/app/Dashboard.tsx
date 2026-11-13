@@ -1,6 +1,8 @@
 "use client";
 import {RecycleDialog} from "./RecycleBin";
 import TaskBoard from "./TaskBoard";
+import ReferenceCases from "./ReferenceCases";
+import "./reference-cases.css";
 import ProgressSupplements from "./ProgressSupplements";
 import RecordPdfExport from "./RecordPdfExport";
 import EventAttachments from "./EventAttachments";
@@ -29,6 +31,7 @@ import CompanyActivity from "./CompanyActivity";
 import InvestmentOverview from "./InvestmentOverview";
 import InvestmentQa, {type QaSource} from "./InvestmentQa";
 import BpStatus from "./BpStatus";
+import { bpSendings } from "./lib/investments";
 import ContactChannels from "./ContactChannels";
 import CounterpartyContext from "./CounterpartyContext";
 import WorkspaceAdmin from "./WorkspaceAdmin";
@@ -893,6 +896,7 @@ function ProjectDrawer({
   const [moreFor, setMoreFor] = useState<string | null>(null);
   const moreId = useId();
   const showMore = moreFor === project.id;
+  const hasBpSendings = bpSendings(project.id, data.files || []).length > 0;
   const sortedEvents = [...project.events].sort(eventSort);
   const keyContacts = project.contacts.filter((contact) =>
     contact.project_roles.some((role) => keyContactRoles.has(role)),
@@ -960,6 +964,7 @@ function ProjectDrawer({
             </div>
             {(onAi || !readOnly) && <div id={moreId} className="drawer-extra-actions" role="group" aria-label="更多事项操作" hidden={!showMore}>
               {onAi && <button type="button" onClick={onAi}>用 AI 整理此事项</button>}
+              {project.record_type === "investment" && !hasBpSendings && <button type="button" onClick={() => onBpFiles()}>BP 资料与发送记录</button>}
               {!readOnly && <button type="button" onClick={() => onEdit({kind:"project",id:project.id})}>编辑信息</button>}
               {!readOnly && (!data.access || data.access.role === "admin") && <button type="button" onClick={() => onHistory({kind:"project",id:project.id})}>修改历史</button>}
               {onRecycle&&<button type="button" className="recycle-danger-text" onClick={onRecycle}>移入回收站</button>}
@@ -983,7 +988,7 @@ function ProjectDrawer({
               </section>
             )}
 
-            {project.record_type === "investment" && <section className="drawer-bp"><h3>BP 发送与版本</h3><BpStatus projectId={project.id} files={data.files || []} people={data.people} onOpen={onBpFiles} /><p className="admin-help">以实际发送记录为准，版本更新不会改变此前发给对方的版本。</p></section>}
+            {project.record_type === "investment" && hasBpSendings && <section className="drawer-bp"><h3>BP 发送与版本</h3><BpStatus projectId={project.id} files={data.files || []} people={data.people} onOpen={onBpFiles} /><p className="admin-help">以实际发送记录为准，版本更新不会改变此前发给对方的版本。</p></section>}
             <section className="drawer-section">
               <div className="section-title-row drawer-timeline-heading">
                 <div><h3>沟通进展</h3><span>{sortedEvents.length} 条</span></div>
@@ -1081,7 +1086,7 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
   const canQa=canAdmin||!!data.access?.qa_allowed;
   const [qaSource,setQaSource]=useState<QaSource|null>(null);
   const qaId=useSyncExternalStore(subscribeLocation,()=>new URLSearchParams(window.location.search).get("qa")||"",()=>"");
-  const [chosenPage, setPage] = useState<"projects" | "company" | "investments" | "admin" | "history" | "ai" | "qa" | "tasks" | null>(initialHistoryVersion ? "history" : null);
+  const [chosenPage, setPage] = useState<"projects" | "company" | "investments" | "admin" | "history" | "ai" | "qa" | "tasks" | "references" | null>(initialHistoryVersion ? "history" : null);
   const page=chosenPage||(canQa&&!readOnly&&qaId?"qa":"projects");
   const [aiScope, setAiScope] = useState("");
   const [editTarget, setEditTarget] = useState<RecordTarget | null>(null);
@@ -1438,6 +1443,7 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
         <button type="button" aria-pressed={page === "investments"} onClick={() => setPage("investments")}>
           投资总览 <span>{data.projects.filter((project) => project.record_type === "investment").length}</span>
         </button>
+        {(canAdmin||data.access?.all_projects)&&<button type="button" aria-pressed={page === "references"} onClick={()=>setPage("references")}>参考案例</button>}
         <button type="button" aria-pressed={page === "tasks"} onClick={() => setPage("tasks")}>待办</button>
         {!readOnly&&canQa&&<button type="button" aria-pressed={page==="qa"} onClick={()=>setPage("qa")}>投资问答</button>}
         <button type="button" aria-pressed={page === "company"} onClick={() => setPage("company")}>
@@ -1448,6 +1454,7 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
         {!readOnly && <button type="button" onClick={()=>openFiles()}>事项资料</button>}{readOnly && <button type="button" onClick={()=>openFiles()}>历史资料</button>}
         {!readOnly && <button type="button" aria-pressed={page === "ai"} onClick={() => {setAiScope("");setPage("ai");}}>AI 助手</button>}
       </nav>
+      {page==="references"&&(canAdmin||data.access?.all_projects)&&<ReferenceCases data={data} snapshot={historicalVersion} readOnly={readOnly} onChanged={onWorkspaceRefresh} refreshKey={workspaceStatus?.revision}/>}
       {page==="tasks"&&<TaskBoard data={data} snapshot={historicalVersion} readOnly={readOnly} onChanged={onWorkspaceRefresh} refreshKey={workspaceStatus?.revision} onOpenProject={id=>setSelectedProject(data.projects.find(p=>p.id===id)||null)} onOpenProgress={(id,eventId)=>{const project=data.projects.find(p=>p.id===id),event=project?.events.find(e=>e.id===eventId);if(project&&event)setSelectedRecord({event,sourceLabel:project.name,projectId:project.id});}}/>}
       {!readOnly&&canQa&&page==="qa"&&<InvestmentQa data={data} initialId={qaId} source={qaSource} onClearSource={()=>setQaSource(null)} onSource={source=>{const project=data.projects.find(p=>p.id===source.project_id);const event=project?.events.find(e=>e.id===source.event_id);if(project&&event)setSelectedRecord({event,sourceLabel:project.name,projectId:project.id});else if(project)setSelectedProject(project);}}/>}
       {!readOnly && page === "ai" && <AiAssistant key={aiScope} initialScope={aiScope} data={data} onSaved={saved} onSource={source => {const project = data.projects.find(p => p.id === source.projectId);const event = project?.events.find(e => e.id === source.eventId);if(project && event) setSelectedRecord({event,sourceLabel:project.name,projectId:project.id});}} />}

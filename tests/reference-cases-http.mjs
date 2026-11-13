@@ -1,0 +1,46 @@
+import assert from 'node:assert/strict';
+import {randomUUID,createHash} from 'node:crypto';
+import {httpFetch} from './http-client.mjs';
+
+export async function exerciseReferenceCases({rpc,call,web,request,okay,admin,editor,viewer,direct,draftToken,clearRate}) {
+ clearRate();
+ const list=(member=admin)=>request('/api/workspace?action=references&operation=list',null,member);
+ assert.equal((await list(null)).status,401);
+ for(const member of [editor,viewer])assert.equal((await list(member)).status,403);
+ const tools=(await (await rpc('tools/list',{},draftToken.token)).json()).result.tools.map(t=>t.name);
+ for(const name of ['search_reference_cases','read_reference_case','reference_case_history','prepare_reference_upload','submit_reference_case'])assert.ok(tools.includes(name));
+ assert.ok(!tools.includes('save_reference_case'));
+ const baseline=(await okay(await request('/api/workspace?action=workspace',null,admin))).data;
+ const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/R5sAAAAASUVORK5CYII=','base64');
+ const staged=await call('prepare_reference_upload',{filename:'路演照片.png',size:png.length,sha256:createHash('sha256').update(png).digest('hex')},draftToken.token);
+ const form=new FormData();form.set('upload_id',staged.upload_id);form.set('file',new File([png],staged.filename));
+ const base=new URL((await request('/api/health')).url).origin;
+ await okay(await httpFetch(base+'/api/mcp/uploads',{method:'POST',headers:{Host:'bd.test.invalid',Authorization:`Bearer ${draftToken.token}`},body:form}));
+ const current=await call('read_reference_case',{},draftToken.token);
+ const args={revision:current.revision,request_id:randomUUID(),changes:{organization:'示例参考企业',title:'路演中的产品模式',observed_on:'2026-11-13',body:'听到的介绍。',insights:'待进一步了解的产品问题。'},attachments:[{upload_id:staged.upload_id,title:'路演照片',category:'presentation'}]};
+ const draft=await call('submit_reference_case',args,draftToken.token);
+ assert.equal((await okay(await list())).total,0);
+ const pending=(await okay(await request('/api/remote?action=drafts',null,admin))).drafts.find(x=>x.id===draft.draftId);
+ assert.equal(pending.operation,'add_reference');assert.equal(pending.attachments[0].filename,'路演照片.png');
+ const saved=await okay(await web('confirm',{draftId:draft.draftId,confirmed:true}));
+ const read=await call('read_reference_case',{id:saved.id},direct.token);
+ assert.equal(read.record.author.id,admin.user.id);assert.equal(read.attachments.length,1);
+ const file=read.attachments[0],version=file.versions[0];
+ const url='/api/files?'+new URLSearchParams({action:'download',id:file.id,version_id:version.id,preview:'1'});
+ const image=await request(url,null,admin);assert.equal(image.status,200);assert.equal(image.headers.get('content-type'),'image/png');assert.deepEqual(Buffer.from(await image.arrayBuffer()),png);
+ for(const member of [editor,viewer])assert.equal((await request(url,null,member)).status,403);
+ assert.equal((await request(url,null,null)).status,401);
+ const payload={action:'references',operation:'save',id:saved.id,revision:read.revision,request_id:randomUUID(),payload:{...read.fields,summary:'补充摘要'}};
+ assert.equal((await request('/api/workspace',payload,admin,{'X-BD-CSRF':'wrong'})).status,403);
+ assert.equal((await request('/api/workspace',payload,editor)).status,403);
+ await okay(await request('/api/workspace',payload,admin));
+ const history=await call('reference_case_history',{id:saved.id},direct.token);assert.equal(history.versions.length,2);
+ const stale={id:saved.id,revision:read.revision,request_id:randomUUID(),changes:{summary:'过期内容'}};
+ assert.equal((await call('save_reference_case',stale,direct.token,true)).code,'conflict');
+ const snapshot=await call('read_reference_case',{id:saved.id,snapshot:saved.status.version},direct.token);
+ assert.equal(snapshot.record.summary,'');assert.equal(snapshot.attachments.length,1);
+ const result=(await okay(await request('/api/workspace?action=workspace',null,admin))).data;
+ for(const key of ['projects','counterparties','company_events','updated_at','files'])assert.deepEqual(result[key],baseline[key]);
+ assert.equal((await request('/api/workspace?action=references&operation=save',null,admin)).status,403);
+ clearRate();
+}

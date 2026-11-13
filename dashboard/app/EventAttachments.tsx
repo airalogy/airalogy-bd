@@ -15,7 +15,7 @@ function PreviewImage({src, alt}: {src: string; alt: string}) {
     <img src={src} alt={alt} loading="lazy" decoding="async" onError={() => setFailed(true)} />;
 }
 
-function AttachmentCard({item, snapshot}: {item: ReturnType<typeof fileVersionsForEvent>[number]; snapshot?: string}) {
+export function AttachmentCard({item, snapshot}: {item: ReturnType<typeof fileVersionsForEvent>[number]; snapshot?: string}) {
   const {file, version, number} = item;
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);

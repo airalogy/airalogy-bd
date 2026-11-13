@@ -8,9 +8,10 @@ export default function BpStatus({ projectId, files, people, onOpen }: {
 }) {
   const records = bpSendings(projectId, files);
   const latest = records[0];
+  if (!latest) return <span className="bp-unrecorded" aria-label="暂无 BP 发送记录">—</span>;
   return <div className="bp-status">
-    <strong className={latest ? "bp-sent" : "bp-unrecorded"}>{latest ? "已发送" : "暂无发送记录"}</strong>
-    {latest && <><p>{latest.title} · {latest.versionLabel}</p><small>{latest.filename}</small><time>{latest.date}</time>
+    <strong className="bp-sent">已发送</strong>
+    <p>{latest.title} · {latest.versionLabel}</p><small>{latest.filename}</small><time>{latest.date}</time>
       <details><summary>{records.length > 1 ? `全部 ${records.length} 次发送` : "发送详情"}</summary>
         <ol>{records.map(record => <li key={`${record.fileId}:${record.id}`}>
           <time>{record.date}</time><p>{record.title} · {record.versionLabel}</p><small>{record.filename}</small>
@@ -18,7 +19,7 @@ export default function BpStatus({ projectId, files, people, onOpen }: {
           {record.archived && <small>资料已移入回收站，发送记录保留</small>}
           <button type="button" className="investment-expand" onClick={() => onOpen(record.fileId)}>查看这份 BP</button>
         </li>)}</ol>
-      </details></>}
+      </details>
     <button type="button" className="investment-expand" onClick={() => onOpen()}>BP 资料与发送记录</button>
   </div>;
 }

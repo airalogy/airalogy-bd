@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import {exerciseRemoteSupplements} from "./remote-supplements-http.mjs";
 import {exerciseRemoteCompany} from "./remote-company-http.mjs";
+import {exerciseReferenceCases} from "./reference-cases-http.mjs";
 import {exerciseRemoteTasks} from "./remote-tasks-http.mjs";
 import {exerciseRemotePeople} from "./remote-people-http.mjs";
 
@@ -268,7 +269,7 @@ export async function exerciseRemote({ directory, request, okay, admin, editor, 
   }
   assert.ok((await (await rpc("tools/call", {name:"save_progress",arguments:{}}, defaultToken.token)).json()).error);
   assert.ok((await (await rpc("tools/call", {name:"save_progress",arguments:{}}, rateToken.token)).json()).error);
-  assert.deepEqual((await (await rpc("tools/list", {}, direct.token)).json()).result.tools.map(t=>t.name), ["search_tasks","read_task","task_assignees","task_history","submit_task","save_task","read_progress_supplements","progress_supplement_history","submit_progress_supplement","save_progress_supplement","search_company_events","read_company_event","search_entities","search_matters","read_matter","read_progress","list_files","read_file","prepare_upload","upload_status","discard_upload","submit_draft","save_progress"]);
+  assert.deepEqual((await (await rpc("tools/list", {}, direct.token)).json()).result.tools.map(t=>t.name), ["search_reference_cases","read_reference_case","reference_case_history","prepare_reference_upload","submit_reference_case","save_reference_case","search_tasks","read_task","task_assignees","task_history","submit_task","save_task","read_progress_supplements","progress_supplement_history","submit_progress_supplement","save_progress_supplement","search_company_events","read_company_event","search_entities","search_matters","read_matter","read_progress","list_files","read_file","prepare_upload","upload_status","discard_upload","submit_draft","save_progress"]);
   const directInit = (await (await rpc("initialize", {protocolVersion:"2025-11-25"}, direct.token)).json()).result;
   assert.match(directInit.instructions, /formally save progress/);
   const currentDirect = await call("read_matter", {matter_id:matter}, direct.token);
@@ -327,6 +328,7 @@ export async function exerciseRemote({ directory, request, okay, admin, editor, 
   assert.doesNotMatch(JSON.stringify(directAudit), new RegExp(direct.token));
   await exerciseRemoteSupplements({rpc,call,web,request,okay,admin,editor,viewer,direct,draftToken:defaultToken,clearRate});
   await exerciseRemoteTasks({rpc,call,web,request,okay,admin,editor,viewer,direct,draftToken:defaultToken,clearRate});
+  await exerciseReferenceCases({rpc,call,web,request,okay,admin,editor,viewer,direct,draftToken:defaultToken,clearRate});
   await exerciseRemoteCompany({rpc,call,web,request,okay,admin,editor,direct,draftToken:defaultToken,restricted:rateToken,clearRate});
   await okay(await web("revoke", {tokenId:direct.id}));
   assert.equal((await rpc("tools/list", {}, direct.token)).status, 401);

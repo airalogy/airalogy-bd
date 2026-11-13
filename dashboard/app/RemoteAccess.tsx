@@ -15,7 +15,7 @@ type Status = { qa_allowed:boolean; enabled: boolean; granted: boolean; revision
 type DraftAttachment = {mode:"upload"|"version"|"existing";file_id:string;version_id:string;upload_id?:string;title:string;filename:string;size:number;version_number:number;status:keyof typeof fileStatuses;agreement_date?:string;signing_completed_date?:string;note?:string};
 type Draft = { attachments?:DraftAttachment[]; id: string; matterName: string; counterparty: string; progressTitle: string; progressDate: string; operation: string; expires: number; changes: { field: string; label: string; before: unknown; after: unknown }[] };
 type AccessMode = "read" | "draft" | "direct";
-const operations: Record<string, string> = { add_task: "新增待办", update_task: "修改待办", add_supplement: "新增补充记录", update_supplement: "修改补充记录", add_company_event: "新增公司动态", update_company_event: "修改公司动态", investment_qa: "保存问答修订稿", intake: "业务资料录入", add_progress: "新增进展", update_progress: "修改进展", update_matter: "修改事项" };
+const operations: Record<string, string> = { add_reference: "新增参考案例", update_reference: "修改参考案例", add_task: "新增待办", update_task: "修改待办", add_supplement: "新增补充记录", update_supplement: "修改补充记录", add_company_event: "新增公司动态", update_company_event: "修改公司动态", investment_qa: "保存问答修订稿", intake: "业务资料录入", add_progress: "新增进展", update_progress: "修改进展", update_matter: "修改事项" };
 function display(field: string, value: unknown, operation: string) {
   if (value === null || value === undefined || value === "") return "（空）";
   if (typeof value === "string" && field === "stage") return stageLabels[value] || value;
@@ -142,18 +142,18 @@ export default function RemoteAccess({ user, mode, endpoint = "" }: { user: Team
         {!drafts.length && <p>暂无可确认的修改。外部工具提交草稿后在这里核对；草稿最长保留 24 小时，权限变化、凭据失效或关闭功能会使草稿失效。</p>}
         {drafts.map(draft => <article key={draft.id} id={`draft-${draft.id}`} className="ai-draft">
           <h3>{[draft.counterparty,draft.matterName,operations[draft.operation]].filter(Boolean).join(" · ")}</h3>
-          {draft.operation==="investment_qa"&&<p className="admin-notice">确认后仅保存问答修订稿，当前推荐回答不会改变。请到投资问答库核对并确认推荐版本。</p>}{draft.progressTitle && <p>{draft.operation==="investment_qa"?"问题：":draft.operation.endsWith("company_event")?"活动：":draft.operation.endsWith("_task")?"待办：":"进展："}{draft.progressDate} · {draft.progressTitle}</p>}<p>有效至 {when(draft.expires)}</p>
+          {draft.operation==="investment_qa"&&<p className="admin-notice">确认后仅保存问答修订稿，当前推荐回答不会改变。请到投资问答库核对并确认推荐版本。</p>}{draft.progressTitle && <p>{draft.operation==="investment_qa"?"问题：":draft.operation.endsWith("company_event")?"活动：":draft.operation.endsWith("_reference")?"案例：":draft.operation.endsWith("_task")?"待办：":"进展："}{draft.progressDate} · {draft.progressTitle}</p>}<p>有效至 {when(draft.expires)}</p>
           <div className="remote-diff">{draft.changes.map(change => <div key={change.field}><h4>{change.label}</h4><div className="remote-diff-pair">
             <section><h5>修改前</h5><pre>{display(change.field, change.before, draft.operation)}</pre></section><section><h5>{["add_progress", "add_company_event"].includes(draft.operation) ? "新增内容" : "修改后"}</h5><pre>{display(change.field, change.after, draft.operation)}</pre></section>
           </div></div>)}</div>
-          {!!draft.attachments?.length&&<section><h4>随进展保存的附件</h4><ul className="remote-attachment-list">{draft.attachments.map((file,index)=><li key={index}>
+          {!!draft.attachments?.length&&<section><h4>随本次记录保存的附件</h4><ul className="remote-attachment-list">{draft.attachments.map((file,index)=><li key={index}>
             <strong>{file.title} · v{file.version_number}</strong><p>{file.filename} · {Math.ceil(file.size/1024)} KB · {fileStatuses[file.status]}</p>
-            <p>{file.mode==="existing"?"关联已有版本，不复制文件":file.mode==="version"?"追加新版本，保留原版本":"新文件，将归入本事项资料库"}</p>
+            <p>{file.mode==="existing"?"关联已有版本，不复制文件":file.mode==="version"?"追加新版本，保留原版本":draft.operation.endsWith("_reference")?"新文件，将归入参考案例":"新文件，将归入本事项资料库"}</p>
             {(file.agreement_date||file.signing_completed_date)&&<p>协议载明日期：{file.agreement_date||"未记录"} · 实际签署完成日期：{file.signing_completed_date||"未记录"}</p>}
             {file.note&&<p>{file.note}</p>}
             <a className="admin-button" href={file.upload_id?`/api/remote/files?${new URLSearchParams({draft_id:draft.id,upload_id:file.upload_id})}`:`/api/files?${new URLSearchParams({action:"download",id:file.file_id,version_id:file.version_id})}`} download>下载核对文件</a>
-          </li>)}</ul><p className="admin-help">确认后文件与进展一起保存。关联附件不会自动登记为已发送或改变事项阶段。</p></section>}
-          <label className="remote-draft-check"><input type="checkbox" checked={!!checked[draft.id]} onChange={e => setChecked({ ...checked, [draft.id]: e.target.checked })} /><span>{draft.operation==="investment_qa"?"我已核对问题、回答、数据日期、来源及全部修改内容":draft.operation.endsWith("company_event")?"我已核对活动、实际日期、参与人、已发生事实和后续跟进备注":"我已核对事项、日期、事实状态、附件和全部修改内容"}</span></label>
+          </li>)}</ul><p className="admin-help">确认后文件与本次记录一起保存，不自动登记为已发送或改变事项阶段。</p></section>}
+          <label className="remote-draft-check"><input type="checkbox" checked={!!checked[draft.id]} onChange={e => setChecked({ ...checked, [draft.id]: e.target.checked })} /><span>{draft.operation==="investment_qa"?"我已核对问题、回答、数据日期、来源及全部修改内容":draft.operation.endsWith("_reference")?"我已核对案例来源、笔记、分析、附件和全部修改内容":draft.operation.endsWith("company_event")?"我已核对活动、实际日期、参与人、已发生事实和后续跟进备注":"我已核对事项、日期、事实状态、附件和全部修改内容"}</span></label>
           <div className="admin-actions"><button className="admin-button admin-primary" disabled={busy || !checked[draft.id]} onClick={() => void act("confirm", { draftId: draft.id, confirmed: true }, "已保存。工作台已更新，并保留修改记录；需要恢复时请联系管理员。")}>{draft.operation==="investment_qa"?"确认并保存修订稿":"确认并正式保存"}</button>
             <button className="admin-button" disabled={busy} onClick={() => void act("reject", { draftId: draft.id }, "已驳回草稿，业务资料未更改。")}>驳回草稿</button></div>
         </article>)}

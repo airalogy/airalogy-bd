@@ -13,7 +13,7 @@ FRONTMATTER = re.compile(r"\A---[ \t]*\n(.*?)\n---[ \t]*(?:\n|\Z)", re.S)
 
 def is_attachment_path(relative):
     parts = Path(relative).parts
-    return len(parts) >= 3 and parts[0] in {"counterparties", "projects"} and parts[2] == "attachments"
+    return len(parts) >= 3 and parts[0] in {"counterparties", "projects", "references"} and parts[2] == "attachments"
 
 
 def archive_only_project(directory):

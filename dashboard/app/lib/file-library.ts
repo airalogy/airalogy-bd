@@ -23,7 +23,7 @@ export function changeAgreementDate(value: AgreementDateValues, date: string): A
   return {...value, agreement_date: date};
 }
 export type FileUsage = { id: string; version_id: string; kind: keyof typeof fileUses; date: string; project_id: string; event_id: string; people: string[]; channel: string; note: string; archive_path?: string };
-export type LibraryFile = { id: string; title: string; organization: string; category: keyof typeof fileCategories; agreement_type?: keyof typeof agreementTypes; project_ids: string[]; home_counterparty_id: string; notes: string; archived: boolean; current_version: string; versions: FileVersion[]; records: FileUsage[]; revision?: string };
+export type LibraryFile = { reference_id?: string; id: string; title: string; organization: string; category: keyof typeof fileCategories; agreement_type?: keyof typeof agreementTypes; project_ids: string[]; home_counterparty_id: string; notes: string; archived: boolean; current_version: string; versions: FileVersion[]; records: FileUsage[]; revision?: string };
 export type FileListing = { files: LibraryFile[]; directory_pattern: string; workspace_directory: string; max_bytes: number };
 
 export function filesForEvent(files: LibraryFile[], projectId: string, eventId: string) {
