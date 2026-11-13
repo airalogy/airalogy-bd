@@ -18,6 +18,7 @@ from staged_uploads import UploadStore
 from remote_intake import Intake, require_intake
 from remote_qa import TOOLS as QA_TOOLS, require_qa, tool as qa_tool
 from investment_qa import InvestmentQA
+from remote_tasks import TOOLS as TASK_TOOLS, tool as task_tool
 from remote_supplements import TOOLS as SUPPLEMENT_TOOLS, tool as supplement_tool
 from remote_company import TOOLS as COMPANY_TOOLS, require_company, tool as company_tool, save as save_company
 
@@ -321,7 +322,7 @@ class RemoteAccess:
             raise AuthError("远程请求过于频繁，请稍后再试。", "rate_limited")
         with self.db: self.db.execute("INSERT INTO remote_attempts VALUES(?,?)", (actor["id"], now))
         if op == "access": return {"canCompany": actor["role"] == "admin" or bool(actor["all_projects"]), "canQa": bool(token["can_qa"]) and self.accounts.qa_allowed(actor["id"]),"canDraft": bool(token["can_draft"]) and actor["role"] != "viewer", "canSave": bool(token["can_save"]) and actor["role"] == "admin", "canIntake": bool(token["can_intake"]) and bool(token["can_draft"]) and actor["role"] == "admin"}
-        if op not in SUPPLEMENT_TOOLS | COMPANY_TOOLS | QA_TOOLS | {"search_entities", "read_entity", "prepare_intake", "discard_intake", "submit_intake", "save_intake", "search_matters", "read_matter", "read_progress", "list_files", "read_file", "prepare_upload", "upload_status", "discard_upload", "upload_bytes", "submit_draft", "save_progress"}: raise AuthError("远程接口不提供此操作。")
+        if op not in TASK_TOOLS | SUPPLEMENT_TOOLS | COMPANY_TOOLS | QA_TOOLS | {"search_entities", "read_entity", "prepare_intake", "discard_intake", "submit_intake", "save_intake", "search_matters", "read_matter", "read_progress", "list_files", "read_file", "prepare_upload", "upload_status", "discard_upload", "upload_bytes", "submit_draft", "save_progress"}: raise AuthError("远程接口不提供此操作。")
         policy = Policy(self.workspace, actor)
         self.upload_context(actor, token)
         self.ready()
@@ -334,6 +335,9 @@ class RemoteAccess:
         return result
 
     def save_request(self, saved, actor, token, preview=False):
+        if saved.get("kind") == "task":
+            from matter_tasks import Tasks
+            return Tasks(self.workspace).execute(saved, preview=preview)
         if saved.get("kind") == "supplement":
             from progress_supplements import Supplements
             return Supplements(self.workspace).execute(saved, preview=preview)
@@ -347,6 +351,8 @@ class RemoteAccess:
         return self.workspace.save(saved, preview=preview)
 
     def tool(self, op, args, actor, token, policy):
+        if op in TASK_TOOLS:
+            return task_tool(self, op, args, actor, token, policy)
         if op in SUPPLEMENT_TOOLS:
             return supplement_tool(self, op, args, actor, token, policy)
         if op in COMPANY_TOOLS:

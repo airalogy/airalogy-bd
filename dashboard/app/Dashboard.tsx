@@ -1,5 +1,6 @@
 "use client";
 import {RecycleDialog} from "./RecycleBin";
+import TaskBoard from "./TaskBoard";
 import ProgressSupplements from "./ProgressSupplements";
 import RecordPdfExport from "./RecordPdfExport";
 import EventAttachments from "./EventAttachments";
@@ -838,7 +839,7 @@ function EventHistoryDialog({
 }
 
 function ProjectDrawer({
-  fileSnapshot,
+  fileSnapshot, onTasksChanged, taskRefreshKey,
   data, onSelectProject, onCounterpartyFiles, readOnly, onAi, onRecycle,
   onFiles,
   fileCount,
@@ -868,6 +869,8 @@ function ProjectDrawer({
   onRecycle?: () => void;
   onCounterpartyFiles: (identity:string) => void;
   fileSnapshot?: string;
+  onTasksChanged: () => Promise<void>;
+  taskRefreshKey?: string;
   onFiles: (eventId?:string) => void;
   fileCount: number;
   onBpFiles: (fileId?: string) => void;
@@ -968,6 +971,7 @@ function ProjectDrawer({
               <div className="drawer-next-heading"><h3>下一步</h3>{project.next_action_due && <span>期限：{formatDate(project.next_action_due, workspace)}</span>}</div>
               <p>{project.next_action}</p>
             </section>}
+            <TaskBoard data={data} projectId={project.id} snapshot={fileSnapshot} readOnly={readOnly} onChanged={onTasksChanged} refreshKey={taskRefreshKey} onOpenProgress={(_,id)=>{const event=project.events.find(e=>e.id===id);if(event)onOpenRecord(event);}}/>
             {project.management_decisions.length > 0 && (
               <section className="drawer-section">
                 <h3>需要管理层决策</h3>
@@ -1077,7 +1081,7 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
   const canQa=canAdmin||!!data.access?.qa_allowed;
   const [qaSource,setQaSource]=useState<QaSource|null>(null);
   const qaId=useSyncExternalStore(subscribeLocation,()=>new URLSearchParams(window.location.search).get("qa")||"",()=>"");
-  const [chosenPage, setPage] = useState<"projects" | "company" | "investments" | "admin" | "history" | "ai" | "qa" | null>(initialHistoryVersion ? "history" : null);
+  const [chosenPage, setPage] = useState<"projects" | "company" | "investments" | "admin" | "history" | "ai" | "qa" | "tasks" | null>(initialHistoryVersion ? "history" : null);
   const page=chosenPage||(canQa&&!readOnly&&qaId?"qa":"projects");
   const [aiScope, setAiScope] = useState("");
   const [editTarget, setEditTarget] = useState<RecordTarget | null>(null);
@@ -1434,6 +1438,7 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
         <button type="button" aria-pressed={page === "investments"} onClick={() => setPage("investments")}>
           投资总览 <span>{data.projects.filter((project) => project.record_type === "investment").length}</span>
         </button>
+        <button type="button" aria-pressed={page === "tasks"} onClick={() => setPage("tasks")}>待办</button>
         {!readOnly&&canQa&&<button type="button" aria-pressed={page==="qa"} onClick={()=>setPage("qa")}>投资问答</button>}
         <button type="button" aria-pressed={page === "company"} onClick={() => setPage("company")}>
           公司动态 <span>{data.company_events.length}</span>
@@ -1443,6 +1448,7 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
         {!readOnly && <button type="button" onClick={()=>openFiles()}>事项资料</button>}{readOnly && <button type="button" onClick={()=>openFiles()}>历史资料</button>}
         {!readOnly && <button type="button" aria-pressed={page === "ai"} onClick={() => {setAiScope("");setPage("ai");}}>AI 助手</button>}
       </nav>
+      {page==="tasks"&&<TaskBoard data={data} snapshot={historicalVersion} readOnly={readOnly} onChanged={onWorkspaceRefresh} refreshKey={workspaceStatus?.revision} onOpenProject={id=>setSelectedProject(data.projects.find(p=>p.id===id)||null)} onOpenProgress={(id,eventId)=>{const project=data.projects.find(p=>p.id===id),event=project?.events.find(e=>e.id===eventId);if(project&&event)setSelectedRecord({event,sourceLabel:project.name,projectId:project.id});}}/>}
       {!readOnly&&canQa&&page==="qa"&&<InvestmentQa data={data} initialId={qaId} source={qaSource} onClearSource={()=>setQaSource(null)} onSource={source=>{const project=data.projects.find(p=>p.id===source.project_id);const event=project?.events.find(e=>e.id===source.event_id);if(project&&event)setSelectedRecord({event,sourceLabel:project.name,projectId:project.id});else if(project)setSelectedProject(project);}}/>}
       {!readOnly && page === "ai" && <AiAssistant key={aiScope} initialScope={aiScope} data={data} onSaved={saved} onSource={source => {const project = data.projects.find(p => p.id === source.projectId);const event = project?.events.find(e => e.id === source.eventId);if(project && event) setSelectedRecord({event,sourceLabel:project.name,projectId:project.id});}} />}
       {!readOnly && canAdmin && backupStatus?.error && <div className="admin-alert" role="alert">最近自动备份未完成，当前资料和已有版本仍然保留。<Link className="admin-button" href="/admin?section=backup">查看备份情况</Link></div>}
@@ -1967,7 +1973,7 @@ export default function Dashboard({ data, workspaceStatus, workspaceError, onWor
       </footer>
 
       {selectedProject && (
-        <ProjectDrawer fileSnapshot={historicalVersion} readOnly={readOnly || !canEdit}
+        <ProjectDrawer onTasksChanged={onWorkspaceRefresh} taskRefreshKey={workspaceStatus?.revision} fileSnapshot={historicalVersion} readOnly={readOnly || !canEdit}
           onRecycle={!readOnly&&canAdmin?()=>setRecycleTarget({kind:"project",id:selectedProject.id}):undefined}
           onBpFiles={fileId => setFilesTarget({projectId:selectedProject.id,fileId,category:"bp",usageKind:"sent"})}
           onAi={readOnly ? undefined : () => {setAiScope(selectedProject.id);setSelectedProject(null);setPage("ai");}}

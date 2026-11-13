@@ -42,7 +42,7 @@ EVENT_FIELDS = {"date", "type", "title", "summary", "importance", "participants"
 LABELS = {"name": "名称", "affiliation": "单位及职位", "phone": "电话", "wechat": "微信", "email": "邮箱", "counterparties": "对方单位", "record_type": "事项类型", "category": "分类", "stage": "阶段", "relationship": "关系", "priority": "优先级", "owner": "负责人", "first_contact": "首次接触日期", "first_contact_certainty": "首次接触日期依据", "sourced_by": "对接来源人员", "source_certainty": "来源依据", "source_note": "来源说明", "follow_up_status": "跟进状态", "next_action": "下一步", "next_action_due": "下一步期限", "target_investment_amount_cny": "目标投资金额（元）", "date": "日期", "type": "事件类型", "title": "标题", "summary": "进展摘要", "importance": "重要程度", "participants": "参与人", "organizers": "主办方", "location": "地点", "side": "关系", "project_roles": "项目角色", "notes": "备注", "body": "正文", "contacts": "事项联系人", "events": "沟通进展", "metadata": "事项信息", "documents": "沟通记录", "document": "记录信息", "event": "进展信息"}
 
 
-LABELS.update({"supplements":"补充记录", "author":"作者", "updated_by":"最近编辑", "updated_at":"编辑时间", "attachments":"进展附件", "agreement_date":"协议载明日期", "signing_completed_date":"实际签署完成日期", "agreement_type":"协议类型", "organization":"对接机构或个人", "home_counterparty_id":"归档对接方", "primary_counterparty_id":"归档对接方", "counterparty_ids":"参与对接方", "short_name":"简称", "kind":"对接方类型", "project_ids":"关联事项", "archived":"回收站状态", "current_version":"当前文件版本", "versions":"文件版本", "records":"使用与发送记录", "filename":"文件名", "sha256":"文件指纹", "size":"文件大小", "status":"文件状态", "created_at":"归档时间", "note":"说明", "archive_path":"归档位置", "version_id":"具体版本", "kind":"类型", "people":"相关人员", "channel":"渠道", "event_id":"关联交流", "project_id":"关联事项"})
+LABELS.update({"tasks":"待办", "assignee":"负责人", "due_date":"截止日期", "state":"状态", "completion_note":"完成备注", "completed_by":"完成人", "completed_at":"完成时间", "source_progress_id":"来源进展", "completion_progress_id":"完成时的进展", "supplements":"补充记录", "author":"作者", "updated_by":"最近编辑", "updated_at":"编辑时间", "attachments":"进展附件", "agreement_date":"协议载明日期", "signing_completed_date":"实际签署完成日期", "agreement_type":"协议类型", "organization":"对接机构或个人", "home_counterparty_id":"归档对接方", "primary_counterparty_id":"归档对接方", "counterparty_ids":"参与对接方", "short_name":"简称", "kind":"对接方类型", "project_ids":"关联事项", "archived":"回收站状态", "current_version":"当前文件版本", "versions":"文件版本", "records":"使用与发送记录", "filename":"文件名", "sha256":"文件指纹", "size":"文件大小", "status":"文件状态", "created_at":"归档时间", "note":"说明", "archive_path":"归档位置", "version_id":"具体版本", "kind":"类型", "people":"相关人员", "channel":"渠道", "event_id":"关联交流", "project_id":"关联事项"})
 
 
 class ServiceError(Exception):
@@ -293,6 +293,8 @@ class Workspace:
         try:
             from progress_supplements import validate as validate_supplements
             validate_supplements(files, self.projects(files))
+            from matter_tasks import validate as validate_tasks
+            validate_tasks(files, self.projects(files))
             from recycle_bin import validate as validate_recycle_bin
             validate_recycle_bin(files, self.projects(files))
             if verify_attachments:
@@ -421,6 +423,9 @@ class Workspace:
         return projects
 
     def record(self, files: dict[str, str], kind: str, identity: str, project_id="") -> dict | None:
+        if kind == "task":
+            from matter_tasks import records
+            return next((item for directory, _, _ in self.projects(files).values() for item in records(files, directory) if item["id"] == identity), None)
         if kind == "supplement":
             from progress_supplements import records
             return next((item for directory, _, _ in self.projects(files).values() for item in records(files, directory) if item["id"] == identity), None)
@@ -441,7 +446,7 @@ class Workspace:
             if not value:
                 return None
             directory, metadata, body = value
-            return {"metadata": metadata, "body": body, "contacts": parse_yaml(files[directory + "/contacts.yaml"]).get("contacts", []), "events": parse_yaml(files[directory + "/events.yaml"]).get("events", []), "supplements": {name[len(directory)+1:]: text for name, text in files.items() if name.startswith(directory + "/supplements/")}, "documents": {name[len(directory)+1:]: text for name, text in files.items() if name.startswith(directory + "/meetings/")}}
+            return {"metadata": metadata, "body": body, "contacts": parse_yaml(files[directory + "/contacts.yaml"]).get("contacts", []), "events": parse_yaml(files[directory + "/events.yaml"]).get("events", []), "tasks": {name[len(directory)+1:]: text for name, text in files.items() if name.startswith(directory + "/tasks/")}, "supplements": {name[len(directory)+1:]: text for name, text in files.items() if name.startswith(directory + "/supplements/")}, "documents": {name[len(directory)+1:]: text for name, text in files.items() if name.startswith(directory + "/meetings/")}}
         if kind in {"progress", "company"}:
             if kind == "company":
                 directory = "company"
@@ -483,6 +488,8 @@ class Workspace:
         keys = set()
         for files in (before, after):
             try:
+                from matter_tasks import records as task_records
+                keys.update("task:" + item["id"] for directory, _, _ in self.projects(files).values() for item in task_records(files, directory))
                 from progress_supplements import records
                 keys.update("supplement:" + item["id"] for directory, _, _ in self.projects(files).values() for item in records(files, directory))
                 keys.update("qa:" + identity for identity in qa_identities(files))
@@ -1191,8 +1198,8 @@ def main():
             workspace.upload_scope = {"owner": actor["id"], "binding": actor["revision"], "channel": "web"}
             policy.authorize(request)
             workspace.actor = {key: actor[key] for key in ("id", "name", "email")}
-            if action in {"save", "file_save", "restore", "backup_config", "backup_now", "file_backup"} or (action in {"qa", "supplements", "recycle"} and request.get("operation", "list") not in {"list", "read", "history", "version", "preview"}):
-                accounts.audit(actor, action + "." + request.get("operation", "") if action in {"qa", "supplements", "recycle"} else action, request.get("id") or request.get("project_id", ""), "started")
+            if action in {"save", "file_save", "restore", "backup_config", "backup_now", "file_backup"} or (action in {"qa", "supplements", "recycle", "tasks"} and request.get("operation", "list") not in {"list", "read", "history", "version", "preview", "assignees"}):
+                accounts.audit(actor, action + "." + request.get("operation", "") if action in {"qa", "supplements", "recycle", "tasks"} else action, request.get("id") or request.get("project_id", ""), "started")
         if action == "migrate_layout":
             from workspace_layout import migrate_layout
             workspace.recover()
@@ -1231,6 +1238,9 @@ def main():
             elif action == "recycle":
                 from recycle_bin import RecycleBin
                 result = RecycleBin(workspace).execute(request)
+            elif action == "tasks":
+                from matter_tasks import Tasks
+                result = Tasks(workspace).execute(request)
             elif action == "supplements":
                 from progress_supplements import Supplements
                 result = Supplements(workspace).execute(request)
@@ -1272,8 +1282,8 @@ def main():
                 raise ServiceError("未知操作。")
         if policy:
             result = policy.result(request, result)
-            if action in {"save", "file_save", "restore", "backup_config", "backup_now", "file_backup"} or (action in {"qa", "supplements", "recycle"} and request.get("operation", "list") not in {"list", "read", "history", "version", "preview"}):
-                accounts.audit(actor, action + "." + request.get("operation", "") if action in {"qa", "supplements", "recycle"} else action, result.get("id") or request.get("id") or request.get("project_id", ""), "failed" if result.get("error") else "success")
+            if action in {"save", "file_save", "restore", "backup_config", "backup_now", "file_backup"} or (action in {"qa", "supplements", "recycle", "tasks"} and request.get("operation", "list") not in {"list", "read", "history", "version", "preview", "assignees"}):
+                accounts.audit(actor, action + "." + request.get("operation", "") if action in {"qa", "supplements", "recycle", "tasks"} else action, result.get("id") or request.get("id") or request.get("project_id", ""), "failed" if result.get("error") else "success")
             accounts.close()
         print(json.dumps({"ok": True, "result": result}, ensure_ascii=False))
 

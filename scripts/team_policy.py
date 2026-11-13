@@ -65,6 +65,10 @@ class Policy:
             if action == "upload_stage":
                 self.project(request.get("project_id"))
             return
+        if action == "tasks":
+            from matter_tasks import Tasks
+            Tasks(self.workspace).authorize(request)
+            return
         if action == "supplements":
             from progress_supplements import Supplements
             Supplements(self.workspace).authorize(request)

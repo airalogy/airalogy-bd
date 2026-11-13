@@ -7,7 +7,8 @@ export async function GET(request: Request) {
   const access=await authorizedRequest(request);
   if(access instanceof Response) return access;
   const parameters=Object.fromEntries(new URL(request.url).searchParams);
-  if(!["workspace","record","event_update","history","compare","historical","backup_status","qa","supplements","recycle"].includes(parameters.action)) return denied();
+  if(!["workspace","record","event_update","history","compare","historical","backup_status","qa","supplements","recycle","tasks"].includes(parameters.action)) return denied();
+  if(parameters.action==="tasks" && !["list","read","assignees","history","version"].includes(parameters.operation || "list")) return denied();
   if(parameters.action==="recycle" && !["list","read","preview"].includes(parameters.operation || "list")) return denied();
   if(["qa","supplements"].includes(parameters.action) && !["list","read","history","version"].includes(parameters.operation || "list")) return denied();
   const result=await invokeWorkspace(parameters,access.session);
@@ -20,7 +21,8 @@ export async function POST(request:Request) {
   if(!request.headers.get("content-type")?.startsWith("application/json")) return denied();
   try {
     const input=JSON.parse(new TextDecoder().decode(await boundedBody(request,1_000_000)));
-    if(!["save","restore","checkpoint","backup_config","backup_now","qa","supplements","recycle"].includes(input.action)) return denied();
+    if(!["save","restore","checkpoint","backup_config","backup_now","qa","supplements","recycle","tasks"].includes(input.action)) return denied();
+    if(input.action==="tasks" && input.operation!=="save") return denied();
     if(input.action==="recycle" && !["archive","restore"].includes(input.operation)) return denied();
     if(input.action==="supplements" && !["save","migrate"].includes(input.operation)) return denied();
     return serviceResponse(await invokeWorkspace(input,access.session));

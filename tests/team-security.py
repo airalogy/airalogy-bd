@@ -1369,4 +1369,172 @@ class RecycleBinTests(unittest.TestCase):
         self.assertIn(item['id'],[x['id'] for x in library.list()['files']])
 
 
+
+class TaskTests(unittest.TestCase):
+    setUp = RemoteWriteTests.setUp
+    issue = RemoteWriteTests.issue
+    call = RemoteWriteTests.call
+
+    def target(self, **extra):return {'matter_id':self.matter,**extra}
+    def args(self, **changes):
+        return self.target(revision=self.call('read_task',self.target())['revision'],request_id=uuid.uuid4().hex,changes={'title':'发送示例介绍','source_progress_id':'2026-01-15-solution-meeting',**changes})
+    def service(self,actor,**request):
+        from matter_tasks import Tasks
+        self.workspace.actor=actor;self.workspace.policy=Policy(self.workspace,actor)
+        return Tasks(self.workspace).execute({'project_id':self.matter,**request})
+    def update(self,saved,**changes):
+        current=self.call('read_task',self.target(id=saved['id']))
+        return self.call('save_task',self.target(id=saved['id'],revision=current['revision'],request_id=uuid.uuid4().hex,changes=changes))
+
+    def test_lifecycle_identity_independent_activity_and_history_snapshots(self):
+        from workspace_service import ServiceError
+        self.workspace.observe();before=self.workspace.read_files();data=json.loads((self.content/'generated/dashboard.json').read_text())
+        query={'kind':'progress','id':'2026-01-15-solution-meeting','project_id':self.matter}
+        original=self.workspace.event_update(query,self.workspace.observe())
+        args=self.args(body='## 说明\n\n- 资料准备',due_date='2026-11-20',assignee_id=self.actor['id'])
+        saved=self.call('save_task',args);self.assertEqual(self.call('save_task',args),saved)
+        current=self.call('read_task',self.target(id=saved['id']))
+        self.assertEqual(current['record']['author'],{'id':self.actor['id'],'name':self.actor['name']})
+        self.assertNotIn('email',json.dumps(current))
+        self.assertEqual(self.call('search_tasks',{'scope':'mine'})['total'],1)
+        self.assertEqual(self.call('search_tasks',{'scope':'all','query':'资料准备'})['total'],1)
+        self.assertEqual({p:t for p,t in self.workspace.read_files().items() if '/tasks/' not in p},before)
+        self.assertEqual(json.loads((self.content/'generated/dashboard.json').read_text()),data)
+        editor={**self.actor,'id':'second-editor','name':'另一位编辑','role':'editor','all_projects':False,'project_ids':[self.matter]}
+        done=self.service(editor,operation='save',id=saved['id'],revision=current['revision'],request_id=uuid.uuid4().hex,payload={**current['fields'],'state':'completed','completion_note':'已完成内部整理。'})
+        item=self.call('read_task',self.target(id=saved['id']))['record']
+        self.assertEqual(item['completed_by']['id'],'second-editor');self.assertEqual(item['author']['id'],self.actor['id'])
+        self.assertEqual(self.call('search_tasks',{})['total'],0);self.assertEqual(self.call('search_tasks',{'state':'completed'})['total'],1)
+        self.assertEqual(self.workspace.event_update(query,self.workspace.observe()),original)
+        self.assertEqual(json.loads((self.content/'generated/dashboard.json').read_text()),data)
+        reopened=self.update(saved,state='pending')
+        item=self.call('read_task',self.target(id=saved['id']))['record']
+        self.assertIsNone(item['completed_at']);self.assertIsNone(item['completed_by']);self.assertEqual(item['completion_note'],'')
+        hist=self.call('task_history',self.target(id=saved['id']))['versions'];self.assertEqual(len(hist),3)
+        past=self.call('task_history',self.target(id=saved['id'],version=done['status']['version']))['record'];self.assertEqual(past['state'],'completed');self.assertEqual(past['completion_note'],'已完成内部整理。')
+        snap=self.call('read_task',self.target(id=saved['id'],snapshot=saved['history_version']))
+        self.assertEqual(snap['record']['state'],'pending');self.assertEqual(snap['record']['body'],args['changes']['body'])
+        limited=self.call('task_history',self.target(id=saved['id'],snapshot=saved['history_version']))
+        self.assertEqual(len(limited['versions']),1)
+        with self.assertRaises(ServiceError):self.service(editor,operation='save',snapshot=saved['history_version'])
+        with self.assertRaises(ServiceError):self.call('save_task',self.target(id=saved['id'],revision=current['revision'],request_id=uuid.uuid4().hex,changes={'title':'过期覆盖'}))
+
+    def test_scope_isolation_assignees_and_recycle(self):
+        from matter_tasks import Tasks
+        from workspace_service import ServiceError
+        saved=self.call('save_task',self.args())
+        other='project-demo-investment'
+        self.call('save_task',{'matter_id':other,'revision':self.call('read_task',{'matter_id':other})['revision'],'request_id':uuid.uuid4().hex,'changes':{'title':'受限事项行动'}})
+        editor={**self.actor,'id':'editor-scope','role':'editor','all_projects':False,'project_ids':[self.matter]}
+        self.workspace.policy=Policy(self.workspace,editor);self.workspace.actor=editor
+        self.assertEqual(Tasks(self.workspace).execute({'operation':'list'})['total'],1)
+        self.assertEqual(Tasks(self.workspace).execute({'operation':'list','query':'受限事项行动'})['total'],0)
+        for op in ('read','assignees','history','version','save'):
+            with self.assertRaises(AuthError):Tasks(self.workspace).execute({'operation':op,'project_id':other,'id':saved['id']})
+        current=self.service(editor,operation='read',id=saved['id'])
+        viewer={**editor,'role':'viewer'}
+        with self.assertRaises(AuthError):self.service(viewer,operation='save',id=saved['id'],revision=current['revision'],request_id=uuid.uuid4().hex,payload=current['fields'])
+        self.assertEqual(self.service(viewer,operation='read',id=saved['id'])['record']['id'],saved['id'])
+        candidates=self.service(editor,operation='assignees')['items'];self.assertEqual(candidates,[{'id':self.actor['id'],'name':self.actor['name']}])
+        with self.assertRaises(ServiceError):self.service(editor,operation='save',id=saved['id'],revision=current['revision'],request_id=uuid.uuid4().hex,payload={**current['fields'],'assignee_id':'unknown-member'})
+        invite=self.accounts.invite({'email':'scoped@example.invalid','name':'限域成员','role':'editor','project_ids':[other]},self.actor,{self.matter,other})
+        with self.accounts.db:self.accounts.db.execute("UPDATE users SET active=1 WHERE email='scoped@example.invalid'")
+        self.assertEqual(self.service(editor,operation='assignees')['items'],candidates)
+        from recycle_bin import RecycleBin
+        self.workspace.policy=Policy(self.workspace,self.actor);self.workspace.actor=self.actor
+        recycle=RecycleBin(self.workspace);target={'kind':'project','id':self.matter}
+        preview=recycle.execute({**target,'operation':'preview'})
+        recycle.execute({**target,'operation':'archive','revision':preview['revision'],'request_id':uuid.uuid4().hex,'confirmed':True})
+        self.assertEqual(self.call('search_tasks',{})['total'],1)
+        with self.assertRaises(AuthError):self.call('read_task',self.target(id=saved['id']))
+
+    def test_completion_event_atomic_revision_validation_and_replay(self):
+        from workspace_service import ServiceError
+        saved=self.call('save_task',self.args());current=self.call('read_task',self.target(id=saved['id']))
+        event={'date':'2026-11-13','type':'other','title':'发送示例资料','summary':'林岚发送示例介绍。','importance':'normal','participants':['林岚'],'body':'已发送资料。','location':''}
+        request=self.target(id=saved['id'],revision=current['revision'],request_id=uuid.uuid4().hex,changes={'state':'completed','completion_note':'已发送。'},completion_event={'revision':'outdated','payload':event})
+        before=self.workspace.read_files()
+        with self.assertRaises(ServiceError):self.call('save_task',request)
+        self.assertEqual(self.workspace.read_files(),before)
+        request['completion_event']['revision']=current['progress_revision']
+        result=self.call('save_task',request);self.assertEqual(self.call('save_task',request),result)
+        after=self.call('read_task',self.target(id=saved['id']))['record']
+        progress=self.call('read_progress',self.target(progress_id=after['completion_progress_id']))
+        self.assertEqual(progress['fields']['date'],'2026-11-13');self.assertEqual(progress['fields']['participants'],['林岚'])
+        self.assertEqual(len(self.workspace.record(self.workspace.read_files(),'project',self.matter)['events']),3)
+        with self.assertRaises(AuthError):self.call('save_task',{**request,'changes':{'state':'cancelled'}})
+        self.assertEqual(self.call('read_task',self.target(id=saved['id']))['record']['state'],'completed')
+
+    def test_duplicates_drafts_revocation_and_assignment_recheck(self):
+        from workspace_service import ServiceError
+        args=self.args();first=self.call('save_task',args)
+        with self.assertRaises(ServiceError):self.call('save_task',self.args())
+        with self.assertRaises(ServiceError):self.call('save_task',self.args(title='无效来源',source_progress_id='2026-01-12-investment-contact'))
+        with self.assertRaises(AuthError):self.call('save_task',self.args(title='越权作者',author={'id':'spoof'}))
+        draft_token=self.issue('draft');args=self.args(title='确认后保存',assignee_id=self.actor['id'])
+        draft=self.call('submit_task',args,draft_token);self.assertEqual(self.call('submit_task',args,draft_token),draft)
+        self.assertEqual(self.call('search_tasks',{})['total'],1)
+        with self.assertRaises(AuthError):self.call('save_task',args,draft_token)
+        result=self.remote.browser({'operation':'confirm','draftId':draft['draftId'],'confirmed':True},self.actor)
+        self.assertEqual(self.call('search_tasks',{})['total'],2)
+        self.assertEqual(self.call('read_task',self.target(id=result['id']))['record']['author']['id'],self.actor['id'])
+        read_only=self.issue('read')
+        with self.assertRaises(AuthError):self.call('submit_task',self.args(title='只读不能保存'),read_only)
+        draft=self.call('submit_task',self.args(title='撤销凭据的草稿'),draft_token)
+        self.remote.browser({'operation':'revoke','tokenId':draft_token['id']},self.actor)
+        with self.assertRaises(AuthError):self.remote.browser({'operation':'confirm','draftId':draft['draftId'],'confirmed':True},self.actor)
+
+    def test_assignment_revoked_after_draft_and_invalid_filters(self):
+        from matter_tasks import Tasks
+        from workspace_service import ServiceError
+        self.accounts.invite({'email':'task-editor@example.invalid','name':'待办成员','role':'editor','project_ids':[self.matter]},self.actor,{self.matter})
+        with self.accounts.db:
+            member=self.accounts.db.execute("SELECT id FROM users WHERE email='task-editor@example.invalid'").fetchone()['id']
+            self.accounts.db.execute('UPDATE users SET active=1 WHERE id=?',(member,))
+        token=self.issue('draft')
+        draft=self.call('submit_task',self.args(assignee_id=member),token)
+        with self.accounts.db:self.accounts.db.execute('UPDATE users SET active=0 WHERE id=?',(member,))
+        with self.assertRaises(ServiceError):self.remote.browser({'operation':'confirm','draftId':draft['draftId'],'confirmed':True},self.actor)
+        self.assertEqual(self.call('search_tasks',{})['total'],0)
+        for field in ('state','scope','due','query','assignee_id'):
+            with self.assertRaises(ServiceError):self.service(self.actor,operation='list',**{field:[]})
+
+    def test_backup_recovery_and_archived_progress_preserve_tasks(self):
+        from matter_tasks import Tasks
+        from recycle_bin import RecycleBin
+        saved=self.call('save_task',self.args(body='完整说明。'))
+        updated=self.update(saved,body='完整说明及修订。')
+        archive=create_backup(self.workspace)
+        target=self.content.parent/'recovered-tasks'
+        restore_backup(backup_download(self.workspace,archive['id'])['path'],target)
+        restored=Workspace(target/'content');tasks=Tasks(restored)
+        record=tasks.execute({'operation':'read','project_id':self.matter,'id':saved['id']})
+        self.assertEqual(record['record']['body'],'完整说明及修订。')
+        history=tasks.execute({'operation':'history','project_id':self.matter,'id':saved['id']})
+        self.assertEqual(len(history['versions']),2)
+        self.assertEqual(tasks.execute({'operation':'read','project_id':self.matter,'id':saved['id'],'snapshot':saved['history_version']})['record']['body'],'完整说明。')
+        recycle=RecycleBin(self.workspace)
+        request={'kind':'progress','project_id':self.matter,'id':'2026-01-15-solution-meeting'}
+        before=recycle.execute({**request,'operation':'preview'})
+        recycle.execute({**request,'operation':'archive','revision':before['revision'],'request_id':uuid.uuid4().hex,'confirmed':True})
+        current=self.call('read_task',self.target(id=saved['id']))
+        self.assertTrue(current['record']['source_archived']);self.assertEqual(current['record']['body'],'完整说明及修订。')
+        self.update(saved,state='completed')
+        self.assertEqual(self.call('search_tasks',{'state':'completed'})['total'],1)
+
+    def test_lost_acknowledgement_receipt_never_repeats(self):
+        from matter_tasks import Tasks
+        original=Tasks.execute
+        def lose(service,request,**kwargs):
+            result=original(service,request,**kwargs)
+            if not kwargs.get('preview') and request.get('operation')=='save':raise OSError('lost acknowledgement')
+            return result
+        args=self.args()
+        with patch.object(Tasks,'execute',lose):
+            with self.assertRaises(AuthError) as raised:self.call('save_task',args)
+            self.assertEqual(raised.exception.code,'uncertain')
+        receipt=self.call('save_task',args);self.assertEqual(receipt['status'],'uncertain')
+        self.assertEqual(self.call('search_tasks',{})['total'],1)
+
+
 if __name__=='__main__': unittest.main(verbosity=2)

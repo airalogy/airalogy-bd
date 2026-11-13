@@ -1112,6 +1112,8 @@ try:
     from progress_supplements import validate as check_supplements
     from workspace_service import Workspace
     check_supplements(file_sources, Workspace.projects(file_sources))
+    from matter_tasks import validate as check_tasks
+    check_tasks(file_sources, Workspace.projects(file_sources))
     from recycle_bin import validate as check_recycle_bin
     check_recycle_bin(file_sources, Workspace.projects(file_sources))
 except Exception as exc:
